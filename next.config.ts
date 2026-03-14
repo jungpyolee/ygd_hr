@@ -1,8 +1,19 @@
+import withSerwistInit from "@serwist/next";
 import type { NextConfig } from "next";
 
+const withSerwist = withSerwistInit({
+  swSrc: "src/app/sw.ts", // 서비스 워커 파일 위치
+  swDest: "public/sw.js", // 빌드 결과물 위치
+  disable: process.env.NODE_ENV === "development", // 개발 모드에서는 꺼둠
+});
+
 const nextConfig: NextConfig = {
-  /* config options here */
+  /* 기존 설정 유지 */
   reactCompiler: true,
+  webpack: (config) => {
+    return config;
+  },
 };
 
-export default nextConfig;
+// 설정을 Serwist로 감싸서 export
+export default withSerwist(nextConfig);
