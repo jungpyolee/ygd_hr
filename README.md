@@ -1,5 +1,18 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Git 계정 (jungpyolee 전용)
+
+이 프로젝트는 **jungpyolee** GitHub 계정으로만 커밋합니다.  
+새로 클론했거나 다른 머신에서 작업할 때 한 번만 실행하세요:
+
+```bash
+git config user.name jungpyolee
+git config user.email jungpyo5789@gmail.com
+git config core.hooksPath .githooks
+```
+
+다른 계정으로 커밋을 시도하면 pre-commit 훅에서 막힙니다.
+
 ## Getting Started
 
 First, run the development server:

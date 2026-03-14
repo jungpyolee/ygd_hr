@@ -1,0 +1,16 @@
+#!/bin/sh
+# 이 저장소는 jungpyolee 계정만 사용합니다.
+NAME=$(git config user.name)
+EMAIL=$(git config user.email)
+if [ "$NAME" != "jungpyolee" ] || [ "$EMAIL" != "jungpyo5789@gmail.com" ]; then
+  echo ""
+  echo "❌ 이 프로젝트에서는 jungpyolee 계정만 사용해야 합니다."
+  echo "   현재: $NAME <$EMAIL>"
+  echo ""
+  echo "   다음 명령으로 변경하세요:"
+  echo "   git config user.name jungpyolee"
+  echo "   git config user.email jungpyo5789@gmail.com"
+  echo ""
+  exit 1
+fi
+exit 0
