@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase";
 import { getDistance } from "@/lib/utils/distance";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Calendar, Coffee, Factory, AlertCircle, User } from "lucide-react";
+import { Coffee, Factory, AlertCircle, User, LogOut } from "lucide-react";
 import dynamic from "next/dynamic";
 import WeeklyWorkStats from "@/components/WeeklyWorkStats";
 
@@ -34,15 +34,50 @@ interface LastLog {
 
 const RADIUS_METER = 100;
 
+type LocationState =
+  | { status: "loading" }
+  | { status: "unavailable" }
+  | { status: "ready"; lat: number; lng: number };
+
+function formatDistance(meters: number): string {
+  if (meters <= RADIUS_METER) return "100m 이내";
+  if (meters < 1000) return `약 ${Math.round(meters)}m`;
+  return `약 ${(meters / 1000).toFixed(1)}km`;
+}
+
 export default function HomePage() {
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [lastLog, setLastLog] = useState<LastLog | null>(null);
   const [userName, setUserName] = useState("");
   const [currentTime, setCurrentTime] = useState(new Date());
   const [stores, setStores] = useState<Store[]>([]);
+  const [locationState, setLocationState] = useState<LocationState>({
+    status: "loading",
+  });
   const supabase = createClient();
 
+  // 현재 위치 한 번 조회 (매장 거리 표시용)
+  useEffect(() => {
+    if (!navigator.geolocation) {
+      setLocationState({ status: "unavailable" });
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocationState({
+          status: "ready",
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        });
+      },
+      () => setLocationState({ status: "unavailable" }),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+    );
+  }, []);
+
   const fetchInitialData = async () => {
+    setInitialLoading(true);
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -92,6 +127,7 @@ export default function HomePage() {
         store: (logData.stores as any)?.name || "알 수 없음",
       });
     }
+    setInitialLoading(false);
   };
 
   useEffect(() => {
@@ -197,11 +233,25 @@ export default function HomePage() {
     <div className="flex min-h-screen flex-col bg-[#F2F4F6] font-pretendard">
       <nav className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-[#F2F4F6]/80 backdrop-blur-md">
         <span className="text-xl font-bold text-[#333D4B]">연경당 HR</span>
-        <div className="flex gap-4">
-          <Calendar className="w-6 h-6 text-[#4E5968]" />
-          <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-sm">
+        <div className="flex items-center gap-3">
+          {/* <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-sm">
             <User className="w-5 h-5 text-slate-400" />
-          </div>
+          </div> */}
+          <button
+            type="button"
+            onClick={async () => {
+              if (confirm("로그아웃 하시겠어요?")) {
+                await supabase.auth.signOut();
+                window.location.href = "/login";
+              }
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#F2F4F6] hover:bg-[#E5E8EB] active:scale-95 rounded-full transition-all"
+          >
+            <LogOut className="w-3.5 h-3.5 text-[#4E5968]" />
+            <span className="text-[13px] font-semibold text-[#4E5968]">
+              로그아웃
+            </span>
+          </button>
         </div>
       </nav>
 
@@ -214,7 +264,6 @@ export default function HomePage() {
           </h1>
           <DynamicClock />
         </section>
-
         <section className="bg-white rounded-[28px] p-6 shadow-sm border border-slate-100">
           <div className="flex justify-between items-start mb-8">
             <div className="space-y-1">
@@ -231,7 +280,7 @@ export default function HomePage() {
                 />
                 <div className="text-2xl font-bold text-[#191F28] ">
                   {/* Loading 중일때 skeleton 처리 */}
-                  {loading || !lastLog ? (
+                  {initialLoading ? (
                     <div className="w-20 h-8 bg-slate-100 animate-pulse rounded-2xl" />
                   ) : lastLog?.type === "IN" ? (
                     `${lastLog.store} 근무 중`
@@ -268,15 +317,17 @@ export default function HomePage() {
             <Button
               onClick={() => handleAttendance("OUT")}
               disabled={loading || lastLog?.type !== "IN"}
-              className="h-16 rounded-2xl bg-[#F2F4F6] text-[#4E5968] font-bold text-lg hover:bg-[#E5E8EB] disabled:opacity-50 transition-all active:scale-[0.98]"
+              className={`h-16 rounded-2xl font-bold text-lg transition-all active:scale-[0.98] ${
+                lastLog?.type === "IN" && !loading
+                  ? "bg-[#E8F3FF] text-[#3182F6] hover:bg-[#D4E7FF] border-2 border-[#3182F6]/30"
+                  : "bg-[#F2F4F6] text-[#4E5968] hover:bg-[#E5E8EB] disabled:opacity-50"
+              }`}
             >
               퇴근하기
             </Button>
           </div>
         </section>
-
         <WeeklyWorkStats />
-
         {/* 4. 사업장 퀵 인포 (DB 연동) */}
         <div className="grid grid-cols-2 gap-4">
           {stores.map((store) => (
@@ -290,9 +341,22 @@ export default function HomePage() {
                 <Factory className="w-6 h-6 text-blue-400 mb-3" />
               )}
               <p className="text-[15px] font-bold text-[#191F28]">
-                {store.name}
+                {store.name}까지 거리
               </p>
-              <p className="text-xs text-[#8B95A1] mt-1">반경 100m 이내</p>
+              <p className="text-xs text-[#8B95A1] mt-1">
+                {locationState.status === "loading"
+                  ? "위치 확인 중..."
+                  : locationState.status === "unavailable"
+                  ? "알 수 없음"
+                  : formatDistance(
+                      getDistance(
+                        locationState.lat,
+                        locationState.lng,
+                        store.lat,
+                        store.lng
+                      )
+                    )}
+              </p>
             </div>
           ))}
           {stores.length === 0 && (
@@ -301,7 +365,6 @@ export default function HomePage() {
             </div>
           )}
         </div>
-
         <section className="flex items-center justify-between bg-white rounded-[28px] p-5 border border-slate-100">
           <div className="flex gap-4 items-center">
             <div className="w-10 h-10 bg-[#F2F4F6] rounded-full flex items-center justify-center">
@@ -317,17 +380,6 @@ export default function HomePage() {
             </div>
           </div>
         </section>
-
-        <Button
-          variant="ghost"
-          className="w-full text-[#8B95A1] font-medium py-8"
-          onClick={async () => {
-            await supabase.auth.signOut();
-            window.location.href = "/login";
-          }}
-        >
-          로그아웃 할게요
-        </Button>
       </main>
     </div>
   );

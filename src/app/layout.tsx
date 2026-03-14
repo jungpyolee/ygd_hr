@@ -66,17 +66,23 @@ export default function RootLayout({
         <PWAInstallPrompt />
         <Script id="register-sw" strategy="afterInteractive">
           {`
-    if ('serviceWorker' in navigator) {
+    (function() {
+      var isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      if (!('serviceWorker' in navigator)) return;
+
+      if (isDev) {
+        navigator.serviceWorker.getRegistrations().then(function(regs) {
+          regs.forEach(function(reg) { reg.unregister(); });
+        });
+        return;
+      }
+
       window.addEventListener('load', function() {
         navigator.serviceWorker.register('/sw.js', { scope: '/' })
-          .then(function(reg) {
-            console.log('ServiceWorker 등록 성공:', reg.scope);
-          })
-          .catch(function(err) {
-            console.log('ServiceWorker 등록 실패:', err);
-          });
+          .then(function(reg) { console.log('ServiceWorker 등록 성공:', reg.scope); })
+          .catch(function(err) { console.log('ServiceWorker 등록 실패:', err); });
       });
-    }
+    })();
   `}
         </Script>
       </body>

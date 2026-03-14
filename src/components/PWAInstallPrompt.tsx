@@ -50,11 +50,10 @@ export default function PWAInstallPrompt() {
   return (
     <div className="fixed bottom-20 left-4 right-4 z-50 mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-4 shadow-lg">
       <p className="text-sm font-medium text-[#191F28]">
-        앱으로 설치하면 주소창 없이 더 편하게 사용할 수 있어요
+        앱으로 설치하는 걸 권장해요
       </p>
       <p className="mt-1 text-xs text-[#8B95A1]">
-        홈 화면에 추가만 하면 브라우저로 열립니다. 아래 &quot;앱으로 설치&quot;를
-        눌러주세요.
+        아래 &quot;앱으로 설치&quot;를 눌러주세요.
       </p>
       <div className="mt-3 flex gap-2">
         <Button

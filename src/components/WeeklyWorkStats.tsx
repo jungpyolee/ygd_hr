@@ -4,15 +4,18 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase";
 import { startOfWeek, differenceInMinutes } from "date-fns";
 import { TrendingUp, ChevronRight } from "lucide-react";
+import Link from "next/link";
 
 export default function WeeklyWorkStats() {
   const [weeklyMinutes, setWeeklyMinutes] = useState(0);
+  const [dailyMinutes, setDailyMinutes] = useState<number[]>(
+    new Array(7).fill(0)
+  );
   const [loading, setLoading] = useState(true);
   const supabase = createClient();
 
   const weekDays = ["월", "화", "수", "목", "금", "토", "일"];
-  // getDay()는 일(0)~토(6)이므로, 월(0)~일(6) 체계로 변환
-  const todayIndex = (new Date().getDay() + 6) % 7;
+  const todayIndex = (new Date().getDay() + 6) % 7; // 월(0)~일(6) 변환
 
   useEffect(() => {
     const fetchWeeklyStats = async () => {
@@ -21,7 +24,7 @@ export default function WeeklyWorkStats() {
       } = await supabase.auth.getUser();
       if (!user) return;
 
-      const start = startOfWeek(new Date(), { weekStartsOn: 1 }); // 월요일 시작
+      const start = startOfWeek(new Date(), { weekStartsOn: 1 });
 
       const { data: logs, error } = await supabase
         .from("attendance_logs")
@@ -37,29 +40,37 @@ export default function WeeklyWorkStats() {
       }
 
       let totalMins = 0;
+      const dailyMins = new Array(7).fill(0);
       let lastInTime: Date | null = null;
 
       logs?.forEach((log) => {
         const logTime = new Date(log.created_at);
+        const dayIndex = (logTime.getDay() + 6) % 7;
+
         if (log.type === "IN") {
           lastInTime = logTime;
         } else if (log.type === "OUT" && lastInTime) {
-          totalMins += differenceInMinutes(logTime, lastInTime);
+          const duration = differenceInMinutes(logTime, lastInTime);
+          totalMins += duration;
+          dailyMins[dayIndex] += duration;
           lastInTime = null;
         }
       });
 
-      // 현재 진행 중인 근무 시간 합산
+      // 현재 진행 중인 근무 시간 반영
       if (lastInTime) {
-        totalMins += differenceInMinutes(new Date(), lastInTime);
+        const currentDuration = differenceInMinutes(new Date(), lastInTime);
+        totalMins += currentDuration;
+        dailyMins[todayIndex] += currentDuration;
       }
 
       setWeeklyMinutes(totalMins);
+      setDailyMinutes([...dailyMins]);
       setLoading(false);
     };
 
     fetchWeeklyStats();
-  }, [supabase]);
+  }, [supabase, todayIndex]);
 
   const formatWorkTime = (totalMinutes: number) => {
     const hours = Math.floor(totalMinutes / 60);
@@ -69,60 +80,71 @@ export default function WeeklyWorkStats() {
 
   return (
     <section className="bg-white rounded-[28px] p-6 shadow-sm border border-slate-100">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <TrendingUp className="w-5 h-5 text-[#3182F6]" />
-          <h3 className="font-bold text-[#191F28]">이번 주 근무</h3>
+      <Link href="/attendances">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-[#3182F6]" />
+            <h3 className="font-bold text-[#191F28]">이번 주 근무</h3>
+          </div>
+          <ChevronRight className="w-5 h-5 text-[#D1D6DB]" />
         </div>
-        <ChevronRight className="w-5 h-5 text-[#D1D6DB]" />
-      </div>
 
-      <div className="flex justify-between items-end">
-        <div className="space-y-1">
-          {loading ? (
-            <div className="h-9 w-32 bg-slate-100 animate-pulse rounded-lg" />
-          ) : (
-            <p className="text-3xl font-bold text-[#191F28]">
-              {formatWorkTime(weeklyMinutes)}
+        <div className="flex justify-between items-end">
+          <div className="space-y-1">
+            {loading ? (
+              <div className="h-9 w-32 bg-slate-100 animate-pulse rounded-lg" />
+            ) : (
+              <p className="text-3xl font-bold text-[#191F28]">
+                {formatWorkTime(weeklyMinutes)}
+              </p>
+            )}
+            <p className="text-sm text-[#8B95A1]">
+              월요일부터 지금까지 일한 시간이에요
             </p>
-          )}
-          <p className="text-sm text-[#8B95A1]">
-            월요일부터 지금까지 일한 시간이에요
-          </p>
-        </div>
+          </div>
 
-        {/* Toss 스타일 바 그래프 (Placeholder) */}
-        <div className="flex gap-2 items-end h-16 px-1">
-          {weekDays.map((label, index) => {
-            const isToday = index === todayIndex;
-            const isPast = index < todayIndex;
+          {/* 요일별 바 그래프 영역 */}
+          <div className="flex gap-2 items-end h-24 px-1">
+            {weekDays.map((label, index) => {
+              const isToday = index === todayIndex;
+              const mins = dailyMinutes[index];
+              const maxMins = Math.max(...dailyMinutes, 60);
+              // 8시간(480분) 기준 퍼센트 계산
+              // 데이터가 있으면 최소 20% 높이 보장, 없으면 10%
+              const heightPercent = loading
+                ? 15
+                : mins > 0
+                ? Math.max(20, (mins / maxMins) * 100) // 8시간 대신 maxMins 기준
+                : 10;
 
-            return (
-              <div key={label} className="flex flex-col items-center gap-2">
-                {/* 바 그래프 */}
+              return (
                 <div
-                  style={{ height: isToday ? "60%" : isPast ? "30%" : "15%" }}
-                  className={`w-2.5 rounded-t-full transition-all duration-500 ${
-                    isToday
-                      ? "bg-[#3182F6]"
-                      : isPast
-                      ? "bg-[#E8F3FF]"
-                      : "bg-[#F2F4F6]"
-                  }`}
-                />
-                {/* 요일 라벨 (Toss UX: 작은 디테일) */}
-                <span
-                  className={`text-[10px] font-medium ${
-                    isToday ? "text-[#3182F6]" : "text-[#B0B8C1]"
-                  }`}
+                  key={label}
+                  className="flex flex-col items-center justify-end h-full gap-2"
                 >
-                  {label}
-                </span>
-              </div>
-            );
-          })}
+                  <div
+                    style={{ height: `${heightPercent}%` }}
+                    className={`w-3 rounded-t-full transition-all duration-700 ease-out ${
+                      isToday
+                        ? "bg-[#3182F6]"
+                        : mins > 0
+                        ? "bg-[#3182F6] opacity-30"
+                        : "bg-[#F2F4F6]"
+                    }`}
+                  />
+                  <span
+                    className={`text-[10px] font-medium transition-colors duration-300 ${
+                      isToday ? "text-[#3182F6]" : "text-[#B0B8C1]"
+                    }`}
+                  >
+                    {label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      </Link>
     </section>
   );
 }
