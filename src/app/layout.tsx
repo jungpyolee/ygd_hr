@@ -53,7 +53,7 @@ export const metadata: Metadata = {
   // 🚀 카카오톡, 슬랙, 페이스북 등 공유 시 렌더링되는 카드 정보 (여기부터 추가!)
   openGraph: {
     title: "연경당 HR",
-    description: "연경당 관리 ⏱️",
+    description: "연경당 통합 근무 관리시스템 ⏱️",
     url: "https://ygd-hr.vercel.app", // 배포된 실제 도메인
     siteName: "연경당 HR",
     images: [
