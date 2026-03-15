@@ -50,6 +50,30 @@ export const metadata: Metadata = {
       },
     ],
   },
+  // 🚀 카카오톡, 슬랙, 페이스북 등 공유 시 렌더링되는 카드 정보 (여기부터 추가!)
+  openGraph: {
+    title: "연경당 HR",
+    description: "연경당 관리 ⏱️",
+    url: "https://ygd-hr.vercel.app", // 배포된 실제 도메인
+    siteName: "연경당 HR",
+    images: [
+      {
+        url: "/og-image.png", // public 폴더에 넣을 이미지 파일명
+        width: 800,
+        height: 400,
+        alt: "연경당 HR 썸네일 이미지",
+      },
+    ],
+    locale: "ko_KR",
+    type: "website",
+  },
+  // 🚀 트위터(X) 공유 대응 (큰 이미지 형태)
+  twitter: {
+    card: "summary_large_image",
+    title: "연경당 HR",
+    description: "우리 매장 스마트 출퇴근 관리 ⏱️",
+    images: ["/og-image.png"],
+  },
 };
 
 export default function RootLayout({
