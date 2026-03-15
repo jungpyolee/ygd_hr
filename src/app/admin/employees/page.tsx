@@ -396,8 +396,8 @@ export default function AdminEmployeesPage() {
             onClick={() => setEditingEmployee(null)}
           />
 
-          <div className="relative w-full max-w-lg bg-white rounded-[28px] p-5 sm:p-7 shadow-2xl animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto scrollbar-hide">
-            <div className="flex justify-between items-center mb-6 sticky top-0 bg-white z-10 py-1 border-b border-slate-50 pb-4">
+          <div className="relative w-full max-w-lg bg-white rounded-[28px] p-5 sm:p-7 pt-0 shadow-2xl animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto scrollbar-hide">
+            <div className="flex justify-between items-center mb-6 sticky top-0 bg-white z-10 pt-4 border-b border-slate-50 pb-4">
               <h2 className="text-[18px] font-bold text-[#191F28]">
                 {editForm.name} 직원 정보
               </h2>
