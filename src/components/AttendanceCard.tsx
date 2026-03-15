@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase";
 import { getDistance } from "@/lib/utils/distance";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { sendNotification } from "@/lib/notifications";
 
 // 부모에게서 받을 Props 정의
 interface AttendanceCardProps {
@@ -50,22 +51,48 @@ export default function AttendanceCard({
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    const { error } = await supabase.from("attendance_logs").insert({
-      profile_id: user?.id,
-      store_id: nearestStore.id,
-      type,
-      user_lat: lat,
-      user_lng: lng,
-      distance_m: nearestStore.distance,
-    });
+    const { data: logData, error } = await supabase
+      .from("attendance_logs")
+      .insert({
+        profile_id: user?.id,
+        store_id: nearestStore.id,
+        type,
+        user_lat: lat,
+        user_lng: lng,
+        distance_m: nearestStore.distance,
+      })
+      .select(
+        `
+      id,
+      profile_id,
+      profiles (
+        name
+      )
+    `
+      )
+      .single();
 
     if (error) {
       toast.error("기록에 실패했어요. 다시 시도해주세요.");
     } else {
+      // 🚀 2. 알림 발송용 이름 추출 (안전을 위해 옵셔널 체이닝 및 기본값 처리)
+      const employeeName = (logData.profiles as any)?.name || "누군가";
+
+      await sendNotification({
+        target_role: "admin",
+        type: type === "IN" ? "attendance_in" : "attendance_out",
+        title: type === "IN" ? "☀️ 출근 알림" : "🌙 퇴근 알림",
+        content: `${employeeName}님이 ${nearestStore.name}${
+          type === "IN" ? "으로 출근했어요" : "에서 퇴근했어요"
+        }`,
+        // 💡 source_id는 이 근태 기록의 PK(id)를 넣어야 나중에 알림 클릭 시 해당 기록으로 이동 가능합니다.
+        source_id: logData.id,
+      });
+
       toast.success(
         `${nearestStore.name} ${type === "IN" ? "출근" : "퇴근"} 완료!`
       );
-      onSuccess(); // 부모(page.tsx)의 데이터 리프레시 함수 호출
+      onSuccess();
     }
     setLoading(false);
   };
