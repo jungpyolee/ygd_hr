@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
 });
-// 1. 뷰포트 설정: 주소창 제어 및 앱 느낌의 확대 방지
+// 1. 뷰포트 설정: 주소창 제어 및 앱 느낌의 확대 방지 / 모바일 다크모드 비활성화
 export const viewport: Viewport = {
   themeColor: "#3182F6", // 토스 블루 또는 연경당 포인트 컬러
   width: "device-width",
@@ -23,6 +23,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover", // iOS 노치 영역까지 앱 화면 채우기
+  colorScheme: "light", // 항상 라이트 모드 (모바일 다크모드 미적용)
 };
 
 // 2. 메타데이터 설정: PWA 및 iOS 아이콘 연동
@@ -82,7 +83,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ko">
+    <html lang="ko" className="light" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased font-pretendard`}
       >
