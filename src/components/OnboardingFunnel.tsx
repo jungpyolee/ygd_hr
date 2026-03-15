@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase";
 import { ChevronLeft, CheckCircle2, UploadCloud } from "lucide-react";
 import { format } from "date-fns";
 import { DatePicker } from "@/components/ui/date-picker";
+import { sendNotification } from "@/lib/notifications";
 
 interface OnboardingProps {
   onComplete: () => void;
@@ -99,6 +100,14 @@ export default function OnboardingFunnel({ onComplete }: OnboardingProps) {
             resident_register_url: idUrl,
           })
           .eq("id", user.id);
+
+        await sendNotification({
+          target_role: "admin",
+          type: "onboarding",
+          title: "🎉 새 직원 등록",
+          content: `${name}님이 온보딩을 완료하고 프로필을 등록했습니다.`,
+          source_id: user.id,
+        });
       } catch (error) {
         console.error("업로드 중 에러 발생:", error);
         alert("서류 업로드 중 문제가 발생했습니다. 나중에 다시 시도해주세요.");
