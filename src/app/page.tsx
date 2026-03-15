@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase";
-import { getDistance } from "@/lib/utils/distance";
-import { AlertCircle, LogOut, Coffee, Factory } from "lucide-react";
+import { AlertCircle, LogOut, UserCircle, LayoutDashboard } from "lucide-react";
 import dynamic from "next/dynamic";
 import WeeklyWorkStats from "@/components/WeeklyWorkStats";
 import OnboardingFunnel from "@/components/OnboardingFunnel";
 import AttendanceCard from "@/components/AttendanceCard"; // 방금 만든 컴포넌트
 import StoreDistanceList from "@/components/StoreDistanceList";
+import MyInfoModal from "@/components/MyInfoModal"; // 🚀 컴포넌트 임포트
+import { useRouter } from "next/navigation";
 
 const DynamicClock = dynamic(() => import("@/components/Clock"), {
   ssr: false,
@@ -24,9 +25,9 @@ export default function HomePage() {
   const [locationState, setLocationState] = useState<any>({
     status: "loading",
   });
-
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false); // 🚀 모달 열림 상태만 관리
   const supabase = createClient();
-
+  const router = useRouter();
   // 1. 위치 정보 구독
   useEffect(() => {
     if (!navigator.geolocation)
@@ -119,20 +120,46 @@ export default function HomePage() {
       {/* Navbar 영역 */}
       <nav className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-[#F2F4F6]/80 backdrop-blur-md">
         <span className="text-xl font-bold text-[#333D4B]">연경당 HR</span>
-        <button
-          onClick={async () => {
-            if (confirm("로그아웃 하시겠어요?")) {
-              await supabase.auth.signOut();
-              window.location.href = "/login";
-            }
-          }}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 rounded-full transition-all shadow-sm"
-        >
-          <LogOut className="w-3.5 h-3.5 text-[#4E5968]" />
-          <span className="text-[13px] font-semibold text-[#4E5968]">
-            로그아웃
-          </span>
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setIsEditModalOpen(true)}
+            className="w-10 h-10 rounded-full border border-white bg-white shadow-sm flex items-center justify-center overflow-hidden"
+            style={{ backgroundColor: profile?.color_hex }}
+          >
+            {profile?.color_hex ? (
+              <span className="text-white font-bold text-sm">
+                {profile.name.charAt(0)}
+              </span>
+            ) : (
+              <UserCircle className="w-6 h-6 text-[#8B95A1]" />
+            )}
+          </button>
+          {profile?.role === "admin" && (
+            <button
+              onClick={() => router.push("/admin")}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 rounded-full transition-all shadow-sm"
+            >
+              <LayoutDashboard className="w-3.5 h-3.5 text-[#4E5968]" />
+              <span className="text-[13px] font-semibold text-[#4E5968]">
+                어드민
+              </span>
+            </button>
+          )}
+          <button
+            onClick={async () => {
+              if (confirm("로그아웃 하시겠어요?")) {
+                await supabase.auth.signOut();
+                window.location.href = "/login";
+              }
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 rounded-full transition-all shadow-sm"
+          >
+            <LogOut className="w-3.5 h-3.5 text-[#4E5968]" />
+            <span className="text-[13px] font-semibold text-[#4E5968]">
+              로그아웃
+            </span>
+          </button>
+        </div>
       </nav>
 
       <main className="flex-1 px-5 pb-10 space-y-4">
@@ -180,6 +207,12 @@ export default function HomePage() {
           </div>
         </section>
       </main>
+      <MyInfoModal
+        isOpen={isEditModalOpen}
+        profile={profile}
+        onClose={() => setIsEditModalOpen(false)}
+        onUpdate={fetchAllData}
+      />
     </div>
   );
 }
