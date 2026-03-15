@@ -5,6 +5,7 @@ import "pretendard/dist/web/static/pretendard.css"; // 폰트 CSS 임포트
 import { Toaster } from "sonner";
 import Script from "next/script";
 import PWAInstallPrompt from "@/components/PWAInstallPrompt";
+import KakaoEscape from "@/components/KakaoEscape";
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -57,10 +58,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="ko">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased font-pretendard`}
       >
+        <KakaoEscape />
         {children}
         <Toaster />
         <PWAInstallPrompt />

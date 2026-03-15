@@ -8,6 +8,7 @@ import dynamic from "next/dynamic";
 import WeeklyWorkStats from "@/components/WeeklyWorkStats";
 import OnboardingFunnel from "@/components/OnboardingFunnel";
 import AttendanceCard from "@/components/AttendanceCard"; // 방금 만든 컴포넌트
+import StoreDistanceList from "@/components/StoreDistanceList";
 
 const DynamicClock = dynamic(() => import("@/components/Clock"), {
   ssr: false,
@@ -155,6 +156,12 @@ export default function HomePage() {
         />
 
         <WeeklyWorkStats />
+
+        <StoreDistanceList
+          stores={stores}
+          locationState={locationState}
+          radius={RADIUS_METER}
+        />
 
         {/* 헬퍼 메시지 */}
         <section className="flex items-center justify-between bg-white rounded-[28px] p-5 border border-slate-100 mt-4">

@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
+import IosInstallPrompt from "@/components/IosInstallPrompt";
 
 export default function LoginPage() {
   const [isLoginMode, setIsLoginMode] = useState(true);
@@ -201,6 +202,8 @@ export default function LoginPage() {
           </button>
         </div>
       </div>
+      {/* 🚀 아이폰 전용 설치 팝업을 여기에 배치! (로그인 화면 위에 스르륵 뜹니다) */}
+      <IosInstallPrompt />
     </div>
   );
 }
