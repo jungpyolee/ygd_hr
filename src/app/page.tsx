@@ -34,47 +34,19 @@ export default function HomePage() {
   useEffect(() => {
     if (!navigator.geolocation)
       return setLocationState({ status: "unavailable" });
-    let resolved = false;
-
-    const onSuccess = (pos: GeolocationPosition) => {
-      resolved = true;
-      setLocationState({
-        status: "ready",
-        lat: pos.coords.latitude,
-        lng: pos.coords.longitude,
-      });
-    };
 
     const watchId = navigator.geolocation.watchPosition(
-      onSuccess,
-      (err) => {
-        if (err.code === err.PERMISSION_DENIED) {
-          resolved = true;
-          navigator.geolocation.clearWatch(watchId);
-          setLocationState({ status: "unavailable" });
-        }
-        // POSITION_UNAVAILABLE(kCLErrorLocationUnknown) / TIMEOUT
-        // → watchPosition이 계속 재시도 (GPS 웜업 대기)
+      (pos) => {
+        setLocationState({
+          status: "ready",
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        });
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      () => setLocationState({ status: "unavailable" }),
     );
 
-    // GPS(고정밀)가 8초 내에 잡히지 않으면 Wi-Fi 기반 저정밀로 폴백
-    // (맥 데스크탑처럼 GPS 칩이 없는 환경 대응)
-    const fallbackTimer = setTimeout(() => {
-      if (!resolved) {
-        navigator.geolocation.getCurrentPosition(
-          onSuccess,
-          () => { if (!resolved) setLocationState({ status: "unavailable" }); },
-          { enableHighAccuracy: false, timeout: 10000 }
-        );
-      }
-    }, 8000);
-
-    return () => {
-      navigator.geolocation.clearWatch(watchId);
-      clearTimeout(fallbackTimer);
-    };
+    return () => navigator.geolocation.clearWatch(watchId);
   }, []);
 
   // 2. 전체 데이터 Fetch (온보딩 여부 포함)
@@ -107,7 +79,7 @@ export default function HomePage() {
 
     const { data: logData } = await supabase
       .from("attendance_logs")
-      .select("type, created_at, attendance_type, stores(name)")
+      .select("type, created_at, attendance_type, stores!store_id(name)")
       .eq("profile_id", user.id)
       .order("created_at", { ascending: false })
       .limit(1)
