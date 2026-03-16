@@ -79,7 +79,7 @@ export default function AdminAttendanceCalendar() {
     const { data, error } = await supabase
       .from("attendance_logs")
       .select(
-        `id, profile_id, type, created_at, distance_m, attendance_type, reason, profiles (name, color_hex), stores (name)`
+        `id, profile_id, type, created_at, distance_m, attendance_type, reason, profiles (name, color_hex), stores!store_id(name)`
       )
       .gte("created_at", startStr)
       .lte("created_at", endStr)

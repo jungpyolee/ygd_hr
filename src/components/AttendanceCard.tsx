@@ -130,16 +130,16 @@ export default function AttendanceCard({
       notifTitle = "📍 원격퇴근 알림";
       notifContent = `${employeeName}님이 ${
         pendingLocation?.nearestStore?.name || "매장"
-      }에서 ${Math.round(distanceM)}m 거리에서 원격퇴근했어요`;
+      }에서 ${Math.round(distanceM)}m 거리에서 원격 퇴근했어요`;
     } else if (attendanceType === "business_trip_in") {
       notifType = "attendance_business_trip_in";
-      notifTitle = "✈️ 출장출근 알림";
-      notifContent = `${employeeName}님이 출장출근했어요`;
+      notifTitle = "✈️ 출장 출근 알림";
+      notifContent = `${employeeName}님이 출장 출근했어요`;
     } else {
       // business_trip_out
       notifType = "attendance_business_trip_out";
-      notifTitle = "✈️ 출장퇴근 알림";
-      notifContent = `${employeeName}님이 출장퇴근했어요`;
+      notifTitle = "✈️ 출장 퇴근 알림";
+      notifContent = `${employeeName}님이 출장 퇴근했어요`;
     }
 
     await sendNotification({
@@ -200,6 +200,7 @@ export default function AttendanceCard({
     }
 
     // ── 일반 출퇴근 ────────────────────────────────────────
+    setLoading(false);
     await processAttendance({
       type,
       nearestStore,
