@@ -1,8 +1,7 @@
 /// <reference lib="webworker" />
 
 import { defaultCache } from "@serwist/next/worker";
-// @ts-ignore
-import { Serwist } from "@serwist/sw";
+import { Serwist } from "serwist";
 
 declare const self: ServiceWorkerGlobalScope & {
   __SW_MANIFEST: (string | { revision: string | null; url: string })[];
