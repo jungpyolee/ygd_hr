@@ -61,6 +61,9 @@ docs/
 psql 직접 연결은 IPv6 전용이라 일반 환경에서 불가.
 **Management API**를 통해 HTTP로 SQL을 실행한다.
 
+> **Claude Code가 직접 실행 가능** — `.env.local`에 `SUPABASE_ACCESS_TOKEN`이 있으므로
+> DB 마이그레이션을 사용자가 직접 실행할 필요 없음. 작업 흐름 중 Claude Code가 알아서 처리한다.
+
 ```bash
 # 환경변수에서 토큰 로드 후 실행
 source .env.local  # 또는 TOKEN을 직접 지정

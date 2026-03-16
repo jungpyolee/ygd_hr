@@ -92,7 +92,19 @@ export default function AttendanceCard({
       .single();
 
     if (error) {
-      toast.error("기록에 실패했어요. 다시 시도해주세요.");
+      const msg = error.message || "";
+      if (msg.includes("DUPLICATE_ATTENDANCE_TYPE")) {
+        toast.error(
+          type === "IN" ? "이미 출근 상태예요" : "이미 퇴근 상태예요",
+          { description: "페이지를 새로고침하면 정확한 상태를 확인할 수 있어요" }
+        );
+      } else if (msg.includes("INVALID_CHECKOUT_NO_CHECKIN")) {
+        toast.error("출근 기록이 없어요", {
+          description: "먼저 출근 버튼을 눌러주세요",
+        });
+      } else {
+        toast.error("기록에 실패했어요. 다시 시도해주세요.");
+      }
       setLoading(false);
       return;
     }
