@@ -104,7 +104,7 @@ export default function HomePage() {
 
     const { data: logData } = await supabase
       .from("attendance_logs")
-      .select("type, created_at, stores(name)")
+      .select("type, created_at, attendance_type, stores(name)")
       .eq("profile_id", user.id)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -116,6 +116,7 @@ export default function HomePage() {
         new Date().toDateString();
       setLastLog({
         type: logData.type,
+        attendance_type: logData.attendance_type || "regular",
         time: new Date(logData.created_at).toLocaleTimeString([], {
           hour: "2-digit",
           minute: "2-digit",

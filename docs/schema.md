@@ -1,7 +1,7 @@
 # DB 스키마 (최신 상태)
 
 > **프로젝트**: ymvdjxzkjodasctktunh
-> **최종 갱신**: 2026-03-16 (DB-001, DB-002 반영)
+> **최종 갱신**: 2026-03-16 (DB-001, DB-002, DB-003 반영)
 > **연결 방식**: Supabase Management API
 
 ---
@@ -60,17 +60,32 @@
 |------|------|------|--------|------|
 | `id` | uuid | NO | `gen_random_uuid()` | PK |
 | `profile_id` | uuid | NO | - | FK → profiles.id |
-| `store_id` | uuid | NO | - | FK → stores.id |
+| `store_id` | uuid | **YES** | - | FK → stores.id (레거시, 신규는 아래 컬럼 사용) |
+| `check_in_store_id` | uuid | YES | - | FK → stores.id (출근 매장, 출장출근 시 null) |
+| `check_out_store_id` | uuid | YES | - | FK → stores.id (퇴근 매장, 원격/출장퇴근 시 null) |
 | `type` | text | NO | - | `'IN'` / `'OUT'` |
+| `attendance_type` | text | YES | `'regular'` | 아래 참고 |
+| `reason` | text | YES | - | 원격/출장퇴근 사유 |
 | `user_lat` | float8 | YES | - | 기록 시 사용자 위도 |
 | `user_lng` | float8 | YES | - | 기록 시 사용자 경도 |
 | `distance_m` | float8 | YES | - | 매장까지 거리 (미터) |
 | `created_at` | timestamptz | YES | `now()` | 기록 시각 |
 
+**attendance_type 값**
+
+| 값 | 설명 |
+|----|------|
+| `regular` | 일반 출퇴근 (반경 내) |
+| `remote_out` | 원격퇴근 (반경 밖 퇴근, 사유 필수) |
+| `business_trip_in` | 출장출근 (반경 밖 출근, 사용자 확인) |
+| `business_trip_out` | 출장퇴근 (출장출근 후 반경 밖 퇴근, 사유 자동입력) |
+
 **제약조건**
 - PK: `id`
 - FK: `profile_id` → `profiles.id`
-- FK: `store_id` → `stores.id`
+- FK: `store_id` → `stores.id` (nullable, DB-003 이후)
+- FK: `check_in_store_id` → `stores.id`
+- FK: `check_out_store_id` → `stores.id`
 
 ---
 
@@ -116,6 +131,9 @@
 |------|-----------|
 | `attendance_in` | 직원 출근 시 |
 | `attendance_out` | 직원 퇴근 시 |
+| `attendance_remote_out` | 직원 원격퇴근 시 |
+| `attendance_business_trip_in` | 직원 출장출근 시 |
+| `attendance_business_trip_out` | 직원 출장퇴근 시 |
 | `onboarding` | 신규 직원 온보딩 완료 시 |
 | `info_update` | 직원 정보 수정 시 |
 
@@ -213,6 +231,7 @@ DELETE FROM auth.users WHERE id = target_user_id
 | `idx_attendance_logs_profile_id` | attendance_logs | (profile_id) |
 | `idx_attendance_logs_created_at` | attendance_logs | (created_at DESC) |
 | `idx_attendance_logs_profile_created` | attendance_logs | (profile_id, created_at DESC) |
+| `idx_attendance_logs_attendance_type` | attendance_logs | (attendance_type) |
 | `notifications_pkey` | notifications | UNIQUE (id) |
 | `profiles_pkey` | profiles | UNIQUE (id) |
 | `profiles_email_key` | profiles | UNIQUE (email) |
@@ -235,3 +254,5 @@ DELETE FROM auth.users WHERE id = target_user_id
 | 1 | `stores.radius_m` 컬럼이 있는데 코드에서 하드코딩 상수 사용 중 | 낮음 | 미처리 |
 | 2 | `attendance_logs.profile_id`, `created_at` 인덱스 없음 | 중간 | ✅ DB-001 완료 |
 | 3 | `profiles.updated_at` 자동 갱신 트리거 없음 | 낮음 | ✅ DB-002 완료 |
+| 4 | `attendance_logs.store_id` 단일 컬럼으로 출/퇴근 매장 구분 불가 | 높음 | ✅ DB-003 완료 |
+| 5 | `attendance_logs.store_id` 레거시 컬럼 제거 (check_in/out_store_id로 완전 이관 후) | 낮음 | 미처리 |

@@ -26,6 +26,7 @@ import {
   AlertCircle,
   LayoutGrid,
   CalendarDays,
+  MapPin,
 } from "lucide-react";
 
 interface ProcessedLog {
@@ -35,6 +36,11 @@ interface ProcessedLog {
   store_name: string;
   clock_in: string | null;
   clock_out: string | null;
+  distance_in: number | null;
+  distance_out: number | null;
+  attendance_type_in: string;
+  attendance_type_out: string;
+  reason_out: string | null;
 }
 
 export default function AdminAttendanceCalendar() {
@@ -73,7 +79,7 @@ export default function AdminAttendanceCalendar() {
     const { data, error } = await supabase
       .from("attendance_logs")
       .select(
-        `id, profile_id, type, created_at, profiles (name, color_hex), stores (name)`
+        `id, profile_id, type, created_at, distance_m, attendance_type, reason, profiles (name, color_hex), stores (name)`
       )
       .gte("created_at", startStr)
       .lte("created_at", endStr)
@@ -93,17 +99,30 @@ export default function AdminAttendanceCalendar() {
           grouped[dateKey].set(pId, {
             profile_id: pId,
             name: log.profiles?.name || "알 수 없음",
-            color_hex: log.profiles?.color_hex || "#8B95A1", // 🚀 색상 가져오기
+            color_hex: log.profiles?.color_hex || "#8B95A1",
             store_name: log.stores?.name || "알 수 없음",
             clock_in: null,
             clock_out: null,
+            distance_in: null,
+            distance_out: null,
+            attendance_type_in: "regular",
+            attendance_type_out: "regular",
+            reason_out: null,
           });
         }
 
         const userLog = grouped[dateKey].get(pId)!;
-        if (log.type === "IN" && !userLog.clock_in)
+        if (log.type === "IN" && !userLog.clock_in) {
           userLog.clock_in = log.created_at;
-        if (log.type === "OUT") userLog.clock_out = log.created_at;
+          userLog.distance_in = log.distance_m ?? null;
+          userLog.attendance_type_in = log.attendance_type || "regular";
+        }
+        if (log.type === "OUT") {
+          userLog.clock_out = log.created_at;
+          userLog.distance_out = log.distance_m ?? null;
+          userLog.attendance_type_out = log.attendance_type || "regular";
+          userLog.reason_out = log.reason ?? null;
+        }
       });
 
       // Map을 Array로 변환하여 State 저장
@@ -437,12 +456,62 @@ export default function AdminAttendanceCalendar() {
                       </span>
                     </div>
 
-                    {/* 3. 총 근무시간 요약 (토스식 친절함) */}
+                    {/* 3. 총 근무시간 요약 */}
                     {durationText && (
                       <p className="text-[12px] font-semibold text-[#8B95A1] flex items-center gap-1.5 pr-1">
                         <Clock className="w-3.5 h-3.5" />총{" "}
                         <span className="text-[#4E5968]">{durationText}</span>{" "}
                         근무했어요
+                      </p>
+                    )}
+
+                    {/* 4. 거리 표시 (어드민 전용) */}
+                    {(log.distance_in != null || log.distance_out != null) && (
+                      <div className="flex items-center gap-2 flex-wrap justify-end">
+                        {log.distance_in != null && (
+                          <span className="flex items-center gap-1 text-[11px] text-[#8B95A1]">
+                            <MapPin className="w-3 h-3" />
+                            출근 {Math.round(log.distance_in)}m
+                          </span>
+                        )}
+                        {log.distance_out != null && (
+                          <span className="flex items-center gap-1 text-[11px] text-[#8B95A1]">
+                            <MapPin className="w-3 h-3" />
+                            퇴근 {Math.round(log.distance_out)}m
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 5. 출결 유형 뱃지 */}
+                    {(log.attendance_type_in !== "regular" ||
+                      log.attendance_type_out !== "regular") && (
+                      <div className="flex gap-1.5 flex-wrap justify-end">
+                        {log.attendance_type_in === "business_trip_in" && (
+                          <span className="text-[11px] font-bold bg-[#FFF3BF] text-[#E67700] px-2 py-0.5 rounded-md">
+                            ✈️ 출장출근
+                          </span>
+                        )}
+                        {log.attendance_type_out === "remote_out" && (
+                          <span className="text-[11px] font-bold bg-[#FFE3E3] text-[#C92A2A] px-2 py-0.5 rounded-md">
+                            📍 원격퇴근
+                          </span>
+                        )}
+                        {log.attendance_type_out === "business_trip_out" && (
+                          <span className="text-[11px] font-bold bg-[#FFF3BF] text-[#E67700] px-2 py-0.5 rounded-md">
+                            ✈️ 출장퇴근
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 6. 퇴근 사유 (원격/출장퇴근 시) */}
+                    {log.reason_out && (
+                      <p className="text-[11px] text-[#8B95A1] text-right pr-1">
+                        사유:{" "}
+                        <span className="text-[#4E5968] font-medium">
+                          {log.reason_out}
+                        </span>
                       </p>
                     )}
                   </div>
