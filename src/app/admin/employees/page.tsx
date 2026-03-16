@@ -81,10 +81,14 @@ export default function AdminEmployeesPage() {
     setEmployees((prev) =>
       prev.map((emp) => (emp.id === id ? { ...emp, color_hex: newColor } : emp))
     );
-    await supabase
+    const { error } = await supabase
       .from("profiles")
       .update({ color_hex: newColor })
       .eq("id", id);
+    if (error) {
+      toast.error("색상 변경에 실패했어요", { description: "다시 시도해주세요" });
+      fetchEmployees(); // 롤백
+    }
   };
 
   const handleDeleteEmployee = async (id: string, name: string) => {
@@ -119,10 +123,11 @@ export default function AdminEmployeesPage() {
     if (!editingEmployee || !editForm.name?.trim())
       return toast.error("이름을 입력해주세요.");
 
-    // DB 업데이트
+    // 불변 컬럼 제외 후 업데이트
+    const { id: _id, email: _email, created_at: _ca, ...safeForm } = editForm;
     const { error } = await supabase
       .from("profiles")
-      .update(editForm)
+      .update(safeForm)
       .eq("id", editingEmployee.id);
 
     if (error) return toast.error("수정에 실패했어요", { description: "다시 시도해주세요" });
@@ -214,7 +219,14 @@ export default function AdminEmployeesPage() {
   const confirmFileDelete = async () => {
     if (!editingEmployee || !fileDeleteConfirm) return;
     const column = fileDeleteConfirm;
+    const filePath = editingEmployee[column];
     setFileDeleteConfirm(null);
+
+    // Storage에서 실제 파일 삭제 (http URL이 아닌 경로 형태일 때만)
+    if (filePath && !filePath.startsWith("http")) {
+      await supabase.storage.from("hr-documents").remove([filePath]);
+    }
+
     await supabase
       .from("profiles")
       .update({ [column]: null })

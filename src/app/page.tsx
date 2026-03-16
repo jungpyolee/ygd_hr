@@ -83,7 +83,10 @@ export default function HomePage() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
 
     // 프로필 확인 (온보딩 탔는지 체크)
     const { data: profileData } = await supabase
@@ -127,7 +130,10 @@ export default function HomePage() {
               month: "long",
               day: "numeric",
             }),
-        store: (logData.stores as any)?.name || "알 수 없음",
+        store:
+          logData.attendance_type === "business_trip_in"
+            ? "출장"
+            : (logData.stores as any)?.name || "알 수 없음",
       });
     }
     setLoading(false);

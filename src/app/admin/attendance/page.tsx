@@ -74,7 +74,7 @@ export default function AdminAttendanceCalendar() {
     }
 
     const startStr = startDate.toISOString();
-    const endStr = new Date(endDate.setHours(23, 59, 59, 999)).toISOString();
+    const endStr = new Date(new Date(endDate).setHours(23, 59, 59, 999)).toISOString();
 
     const { data, error } = await supabase
       .from("attendance_logs")

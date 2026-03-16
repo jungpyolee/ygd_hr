@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase";
 import { startOfWeek, differenceInMinutes } from "date-fns";
 import { TrendingUp, ChevronRight } from "lucide-react";
@@ -12,9 +12,11 @@ export default function WeeklyWorkStats() {
     new Array(7).fill(0)
   );
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
+  // useMemo로 안정화: 매 렌더링마다 새 인스턴스 생성 방지
+  const supabase = useMemo(() => createClient(), []);
 
   const weekDays = ["월", "화", "수", "목", "금", "토", "일"];
+  // todayIndex를 effect 외부에서 계산 후 의존 배열에서 제거
   const todayIndex = (new Date().getDay() + 6) % 7; // 월(0)~일(6) 변환
 
   useEffect(() => {
@@ -70,7 +72,7 @@ export default function WeeklyWorkStats() {
     };
 
     fetchWeeklyStats();
-  }, [supabase, todayIndex]);
+  }, [supabase]);
 
   const formatWorkTime = (totalMinutes: number) => {
     const hours = Math.floor(totalMinutes / 60);
