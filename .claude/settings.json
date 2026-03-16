@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run dev)",
+      "Bash(npm run build)",
+      "Bash(npm run build --webpack)",
+      "Bash(npm run lint)",
+      "Bash(source .env.local && curl*supabase*)",
+      "Bash(curl -s -X POST https://api.supabase.com/v1/projects/ymvdjxzkjodasctktunh/*)",
+      "Bash(git status)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git add*)",
+      "Bash(git commit*)"
+    ],
+    "deny": [
+      "Bash(git push --force*)",
+      "Bash(git reset --hard*)",
+      "Bash(git checkout -- .)",
+      "Bash(rm -rf*)",
+      "Bash(git commit --no-verify*)"
+    ]
+  }
+}
