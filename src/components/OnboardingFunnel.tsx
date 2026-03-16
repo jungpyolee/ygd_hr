@@ -21,15 +21,11 @@ export default function OnboardingFunnel({ onComplete }: OnboardingProps) {
   const [phone, setPhone] = useState("");
   const [joinDate, setJoinDate] = useState<Date | undefined>(undefined);
 
-  // 🚀 파일 업로드 상태
+  // 파일 업로드 상태
   const [healthCert, setHealthCert] = useState<File | null>(null);
-  const [bankCopy, setBankCopy] = useState<File | null>(null);
-  const [idCopy, setIdCopy] = useState<File | null>(null);
 
   // 파일 Input 참조 (숨김 처리용)
   const healthRef = useRef<HTMLInputElement>(null);
-  const bankRef = useRef<HTMLInputElement>(null);
-  const idRef = useRef<HTMLInputElement>(null);
 
   const handleNext = () => setStep((prev) => prev + 1);
   const handlePrev = () => setStep((prev) => Math.max(1, prev - 1));
@@ -78,15 +74,10 @@ export default function OnboardingFunnel({ onComplete }: OnboardingProps) {
     if (user) {
       try {
         let healthUrl = null;
-        let bankUrl = null;
-        let idUrl = null;
 
         // 선택된 파일이 있으면 스토리지에 먼저 업로드
         if (healthCert)
           healthUrl = await uploadToStorage(healthCert, "health", user.id);
-        if (bankCopy)
-          bankUrl = await uploadToStorage(bankCopy, "bank", user.id);
-        if (idCopy) idUrl = await uploadToStorage(idCopy, "id", user.id);
 
         // DB에 유저 정보와 파일 경로 저장
         await supabase
@@ -96,8 +87,6 @@ export default function OnboardingFunnel({ onComplete }: OnboardingProps) {
             phone,
             join_date: joinDate ? format(joinDate, "yyyy-MM-dd") : null,
             health_cert_url: healthUrl,
-            bank_account_copy_url: bankUrl,
-            resident_register_url: idUrl,
           })
           .eq("id", user.id);
 
@@ -119,9 +108,7 @@ export default function OnboardingFunnel({ onComplete }: OnboardingProps) {
   };
 
   // 선택된 파일 개수
-  const selectedFilesCount = [healthCert, bankCopy, idCopy].filter(
-    Boolean
-  ).length;
+  const selectedFilesCount = [healthCert].filter(Boolean).length;
 
   return (
     <div className="fixed inset-0 z-50 bg-white flex flex-col animate-in fade-in duration-300">
@@ -224,27 +211,13 @@ export default function OnboardingFunnel({ onComplete }: OnboardingProps) {
               나중에 [내 정보]에서 등록해도 괜찮아요.
             </p>
 
-            {/* 숨겨진 Input들 */}
+            {/* 숨겨진 Input */}
             <input
               type="file"
               accept="image/*,.pdf"
               ref={healthRef}
               className="hidden"
               onChange={(e) => setHealthCert(e.target.files?.[0] || null)}
-            />
-            <input
-              type="file"
-              accept="image/*,.pdf"
-              ref={bankRef}
-              className="hidden"
-              onChange={(e) => setBankCopy(e.target.files?.[0] || null)}
-            />
-            <input
-              type="file"
-              accept="image/*,.pdf"
-              ref={idRef}
-              className="hidden"
-              onChange={(e) => setIdCopy(e.target.files?.[0] || null)}
             />
 
             {/* 업로드 리스트 UI */}
@@ -255,18 +228,6 @@ export default function OnboardingFunnel({ onComplete }: OnboardingProps) {
                   state: healthCert,
                   ref: healthRef,
                   desc: "요식업 필수 서류",
-                },
-                {
-                  title: "계좌 사본",
-                  state: bankCopy,
-                  ref: bankRef,
-                  desc: "급여 지급용",
-                },
-                {
-                  title: "주민등록등본",
-                  state: idCopy,
-                  ref: idRef,
-                  desc: "본인 확인용",
                 },
               ].map((item, idx) => (
                 <button

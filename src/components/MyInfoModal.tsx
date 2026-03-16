@@ -19,8 +19,6 @@ interface MyInfoModalProps {
 
 type DocKey =
   | "employment_contract_url"
-  | "bank_account_copy_url"
-  | "resident_register_url"
   | "health_cert_url";
 
 export default function MyInfoModal({
@@ -67,22 +65,12 @@ export default function MyInfoModal({
     } catch (err) {
       toast.error("서류 업로드에 실패했어요", { description: "잠시 후 다시 시도해주세요" });
     } finally {
-      if (
-        column === "bank_account_copy_url" ||
-        column === "resident_register_url" ||
-        column === "health_cert_url"
-      ) {
+      if (column === "health_cert_url") {
         await sendNotification({
           target_role: "admin",
           type: "document_upload",
           title: "📝 서류 업로드 알림",
-          content: `${profile.name}님이 ${
-            column === "bank_account_copy_url"
-              ? "통장사본"
-              : column === "resident_register_url"
-              ? "주민등록등본"
-              : "보건증 사본"
-          } 서류를 업로드했어요.`,
+          content: `${profile.name}님이 보건증 사본을 업로드했어요.`,
           source_id: profile.id,
         });
       }
@@ -297,16 +285,6 @@ export default function MyInfoModal({
               )}
             </h3>
             {[
-              {
-                label: "통장사본",
-                key: "bank_account_copy_url" as const,
-                url: editForm.bank_account_copy_url,
-              },
-              {
-                label: "주민등록등본",
-                key: "resident_register_url" as const,
-                url: editForm.resident_register_url,
-              },
               {
                 label: "보건증 사본",
                 key: "health_cert_url" as const,
