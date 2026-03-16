@@ -35,18 +35,16 @@ export default function HomePage() {
     if (!navigator.geolocation)
       return setLocationState({ status: "unavailable" });
 
-    const watchId = navigator.geolocation.watchPosition(
-      (pos) => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) =>
         setLocationState({
           status: "ready",
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
-        });
-      },
+        }),
       () => setLocationState({ status: "unavailable" }),
+      { enableHighAccuracy: true }
     );
-
-    return () => navigator.geolocation.clearWatch(watchId);
   }, []);
 
   // 2. 전체 데이터 Fetch (온보딩 여부 포함)
