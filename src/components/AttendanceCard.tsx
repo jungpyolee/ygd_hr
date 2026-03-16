@@ -40,7 +40,8 @@ export default function AttendanceCard({
   const [showBizTripConfirm, setShowBizTripConfirm] = useState(false);
 
   // 위치 정보를 임시 보관 (반경 초과 시)
-  const [pendingLocation, setPendingLocation] = useState<PendingLocation | null>(null);
+  const [pendingLocation, setPendingLocation] =
+    useState<PendingLocation | null>(null);
 
   const supabase = createClient();
 
@@ -96,7 +97,9 @@ export default function AttendanceCard({
       if (msg.includes("DUPLICATE_ATTENDANCE_TYPE")) {
         toast.error(
           type === "IN" ? "이미 출근 상태예요" : "이미 퇴근 상태예요",
-          { description: "페이지를 새로고침하면 정확한 상태를 확인할 수 있어요" }
+          {
+            description: "페이지를 새로고침하면 정확한 상태를 확인할 수 있어요",
+          },
         );
       } else if (msg.includes("INVALID_CHECKOUT_NO_CHECKIN")) {
         toast.error("출근 기록이 없어요", {
@@ -152,7 +155,7 @@ export default function AttendanceCard({
       toast.success(
         type === "IN"
           ? `${nearestStore.name}으로 출근했어요`
-          : `${nearestStore.name}에서 퇴근했어요`
+          : `${nearestStore.name}에서 퇴근했어요`,
       );
     } else if (attendanceType === "remote_out") {
       toast.success("원격퇴근 처리됐어요");
@@ -197,7 +200,6 @@ export default function AttendanceCard({
     }
 
     // ── 일반 출퇴근 ────────────────────────────────────────
-    setLoading(false);
     await processAttendance({
       type,
       nearestStore,
@@ -321,9 +323,9 @@ export default function AttendanceCard({
         isOpen={showBizTripConfirm}
         title="출장 중이신가요?"
         description={`현재 가장 가까운 매장에서 ${Math.round(
-          pendingLocation?.nearestStore?.distance ?? 0
-        )}m 떨어져 있어요. 출장 중이라면 출장출근으로 처리해요.`}
-        confirmLabel="출장출근할게요"
+          pendingLocation?.nearestStore?.distance ?? 0,
+        )}m 떨어져 있어요. 출장 중이라면 출장 출근으로 처리해요.`}
+        confirmLabel="출장 출근할게요"
         cancelLabel="취소"
         onConfirm={confirmBizTrip}
         onCancel={() => {
@@ -350,8 +352,8 @@ export default function AttendanceCard({
             </h3>
             <p className="text-[14px] text-[#6B7684] mb-5">
               매장에서{" "}
-              {Math.round(pendingLocation?.nearestStore?.distance ?? 0)}m
-              떨어져 있어요.{" "}
+              {Math.round(pendingLocation?.nearestStore?.distance ?? 0)}m 떨어져
+              있어요.{" "}
               {isBizTripOut
                 ? "출장 퇴근으로 처리해요."
                 : "퇴근 사유를 적어주세요."}
@@ -360,9 +362,7 @@ export default function AttendanceCard({
               value={remoteReason}
               onChange={(e) => setRemoteReason(e.target.value)}
               placeholder={
-                isBizTripOut
-                  ? "출장"
-                  : "퇴근을 늦게 누른 이유를 적어주세요"
+                isBizTripOut ? "출장" : "퇴근을 늦게 누른 이유를 적어주세요"
               }
               readOnly={isBizTripOut}
               className="w-full h-24 rounded-2xl border border-slate-200 p-4 text-[14px] text-[#191F28] resize-none focus:outline-none focus:border-[#3182F6] mb-4 bg-white disabled:bg-[#F2F4F6]"

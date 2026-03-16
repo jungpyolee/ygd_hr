@@ -39,7 +39,10 @@ export default function AttendancesPage() {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
 
     // 1. 범위 설정
     const now = new Date();
