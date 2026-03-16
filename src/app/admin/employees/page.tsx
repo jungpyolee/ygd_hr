@@ -607,28 +607,14 @@ export default function AdminEmployeesPage() {
                     <label className="block text-[12px] font-medium text-[#8B95A1] mb-1">
                       계좌번호
                     </label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={editForm.account_number || ""}
-                        onChange={(e) =>
-                          handleFormChange("account_number", e.target.value)
-                        }
-                        className="flex-1 px-4 py-2.5 bg-[#F9FAFB] border border-slate-200 rounded-xl text-[14px] text-[#191F28] focus:outline-none focus:border-[#3182F6] transition-all"
-                      />
-                      {editForm.account_number && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            navigator.clipboard.writeText(editForm.account_number!);
-                            toast.success("계좌번호를 복사했어요");
-                          }}
-                          className="px-3 py-2.5 bg-[#E8F3FF] text-[#3182F6] hover:bg-[#D0E5FF] rounded-xl text-[13px] font-bold transition-colors whitespace-nowrap"
-                        >
-                          복사
-                        </button>
-                      )}
-                    </div>
+                    <input
+                      type="text"
+                      value={editForm.account_number || ""}
+                      onChange={(e) =>
+                        handleFormChange("account_number", e.target.value)
+                      }
+                      className="w-full px-4 py-2.5 bg-[#F9FAFB] border border-slate-200 rounded-xl text-[14px] text-[#191F28] focus:outline-none focus:border-[#3182F6] transition-all"
+                    />
                   </div>
                   <div>
                     <label className="block text-[12px] font-medium text-[#8B95A1] mb-1">
