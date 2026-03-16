@@ -1,7 +1,9 @@
 # DB 스키마 (최신 상태)
 
 > **프로젝트**: ymvdjxzkjodasctktunh
-> **최종 갱신**: 2026-03-16 (DB-001, DB-002, DB-003 반영)
+> **최종 갱신**: 2026-03-16 (DB-001 ~ DB-004 반영)
+> **DB 시간대**: `Asia/Seoul` (KST, UTC+9) — 모든 롤에 적용됨
+> **timestamptz 저장**: UTC로 저장, 날짜 함수(`DATE_TRUNC`, `CURRENT_DATE` 등)는 KST 기준 동작
 > **연결 방식**: Supabase Management API
 
 ---
@@ -175,7 +177,29 @@
 
 ---
 
+## 시간대 처리 원칙
+
+| 계층 | 처리 방식 |
+|------|-----------|
+| **DB 저장** | `timestamptz` (내부 UTC, 표시 KST) |
+| **DB 날짜 함수** | `DATE_TRUNC`, `CURRENT_DATE` 등 KST 기준 (DB timezone = Asia/Seoul) |
+| **앱 → DB 쿼리** | JS `Date` 객체 `.toISOString()` → UTC ISO 문자열로 전달 (정상) |
+| **DB → 앱 표시** | JS `new Date(timestamptz)` → 로컬 시간 자동 변환 (KST) |
+| **향후 서버사이드 날짜 집계** | `DATE_TRUNC('month', created_at)` — DB timezone KST 기준으로 동작 |
+
+> **신규 테이블 추가 시**: `timestamptz DEFAULT now()` 패턴 유지. JS 앱에서 `.toISOString()` 전달, 표시는 `new Date()` 변환으로 일관성 유지.
+
+---
+
 ## 함수 (Functions)
+
+### `prevent_duplicate_attendance()`
+```sql
+-- BEFORE INSERT 트리거 함수 (attendance_logs)
+-- 같은 타입 연속 차단: IN→IN, OUT→OUT
+-- 출근 없이 퇴근 차단: 첫 로그가 OUT인 경우
+-- ERRCODE 'P0001', message: DUPLICATE_ATTENDANCE_TYPE / INVALID_CHECKOUT_NO_CHECKIN
+```
 
 ### `set_updated_at()`
 ```sql
@@ -220,6 +244,7 @@ DELETE FROM auth.users WHERE id = target_user_id
 |--------|--------|--------|-----------|
 | `on_auth_user_created` | INSERT | `auth.users` | `handle_new_user()` |
 | `trg_profiles_updated_at` | UPDATE (BEFORE) | `public.profiles` | `set_updated_at()` |
+| `trg_prevent_duplicate_attendance` | INSERT (BEFORE) | `attendance_logs` | `prevent_duplicate_attendance()` |
 
 ---
 
@@ -256,3 +281,4 @@ DELETE FROM auth.users WHERE id = target_user_id
 | 3 | `profiles.updated_at` 자동 갱신 트리거 없음 | 낮음 | ✅ DB-002 완료 |
 | 4 | `attendance_logs.store_id` 단일 컬럼으로 출/퇴근 매장 구분 불가 | 높음 | ✅ DB-003 완료 |
 | 5 | `attendance_logs.store_id` 레거시 컬럼 제거 (check_in/out_store_id로 완전 이관 후) | 낮음 | 미처리 |
+| 6 | DB 시간대 UTC → KST 통일, 중복 출퇴근 방지 트리거 없음 | 높음 | ✅ DB-004 완료 |
