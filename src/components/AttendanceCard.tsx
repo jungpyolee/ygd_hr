@@ -90,7 +90,9 @@ export default function AttendanceCard({
       });
 
       toast.success(
-        `${nearestStore.name} ${type === "IN" ? "출근" : "퇴근"} 완료!`
+        type === "IN"
+          ? `${nearestStore.name}으로 출근했어요`
+          : `${nearestStore.name}에서 퇴근했어요`
       );
       onSuccess();
     }

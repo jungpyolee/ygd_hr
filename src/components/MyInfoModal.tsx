@@ -4,11 +4,7 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase";
 import {
   X,
-  Phone,
-  CreditCard,
   UploadCloud,
-  Save,
-  Calendar,
 } from "lucide-react";
 import { toast } from "sonner";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -69,7 +65,7 @@ export default function MyInfoModal({
       toast.success("서류가 업로드되었습니다.");
       onUpdate();
     } catch (err) {
-      toast.error("업로드 실패");
+      toast.error("서류 업로드에 실패했어요", { description: "잠시 후 다시 시도해주세요" });
     } finally {
       if (
         column === "bank_account_copy_url" ||
@@ -103,7 +99,7 @@ export default function MyInfoModal({
   };
 
   const handleSaveProfile = async () => {
-    if (!editForm.name?.trim()) return toast.error("이름은 필수입니다.");
+    if (!editForm.name?.trim()) return toast.error("이름을 입력해주세요");
 
     const { error } = await supabase
       .from("profiles")
@@ -118,7 +114,7 @@ export default function MyInfoModal({
       })
       .eq("id", profile.id);
 
-    if (error) return toast.error("저장 실패");
+    if (error) return toast.error("저장에 실패했어요", { description: "잠시 후 다시 시도해주세요" });
 
     // 🚀 토스 스타일 UX 라이팅 로직
     const fieldNames: Record<string, string> = {
@@ -173,7 +169,7 @@ export default function MyInfoModal({
       });
     }
 
-    toast.success("정보가 수정되었습니다.");
+    toast.success("정보를 수정했어요");
     onUpdate();
     onClose();
   };
@@ -354,7 +350,7 @@ export default function MyInfoModal({
             onClick={handleSaveProfile}
             className="w-full py-4 bg-[#3182F6] text-white rounded-2xl font-bold flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg shadow-blue-500/20 mt-4"
           >
-            <Save className="w-5 h-5" /> 수정 완료
+            저장하기
           </button>
         </div>
       </div>

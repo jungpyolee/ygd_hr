@@ -1,20 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import "pretendard/dist/web/static/pretendard.css"; // 폰트 CSS 임포트
+import "pretendard/dist/web/static/pretendard.css";
 import { Toaster } from "sonner";
 import Script from "next/script";
 import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 import KakaoEscape from "@/components/KakaoEscape";
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 // 1. 뷰포트 설정: 주소창 제어 및 앱 느낌의 확대 방지 / 모바일 다크모드 비활성화
 export const viewport: Viewport = {
   themeColor: "#3182F6", // 토스 블루 또는 연경당 포인트 컬러
@@ -84,9 +74,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko" className="light" suppressHydrationWarning>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased font-pretendard`}
-      >
+      <body className="antialiased font-pretendard">
         <KakaoEscape />
         {children}
         <Toaster />

@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase";
+import { toast } from "sonner";
 import Link from "next/link";
 import {
   Users,
@@ -77,7 +78,7 @@ export default function AdminLayout({
         setIsAdmin(true);
         fetchNotis(); // 알림 초기 로드
       } else {
-        alert("접근 권한이 없습니다.");
+        toast.error("접근 권한이 없어요");
         router.replace("/");
       }
       setLoading(false);
@@ -283,8 +284,8 @@ export default function AdminLayout({
                 </div>
                 <div className="max-h-[420px] overflow-y-auto scrollbar-hide">
                   {notis.length === 0 ? (
-                    <div className="p-12 text-center text-[#8B95A1] text-sm italic">
-                      새로운 알림이 없습니다.
+                    <div className="p-12 text-center text-[#8B95A1] text-[14px]">
+                      새 알림이 없어요
                     </div>
                   ) : (
                     notis.map((n) => (

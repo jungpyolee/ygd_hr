@@ -17,6 +17,7 @@ import {
   Briefcase,
 } from "lucide-react";
 import { toast } from "sonner";
+import ConfirmDialog from "@/components/ui/confirm-dialog";
 
 // 🚀 스키마 100% 반영된 인터페이스
 interface Profile {
@@ -56,6 +57,8 @@ export default function AdminEmployeesPage() {
   const supabase = createClient();
 
   const [editingEmployee, setEditingEmployee] = useState<Profile | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
+  const [fileDeleteConfirm, setFileDeleteConfirm] = useState<DocKey | null>(null);
 
   // 항목이 많으므로 객체 하나로 묶어서 폼 상태 관리
   const [editForm, setEditForm] = useState<Partial<Profile>>({});
@@ -85,18 +88,21 @@ export default function AdminEmployeesPage() {
   };
 
   const handleDeleteEmployee = async (id: string, name: string) => {
-    const isConfirmed = window.confirm(
-      `정말 [${name}] 직원을 삭제하시겠어요?\n출퇴근 기록까지 모두 영구 삭제되며 복구할 수 없습니다.`
-    );
-    if (!isConfirmed) return;
+    setDeleteConfirm({ id, name });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteConfirm) return;
+    const { id, name } = deleteConfirm;
+    setDeleteConfirm(null);
     const { error } = await supabase.rpc("delete_user_admin", {
       target_user_id: id,
     });
     if (!error) {
-      toast.success(`${name} 직원이 완전히 삭제되었습니다.`);
+      toast.success(`${name}님이 삭제됐어요`);
       setEmployees((prev) => prev.filter((emp) => emp.id !== id));
     } else {
-      toast.error("삭제 중 오류가 발생했습니다.");
+      toast.error("삭제에 실패했어요", { description: "다시 시도해주세요" });
     }
   };
 
@@ -119,7 +125,7 @@ export default function AdminEmployeesPage() {
       .update(editForm)
       .eq("id", editingEmployee.id);
 
-    if (error) return toast.error("정보 수정에 실패했습니다.");
+    if (error) return toast.error("수정에 실패했어요", { description: "다시 시도해주세요" });
 
     // 즉시 반영
     setEmployees((prev) =>
@@ -129,7 +135,7 @@ export default function AdminEmployeesPage() {
           : emp
       )
     );
-    toast.success("정보가 성공적으로 수정되었습니다.");
+    toast.success("정보를 수정했어요");
     setEditingEmployee(null);
   };
 
@@ -169,10 +175,10 @@ export default function AdminEmployeesPage() {
         )
       );
 
-      toast.success("서류가 성공적으로 업로드되었습니다.");
+      toast.success("서류를 업로드했어요");
     } catch (err) {
       console.error(err);
-      toast.error("파일 업로드에 실패했습니다.");
+      toast.error("업로드에 실패했어요", { description: "다시 시도해주세요" });
     } finally {
       setUploading(false);
     }
@@ -201,10 +207,14 @@ export default function AdminEmployeesPage() {
   };
 
   // 파일 삭제 핸들러 (DB URL null 처리)
-  const handleFileDelete = async (column: DocKey) => {
-    if (!editingEmployee) return;
-    if (!window.confirm("첨부된 서류를 삭제하시겠습니까?")) return;
+  const handleFileDelete = (column: DocKey) => {
+    setFileDeleteConfirm(column);
+  };
 
+  const confirmFileDelete = async () => {
+    if (!editingEmployee || !fileDeleteConfirm) return;
+    const column = fileDeleteConfirm;
+    setFileDeleteConfirm(null);
     await supabase
       .from("profiles")
       .update({ [column]: null })
@@ -216,7 +226,7 @@ export default function AdminEmployeesPage() {
         emp.id === editingEmployee.id ? { ...emp, [column]: null } : emp
       )
     );
-    toast.success("서류가 삭제되었습니다.");
+    toast.success("서류를 삭제했어요");
   };
 
   if (loading)
@@ -355,7 +365,7 @@ export default function AdminEmployeesPage() {
                   className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2.5 bg-[#F9FAFB] hover:bg-[#F2F4F6] border border-slate-200 text-[#4E5968] rounded-xl text-[13px] font-bold transition-colors"
                 >
                   <Edit2 className="w-4 h-4 text-[#8B95A1]" />
-                  <span>관리</span>
+                  <span>수정하기</span>
                 </button>
                 <div className="relative flex-1 sm:flex-none">
                   <button className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2.5 bg-[#F9FAFB] hover:bg-[#F2F4F6] border border-slate-200 text-[#4E5968] rounded-xl text-[13px] font-bold transition-colors">
@@ -388,7 +398,31 @@ export default function AdminEmployeesPage() {
         })}
       </div>
 
-      {/* 🚀 상세 정보 및 서류 관리 모달 */}
+      {/* 직원 삭제 확인 다이얼로그 */}
+      <ConfirmDialog
+        isOpen={!!deleteConfirm}
+        title={`${deleteConfirm?.name}님을 삭제할까요?`}
+        description="출퇴근 기록까지 모두 영구 삭제되며 되돌릴 수 없어요."
+        confirmLabel="삭제할게요"
+        cancelLabel="취소"
+        variant="destructive"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteConfirm(null)}
+      />
+
+      {/* 서류 삭제 확인 다이얼로그 */}
+      <ConfirmDialog
+        isOpen={!!fileDeleteConfirm}
+        title="첨부 서류를 삭제할까요?"
+        description="삭제하면 되돌릴 수 없어요."
+        confirmLabel="삭제할게요"
+        cancelLabel="취소"
+        variant="destructive"
+        onConfirm={confirmFileDelete}
+        onCancel={() => setFileDeleteConfirm(null)}
+      />
+
+      {/* 상세 정보 및 서류 관리 모달 */}
       {editingEmployee && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-5">
           <div

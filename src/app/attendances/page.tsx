@@ -195,9 +195,7 @@ export default function AttendancesPage() {
                   }`}
                 >
                   {session.out
-                    ? `${Math.floor(session.duration / 60)}h ${
-                        session.duration % 60
-                      }m`
+                    ? `${Math.floor(session.duration / 60)}시간 ${session.duration % 60}분`
                     : "진행 중"}
                 </p>
                 <ChevronRight className="inline-block w-4 h-4 text-[#D1D6DB] ml-1" />

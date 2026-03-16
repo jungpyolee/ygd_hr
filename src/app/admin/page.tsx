@@ -153,7 +153,7 @@ export default function AdminDashboardPage() {
         <div className="divide-y divide-slate-50 max-h-[350px] overflow-y-auto scrollbar-hide">
           {list.length === 0 ? (
             <div className="p-10 text-center text-[#8B95A1] text-[13px]">
-              해당하는 직원이 없습니다.
+              해당하는 직원이 없어요
             </div>
           ) : (
             list.map((item: any) => {
@@ -241,7 +241,7 @@ export default function AdminDashboardPage() {
           사장님, 확인해주세요!
         </h1>
         <p className="text-[16px] text-[#8B95A1] font-medium">
-          오늘은 {todayText}입니다. 각 항목을 눌러 상세 명단을 확인하세요.
+          {todayText} · 항목을 탭해서 상세 명단을 확인하세요.
         </p>
       </header>
 

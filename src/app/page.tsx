@@ -6,9 +6,10 @@ import { AlertCircle, LogOut, UserCircle, LayoutDashboard } from "lucide-react";
 import dynamic from "next/dynamic";
 import WeeklyWorkStats from "@/components/WeeklyWorkStats";
 import OnboardingFunnel from "@/components/OnboardingFunnel";
-import AttendanceCard from "@/components/AttendanceCard"; // 방금 만든 컴포넌트
+import AttendanceCard from "@/components/AttendanceCard";
 import StoreDistanceList from "@/components/StoreDistanceList";
-import MyInfoModal from "@/components/MyInfoModal"; // 🚀 컴포넌트 임포트
+import MyInfoModal from "@/components/MyInfoModal";
+import ConfirmDialog from "@/components/ui/confirm-dialog";
 import { useRouter } from "next/navigation";
 
 const DynamicClock = dynamic(() => import("@/components/Clock"), {
@@ -25,7 +26,8 @@ export default function HomePage() {
   const [locationState, setLocationState] = useState<any>({
     status: "loading",
   });
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false); // 🚀 모달 열림 상태만 관리
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
   const supabase = createClient();
   const router = useRouter();
   // 1. 위치 정보 구독
@@ -141,8 +143,20 @@ export default function HomePage() {
 
   if (loading)
     return (
-      <div className="min-h-screen bg-[#F2F4F6] flex items-center justify-center">
-        로딩 중...
+      <div className="flex min-h-screen flex-col bg-[#F2F4F6] font-pretendard">
+        <div className="h-[60px] bg-[#F2F4F6]/80" />
+        <main className="flex-1 px-5 pb-10 space-y-4">
+          <div className="py-6 px-1">
+            <div className="h-8 w-36 bg-slate-200 animate-pulse rounded-lg mb-2" />
+            <div className="h-6 w-20 bg-slate-200 animate-pulse rounded-lg" />
+          </div>
+          <div className="bg-white rounded-[28px] p-6 h-[180px] animate-pulse border border-slate-100" />
+          <div className="bg-white rounded-[28px] p-6 h-[140px] animate-pulse border border-slate-100" />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-white rounded-[28px] p-5 h-[100px] animate-pulse border border-slate-100" />
+            <div className="bg-white rounded-[28px] p-5 h-[100px] animate-pulse border border-slate-100" />
+          </div>
+        </main>
       </div>
     );
 
@@ -177,12 +191,7 @@ export default function HomePage() {
             </button>
           )}
           <button
-            onClick={async () => {
-              if (confirm("로그아웃 하시겠어요?")) {
-                await supabase.auth.signOut();
-                window.location.href = "/login";
-              }
-            }}
+            onClick={() => setIsLogoutConfirmOpen(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 rounded-full transition-all shadow-sm"
           >
             <LogOut className="w-3.5 h-3.5 text-[#4E5968]" />
@@ -243,6 +252,17 @@ export default function HomePage() {
         profile={profile}
         onClose={() => setIsEditModalOpen(false)}
         onUpdate={fetchAllData}
+      />
+      <ConfirmDialog
+        isOpen={isLogoutConfirmOpen}
+        title="로그아웃할까요?"
+        confirmLabel="로그아웃할게요"
+        cancelLabel="취소"
+        onConfirm={async () => {
+          await supabase.auth.signOut();
+          window.location.href = "/login";
+        }}
+        onCancel={() => setIsLogoutConfirmOpen(false)}
       />
     </div>
   );
