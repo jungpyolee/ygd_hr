@@ -5,6 +5,10 @@ import { Toaster } from "sonner";
 import Script from "next/script";
 import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 import KakaoEscape from "@/components/KakaoEscape";
+
+const isDev = process.env.NEXT_PUBLIC_APP_ENV === "dev";
+const appName = isDev ? "연경당 테섭" : "연경당 HR";
+
 // 1. 뷰포트 설정: 주소창 제어 및 앱 느낌의 확대 방지 / 모바일 다크모드 비활성화
 export const viewport: Viewport = {
   themeColor: "#3182F6", // 토스 블루 또는 연경당 포인트 컬러
@@ -18,17 +22,16 @@ export const viewport: Viewport = {
 
 // 2. 메타데이터 설정: PWA 및 iOS 아이콘 연동
 export const metadata: Metadata = {
-  title: "연경당 HR",
+  title: appName,
   description: "연경당 통합 근태 관리 서비스",
-  manifest: "/manifest.json",
+  manifest: "/manifest.webmanifest",
   appleWebApp: {
-    capable: true, // 주소창 제거 핵심 설정
-    statusBarStyle: "default", // 또는 "black-translucent" (상태바 투명)
-    title: "연경당 HR",
-    // startupImage는 생략 가능 (필요 시 추가)
+    capable: true,
+    statusBarStyle: "default",
+    title: appName,
   },
   formatDetection: {
-    telephone: false, // 전화번호 자동 링크 방지 (UI 깨짐 방지)
+    telephone: false,
   },
   icons: {
     icon: "/icons/icon-192x192.png",
@@ -41,15 +44,14 @@ export const metadata: Metadata = {
       },
     ],
   },
-  // 🚀 카카오톡, 슬랙, 페이스북 등 공유 시 렌더링되는 카드 정보 (여기부터 추가!)
   openGraph: {
-    title: "연경당 HR",
+    title: appName,
     description: "연경당 통합 근무 관리시스템 ⏱️",
-    url: "https://ygd-hr.vercel.app", // 배포된 실제 도메인
-    siteName: "연경당 HR",
+    url: "https://ygd-hr.vercel.app",
+    siteName: appName,
     images: [
       {
-        url: "/og-image.png", // public 폴더에 넣을 이미지 파일명
+        url: "/og-image.png",
         width: 800,
         height: 400,
         alt: "연경당 HR 썸네일 이미지",
@@ -58,10 +60,9 @@ export const metadata: Metadata = {
     locale: "ko_KR",
     type: "website",
   },
-  // 🚀 트위터(X) 공유 대응 (큰 이미지 형태)
   twitter: {
     card: "summary_large_image",
-    title: "연경당 HR",
+    title: appName,
     description: "우리 매장 스마트 출퇴근 관리 ⏱️",
     images: ["/og-image.png"],
   },
