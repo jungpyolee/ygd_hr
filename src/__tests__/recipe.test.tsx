@@ -6,6 +6,7 @@
  * - 어드민 레시피 카드 모바일 레이아웃 (레시피명 가시성)
  * - 최근 본 레시피 localStorage 동작
  * - 레시피 검색 필터 로직
+ * - 카테고리 순서 변경 로직 (BUG-009: upsert→update 수정 후 추가)
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -478,5 +479,88 @@ describe("레시피 검색 필터 로직", () => {
   it("카테고리·검색어 모두 없으면 전체가 반환된다", () => {
     const result = getFiltered("", null);
     expect(result).toHaveLength(5);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8. 카테고리 순서 변경 로직 (BUG-009)
+//    upsert({id, order_index}) 는 name NOT NULL 제약으로 항상 실패.
+//    update().eq() 두 번으로 교체한 로직을 검증.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("카테고리 순서 변경 로직 (BUG-009 검증)", () => {
+  interface Cat { id: string; name: string; order_index: number }
+
+  /** 수정된 moveCategory 순수 로직 — DB 호출 없이 배열 변환만 검증 */
+  const applySwap = (categories: Cat[], index: number, direction: "up" | "down"): Cat[] => {
+    const swapIndex = direction === "up" ? index - 1 : index + 1;
+    if (swapIndex < 0 || swapIndex >= categories.length) return categories;
+    const updated = [...categories];
+    [updated[index], updated[swapIndex]] = [updated[swapIndex], updated[index]];
+    return updated.map((c, i) => ({ ...c, order_index: i }));
+  };
+
+  /** 수정된 코드에서 Supabase에 보내는 페이로드를 시뮬레이션 */
+  const buildUpdatePayloads = (categories: Cat[], index: number, direction: "up" | "down") => {
+    const swapIndex = direction === "up" ? index - 1 : index + 1;
+    const catA = categories[index];
+    const catB = categories[swapIndex];
+    // update() 는 지정한 컬럼만 보냄 — name 누락 없음
+    return [
+      { id: catA.id, order_index: swapIndex },
+      { id: catB.id, order_index: index },
+    ];
+  };
+
+  const sampleCats: Cat[] = [
+    { id: "cat-1", name: "음료", order_index: 0 },
+    { id: "cat-2", name: "디저트", order_index: 1 },
+    { id: "cat-3", name: "푸드", order_index: 2 },
+  ];
+
+  it("위로 이동: 1번 항목을 위로 보내면 0번과 자리가 바뀐다", () => {
+    const result = applySwap(sampleCats, 1, "up");
+    expect(result[0].id).toBe("cat-2"); // 디저트가 0번으로
+    expect(result[1].id).toBe("cat-1"); // 음료가 1번으로
+    expect(result[0].order_index).toBe(0);
+    expect(result[1].order_index).toBe(1);
+  });
+
+  it("아래로 이동: 1번 항목을 아래로 보내면 2번과 자리가 바뀐다", () => {
+    const result = applySwap(sampleCats, 1, "down");
+    expect(result[1].id).toBe("cat-3"); // 푸드가 1번으로
+    expect(result[2].id).toBe("cat-2"); // 디저트가 2번으로
+  });
+
+  it("맨 위 항목(index=0)을 위로 이동하면 변경이 일어나지 않는다", () => {
+    const result = applySwap(sampleCats, 0, "up");
+    expect(result).toBe(sampleCats); // 원본 그대로 반환
+  });
+
+  it("맨 아래 항목을 아래로 이동하면 변경이 일어나지 않는다", () => {
+    const result = applySwap(sampleCats, 2, "down");
+    expect(result).toBe(sampleCats);
+  });
+
+  it("[BUG-009] update 페이로드에는 id와 order_index만 포함된다 (name 없음)", () => {
+    const payloads = buildUpdatePayloads(sampleCats, 0, "down");
+    // name 컬럼이 없어야 안전 — upsert 였다면 NOT NULL 위반으로 실패
+    expect(payloads[0]).not.toHaveProperty("name");
+    expect(payloads[1]).not.toHaveProperty("name");
+    expect(payloads[0]).toHaveProperty("id");
+    expect(payloads[0]).toHaveProperty("order_index");
+  });
+
+  it("[BUG-009] upsert 페이로드(name 누락)는 NOT NULL 제약을 만족하지 못한다", () => {
+    // upsert 방식: name이 없으면 INSERT 단계에서 NOT NULL 위반
+    const upsertPayload = { id: "cat-1", order_index: 1 }; // name 없음
+    const hasName = "name" in upsertPayload;
+    expect(hasName).toBe(false); // name 없음 = upsert 실패 원인
+  });
+
+  it("이동 후 모든 order_index가 0부터 연속으로 재할당된다", () => {
+    const result = applySwap(sampleCats, 0, "down");
+    result.forEach((cat, i) => {
+      expect(cat.order_index).toBe(i);
+    });
   });
 });

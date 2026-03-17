@@ -34,20 +34,31 @@ export default function AdminRecipeCategoriesPage() {
     const swapIndex = direction === "up" ? index - 1 : index + 1;
     if (swapIndex < 0 || swapIndex >= categories.length) return;
 
-    const updated = [...categories];
-    [updated[index], updated[swapIndex]] = [updated[swapIndex], updated[index]];
+    const catA = categories[index];
+    const catB = categories[swapIndex];
 
-    const { error } = await supabase.from("recipe_categories").upsert([
-      { id: updated[index].id, order_index: index },
-      { id: updated[swapIndex].id, order_index: swapIndex },
+    // upsert 는 name(NOT NULL, no default) 누락으로 실패하므로 update 사용
+    const [res1, res2] = await Promise.all([
+      supabase
+        .from("recipe_categories")
+        .update({ order_index: swapIndex })
+        .eq("id", catA.id),
+      supabase
+        .from("recipe_categories")
+        .update({ order_index: index })
+        .eq("id", catB.id),
     ]);
 
+    const error = res1.error || res2.error;
     if (error) {
       toast.error("순서를 변경할 수 없어요", {
         description: "잠시 후 다시 시도해주세요",
       });
       return;
     }
+
+    const updated = [...categories];
+    [updated[index], updated[swapIndex]] = [updated[swapIndex], updated[index]];
     setCategories(updated.map((c, i) => ({ ...c, order_index: i })));
   };
 
