@@ -40,6 +40,9 @@ export default function PWAInstallPrompt() {
 
     const handler = (e: Event) => {
       e.preventDefault();
+      // 재발화 시 localStorage 재확인 — "오늘 하루 보지 않기" 선택 후에도 적용
+      const hideUntilVal = localStorage.getItem("hide_pwa_prompt_until");
+      if (hideUntilVal && new Date().getTime() < parseInt(hideUntilVal, 10)) return;
       setDeferredPrompt(e as BeforeInstallPromptEvent);
       setShowBanner(true);
     };
