@@ -16,6 +16,9 @@
 | `attendance_logs` | 출퇴근 기록 |
 | `stores` | 매장 정보 |
 | `notifications` | 알림 |
+| `recipe_categories` | 레시피 카테고리 |
+| `recipe_items` | 레시피 항목 (썸네일, 영상, 공개여부) |
+| `recipe_steps` | 레시피 단계별 설명 |
 
 ---
 
@@ -269,6 +272,73 @@ DELETE FROM auth.users WHERE id = target_user_id
 | 버킷 | 접근 | 경로 패턴 | 용도 |
 |------|------|-----------|------|
 | `hr-documents` | Private | `{userId}/{column}_{timestamp}.{ext}` | 근로계약서, 통장사본, 등본, 보건증 |
+
+---
+
+---
+
+## recipe_categories
+
+레시피 카테고리. (예: 음료, 디저트)
+
+| 컬럼 | 타입 | NULL | 기본값 | 설명 |
+|------|------|------|--------|------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `name` | text | NO | - | 카테고리명 |
+| `department` | text | NO | `'all'` | `'all'` / `'매장'` / `'공장'` |
+| `order_index` | integer | NO | `0` | 정렬 순서 |
+| `created_at` | timestamptz | YES | `now()` | 생성일 |
+
+**RLS**: 전 직원 SELECT, 어드민 ALL
+
+---
+
+## recipe_items
+
+레시피 항목. 카테고리에 속함.
+
+| 컬럼 | 타입 | NULL | 기본값 | 설명 |
+|------|------|------|--------|------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `category_id` | uuid | NO | - | FK → recipe_categories.id (CASCADE) |
+| `name` | text | NO | - | 레시피명 |
+| `description` | text | YES | - | 설명 |
+| `thumbnail_url` | text | YES | - | 썸네일 이미지 Storage URL |
+| `video_url` | text | YES | - | 영상 Storage URL |
+| `is_published` | boolean | NO | `false` | 공개 여부 |
+| `order_index` | integer | NO | `0` | 정렬 순서 |
+| `created_at` | timestamptz | YES | `now()` | 생성일 |
+| `updated_at` | timestamptz | YES | `now()` | 수정일 |
+
+**RLS**: 직원은 `is_published=true`만 SELECT, 어드민 ALL
+
+---
+
+## recipe_steps
+
+레시피 단계별 설명.
+
+| 컬럼 | 타입 | NULL | 기본값 | 설명 |
+|------|------|------|--------|------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `recipe_id` | uuid | NO | - | FK → recipe_items.id (CASCADE) |
+| `step_number` | integer | NO | - | 단계 번호 (1부터) |
+| `title` | text | YES | - | 단계 제목 |
+| `content` | text | NO | - | 단계 설명 |
+| `image_url` | text | YES | - | 단계 이미지 Storage URL |
+| `created_at` | timestamptz | YES | `now()` | 생성일 |
+
+**제약**: UNIQUE(recipe_id, step_number)
+**RLS**: 부모 recipe가 published이면 직원 SELECT, 어드민 ALL
+
+---
+
+## Storage (전체)
+
+| 버킷 | 접근 | 용도 |
+|------|------|------|
+| `hr-documents` | Private (서명 URL 60초) | 근로계약서, 보건증 |
+| `recipe-media` | Public | 레시피 썸네일, 영상, 단계 이미지 (최대 100MB) |
 
 ---
 
