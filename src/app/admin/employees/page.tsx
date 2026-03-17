@@ -45,6 +45,8 @@ interface Profile {
   employment_type: string | null;
   work_locations: string[] | null;
   cafe_positions: string[] | null;
+  hourly_wage: number | null;
+  insurance_type: string | null;
 }
 
 const EMPLOYMENT_TYPE_OPTIONS = [
@@ -774,6 +776,55 @@ export default function AdminEmployeesPage() {
                       })}
                     </div>
                   </div>
+                )}
+
+                {/* 시급 및 보험 유형 (알바만 표시) */}
+                {(editForm.employment_type === "part_time_fixed" || editForm.employment_type === "part_time_daily") && (
+                  <>
+                    <div>
+                      <label className="block text-[12px] font-medium text-[#8B95A1] mb-1">
+                        시급 (원)
+                      </label>
+                      <input
+                        type="number"
+                        value={editForm.hourly_wage ?? ""}
+                        onChange={(e) =>
+                          handleFormChange("hourly_wage", e.target.value ? parseInt(e.target.value) : null)
+                        }
+                        placeholder="예: 9860"
+                        className="w-full px-4 py-2.5 bg-[#F9FAFB] border border-slate-200 rounded-xl text-[14px] text-[#191F28] focus:outline-none focus:border-[#3182F6] transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[12px] font-medium text-[#8B95A1] mb-2">
+                        보험 유형
+                      </label>
+                      <div className="flex gap-3">
+                        {[
+                          { value: "national", label: "2대보험" },
+                          { value: "3.3", label: "3.3% 원천징수" },
+                        ].map((opt) => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => handleFormChange("insurance_type", opt.value)}
+                            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold transition-all border ${
+                              editForm.insurance_type === opt.value
+                                ? "bg-[#E8F3FF] text-[#3182F6] border-[#3182F6]"
+                                : "bg-[#F2F4F6] text-[#4E5968] border-transparent"
+                            }`}
+                          >
+                            <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${editForm.insurance_type === opt.value ? "border-[#3182F6]" : "border-[#8B95A1]"}`}>
+                              {editForm.insurance_type === opt.value && (
+                                <span className="w-2 h-2 bg-[#3182F6] rounded-full" />
+                              )}
+                            </span>
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
                 )}
               </section>
 

@@ -300,10 +300,12 @@ export default function AdminSchedulesPage() {
   const [dailyDate, setDailyDate] = useState<Date>(new Date());
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [slots, setSlots] = useState<ScheduleSlot[]>([]);
+  const [dailySlotsData, setDailySlotsData] = useState<ScheduleSlot[]>([]);
   const [weeklySchedule, setWeeklySchedule] = useState<WeeklySchedule | null>(null);
   const [loading, setLoading] = useState(true);
   const [confirming, setConfirming] = useState(false);
   const [copying, setCopying] = useState(false);
+  const [fillingDefaults, setFillingDefaults] = useState(false);
   const [pendingSubCount, setPendingSubCount] = useState(0);
 
   // Bottom sheet state
@@ -349,6 +351,21 @@ export default function AdminSchedulesPage() {
     fetchAll();
     fetchPendingSubCount();
   }, [fetchAll, fetchPendingSubCount]);
+
+  // Fetch daily slots independently (for daily tab — can be a different week)
+  useEffect(() => {
+    if (tab !== "daily") return;
+    const fetchDailySlots = async () => {
+      const dateStr = format(dailyDate, "yyyy-MM-dd");
+      const { data } = await supabase
+        .from("schedule_slots")
+        .select("*")
+        .eq("slot_date", dateStr)
+        .neq("status", "cancelled");
+      setDailySlotsData((data as ScheduleSlot[]) || []);
+    };
+    fetchDailySlots();
+  }, [dailyDate, tab]);
 
   const getOrCreateWeeklySchedule = async (): Promise<string | null> => {
     if (weeklySchedule) return weeklySchedule.id;
@@ -481,6 +498,82 @@ export default function AdminSchedulesPage() {
     setCopying(false);
   };
 
+  const handleFillDefaults = async () => {
+    setFillingDefaults(true);
+
+    // 1. Fetch all active work_defaults
+    const { data: defaults } = await supabase
+      .from("work_defaults")
+      .select("*")
+      .eq("is_active", true);
+
+    if (!defaults || defaults.length === 0) {
+      toast.error("기본 패턴이 없어요", { description: "직원 관리에서 기본 패턴을 먼저 등록해주세요." });
+      setFillingDefaults(false);
+      return;
+    }
+
+    // 2. Get or create weekly schedule
+    const wsId = await getOrCreateWeeklySchedule();
+    if (!wsId) { setFillingDefaults(false); return; }
+
+    // 3. Fetch existing active slots for this week to check duplicates
+    const { data: existingSlots } = await supabase
+      .from("schedule_slots")
+      .select("profile_id, slot_date")
+      .eq("weekly_schedule_id", wsId)
+      .neq("status", "cancelled");
+
+    const existingSet = new Set(
+      (existingSlots || []).map((s: { profile_id: string; slot_date: string }) => `${s.profile_id}_${s.slot_date}`)
+    );
+
+    // 4. Calculate target date for each work_default based on day_of_week
+    // weekDates is an array indexed 0=Sunday, 1=Monday...6=Saturday (startOfWeek Sunday)
+    const newSlots: Array<{
+      weekly_schedule_id: string;
+      profile_id: string;
+      slot_date: string;
+      start_time: string;
+      end_time: string;
+      work_location: string;
+      cafe_positions: string[];
+      status: string;
+    }> = [];
+
+    for (const wd of defaults) {
+      const targetDate = weekDates[wd.day_of_week]; // 0=일,1=월...6=토
+      const key = `${wd.profile_id}_${targetDate}`;
+      if (existingSet.has(key)) continue; // skip duplicate
+
+      newSlots.push({
+        weekly_schedule_id: wsId,
+        profile_id: wd.profile_id,
+        slot_date: targetDate,
+        start_time: wd.start_time,
+        end_time: wd.end_time,
+        work_location: wd.work_location,
+        cafe_positions: wd.cafe_positions || [],
+        status: "active",
+      });
+    }
+
+    if (newSlots.length === 0) {
+      toast.error("추가할 슬롯이 없어요", { description: "이미 모든 기본 패턴이 반영되어 있어요." });
+      setFillingDefaults(false);
+      return;
+    }
+
+    const { error } = await supabase.from("schedule_slots").insert(newSlots);
+    if (error) {
+      toast.error("기본 패턴 채우기에 실패했어요", { description: error.message });
+    } else {
+      toast.success(`${newSlots.length}개 슬롯을 기본 패턴으로 채웠어요`);
+      fetchAll();
+    }
+    setFillingDefaults(false);
+  };
+
   const handleConfirmSchedule = async () => {
     setConfirming(true);
     const wsId = await getOrCreateWeeklySchedule();
@@ -588,7 +681,7 @@ export default function AdminSchedulesPage() {
     const hourStart = 7;
     const hourEnd = 22;
     const hours = Array.from({ length: hourEnd - hourStart + 1 }, (_, i) => hourStart + i);
-    const daySlots = slots.filter((s) => s.slot_date === dateStr);
+    const daySlots = dailySlotsData;
 
     return (
       <div>
@@ -609,7 +702,6 @@ export default function AdminSchedulesPage() {
             <ChevronRight className="w-5 h-5" />
           </button>
         </div>
-
         <div className="overflow-x-auto">
           <div className="min-w-[800px]">
             <div className="flex">
@@ -679,8 +771,7 @@ export default function AdminSchedulesPage() {
             <div className="flex border-t-2 border-slate-200 bg-[#F9FAFB]">
               <div className="w-[80px] shrink-0 px-2 py-2 text-[11px] font-bold text-[#8B95A1]">인원</div>
               {hours.map((h) => {
-                const count = slots.filter((s) => {
-                  if (s.slot_date !== dateStr) return false;
+                const count = dailySlotsData.filter((s) => {
                   const start = parseInt(s.start_time.split(":")[0]);
                   const end = parseInt(s.end_time.split(":")[0]);
                   return h >= start && h < end;
@@ -787,14 +878,24 @@ export default function AdminSchedulesPage() {
           ))}
         </div>
         {tab === "weekly" && (
-          <button
-            onClick={handleCopyPrevWeek}
-            disabled={copying}
-            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 text-[#4E5968] rounded-xl text-[13px] font-bold hover:bg-[#F2F4F6] transition-all disabled:opacity-50"
-          >
-            <Copy className="w-3.5 h-3.5" />
-            {copying ? "복사 중..." : "이전 주 복사"}
-          </button>
+          <>
+            <button
+              onClick={handleCopyPrevWeek}
+              disabled={copying}
+              className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 text-[#4E5968] rounded-xl text-[13px] font-bold hover:bg-[#F2F4F6] transition-all disabled:opacity-50"
+            >
+              <Copy className="w-3.5 h-3.5" />
+              {copying ? "복사 중..." : "이전 주 복사"}
+            </button>
+            <button
+              onClick={handleFillDefaults}
+              disabled={fillingDefaults}
+              className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 text-[#4E5968] rounded-xl text-[13px] font-bold hover:bg-[#F2F4F6] transition-all disabled:opacity-50"
+            >
+              <Copy className="w-3.5 h-3.5" />
+              {fillingDefaults ? "채우는 중..." : "기본 패턴으로 채우기"}
+            </button>
+          </>
         )}
       </div>
 

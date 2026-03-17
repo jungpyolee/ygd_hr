@@ -41,7 +41,13 @@ interface ProcessedLog {
   attendance_type_in: string;
   attendance_type_out: string;
   reason_out: string | null;
+  scheduled_start: string | null;
+  scheduled_end: string | null;
+  scheduled_location: string | null;
+  late_minutes: number | null;
 }
+
+const LOCATION_LABELS: Record<string, string> = { cafe: "카페", factory: "공장", catering: "케이터링" };
 
 export default function AdminAttendanceCalendar() {
   const [viewType, setViewType] = useState<"week" | "month">("week");
@@ -108,6 +114,10 @@ export default function AdminAttendanceCalendar() {
             attendance_type_in: "regular",
             attendance_type_out: "regular",
             reason_out: null,
+            scheduled_start: null,
+            scheduled_end: null,
+            scheduled_location: null,
+            late_minutes: null,
           });
         }
 
@@ -124,6 +134,40 @@ export default function AdminAttendanceCalendar() {
           userLog.reason_out = log.reason ?? null;
         }
       });
+
+      // Fetch schedule slots for the same date range
+      const allDates = Object.keys(grouped);
+      if (allDates.length > 0) {
+        const { data: slotsData } = await supabase
+          .from("schedule_slots")
+          .select("profile_id, slot_date, start_time, end_time, work_location")
+          .eq("status", "active")
+          .in("slot_date", allDates);
+
+        if (slotsData) {
+          slotsData.forEach((slot: any) => {
+            const dateMap = grouped[slot.slot_date];
+            if (!dateMap) return;
+            const userLog = dateMap.get(slot.profile_id);
+            if (!userLog) return;
+            // Only set schedule if not already set (take first slot of the day)
+            if (!userLog.scheduled_start) {
+              userLog.scheduled_start = slot.start_time;
+              userLog.scheduled_end = slot.end_time;
+              userLog.scheduled_location = slot.work_location;
+              // Calculate late minutes if clock_in exists
+              if (userLog.clock_in) {
+                const [sh, sm] = slot.start_time.split(":").map(Number);
+                const clockInDate = new Date(userLog.clock_in);
+                const slotDateStr = slot.slot_date;
+                const schedStart = new Date(`${slotDateStr}T${String(sh).padStart(2,"0")}:${String(sm).padStart(2,"0")}:00`);
+                const diffMin = Math.floor((clockInDate.getTime() - schedStart.getTime()) / 60000);
+                userLog.late_minutes = diffMin > 10 ? diffMin : null;
+              }
+            }
+          });
+        }
+      }
 
       // Map을 Array로 변환하여 State 저장
       const finalData: Record<string, ProcessedLog[]> = {};
@@ -420,6 +464,26 @@ export default function AdminAttendanceCalendar() {
                       </p>
                     </div>
                   </div>
+
+                  {/* 스케줄 정보 */}
+                  {log.scheduled_start && (
+                    <div className="mt-1 flex items-center gap-2 flex-wrap">
+                      <span className="text-[12px] text-[#8B95A1] font-medium">
+                        스케줄:
+                      </span>
+                      <span className="text-[12px] font-bold" style={{ color: log.scheduled_location ? ({ cafe: "#3182F6", factory: "#00B761", catering: "#F59E0B" } as Record<string, string>)[log.scheduled_location] || "#4E5968" : "#4E5968" }}>
+                        {log.scheduled_location ? LOCATION_LABELS[log.scheduled_location] || log.scheduled_location : ""}
+                      </span>
+                      <span className="text-[12px] text-[#4E5968] font-medium">
+                        {log.scheduled_start.slice(0, 5)}~{log.scheduled_end?.slice(0, 5)}
+                      </span>
+                      {log.late_minutes !== null && log.late_minutes > 0 && (
+                        <span className="text-[11px] font-bold bg-[#FFF7E6] text-[#F59E0B] px-2 py-0.5 rounded-md">
+                          +{log.late_minutes}분 지각
+                        </span>
+                      )}
+                    </div>
+                  )}
 
                   {/* 2. 출퇴근 타임라인 영역 (토스식) */}
                   <div className="flex flex-col sm:items-end gap-2.5">
