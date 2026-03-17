@@ -37,9 +37,8 @@ export default function StoreDistanceList({
           <p className="text-xs text-[#8B95A1] mt-1">
             {locationState.status === "loading"
               ? "위치 확인 중..."
-              : locationState.status === "unavailable"
-              ? "위치 알 수 없음"
-              : formatDistance(
+              : locationState.status === "ready"
+              ? formatDistance(
                   getDistance(
                     locationState.lat,
                     locationState.lng,
@@ -47,7 +46,10 @@ export default function StoreDistanceList({
                     store.lng
                   ),
                   radius
-                )}
+                )
+              : locationState.status === "denied"
+              ? "위치 권한 없음"
+              : "위치 알 수 없음"}
           </p>
         </div>
       ))}

@@ -11,6 +11,7 @@ import StoreDistanceList from "@/components/StoreDistanceList";
 import MyInfoModal from "@/components/MyInfoModal";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
 import { useRouter } from "next/navigation";
+import { useGeolocation } from "@/lib/hooks/useGeolocation";
 
 const DynamicClock = dynamic(() => import("@/components/Clock"), {
   ssr: false,
@@ -23,29 +24,13 @@ export default function HomePage() {
   const [profile, setProfile] = useState<any>(null);
   const [stores, setStores] = useState<any[]>([]);
   const [lastLog, setLastLog] = useState<any>(null);
-  const [locationState, setLocationState] = useState<any>({
-    status: "loading",
-  });
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
   const supabase = createClient();
   const router = useRouter();
-  // 1. 위치 정보 구독
-  useEffect(() => {
-    if (!navigator.geolocation)
-      return setLocationState({ status: "unavailable" });
 
-    navigator.geolocation.getCurrentPosition(
-      (pos) =>
-        setLocationState({
-          status: "ready",
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-        }),
-      () => setLocationState({ status: "unavailable" }),
-      { enableHighAccuracy: true }
-    );
-  }, []);
+  // 위치 훅 — 5초 타임아웃, 45초 캐시, 권한 변경 감시 포함
+  const { locationState, retry: retryLocation } = useGeolocation();
 
   // 2. 전체 데이터 Fetch (온보딩 여부 포함)
   const fetchAllData = async () => {
@@ -196,7 +181,8 @@ export default function HomePage() {
           lastLog={lastLog}
           locationState={locationState}
           radius={RADIUS_METER}
-          onSuccess={fetchAllData} // 출퇴근 완료 시 데이터 새로고침
+          onSuccess={fetchAllData}
+          onRetryLocation={retryLocation}
         />
 
         <WeeklyWorkStats />
