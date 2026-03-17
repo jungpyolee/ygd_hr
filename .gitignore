@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# PWA — Serwist 빌드 산출물 (빌드 시 자동 생성)
+/public/sw.js
+/public/sw.js.map

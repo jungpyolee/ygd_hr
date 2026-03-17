@@ -36,7 +36,55 @@ SUPABASE_ACCESS_TOKEN=<personal access token>
 
 ---
 
-## 2. 문서 구조
+## 2. 브랜치 전략
+
+### 구조
+
+| 브랜치 | 역할 | Vercel 배포 |
+|--------|------|-------------|
+| `main` | 프로덕션 (실 서비스) | Production URL |
+| `dev` | 개발/스테이징 (폰 테스트용) | Preview URL (고정) |
+
+```
+main  ─────────────────────────────────▶  Vercel Production
+              ▲
+              │  PR merge (폰 테스트 통과 후)
+              │
+dev   ─────────────────────────────────▶  Vercel Preview
+        ↑
+        작업 직접 커밋 or feat/xxx 브랜치 → dev PR merge
+```
+
+### 개발 플로우
+
+```
+1. dev 브랜치에서 작업
+   ├─ 소규모 수정/버그: dev에 직접 커밋
+   └─ 큰 기능(Epic 단위): feat/xxx 브랜치 → dev PR merge
+
+2. git push origin dev
+   └─ Vercel이 자동으로 Preview 배포
+
+3. Vercel Preview URL로 폰에 PWA 설치 후 테스트
+
+4. 테스트 통과 → dev → main PR 생성 → merge
+   └─ main merge 시 Vercel Production 자동 배포
+```
+
+### Vercel Preview URL
+
+- `dev` 브랜치 전용 고정 URL 패턴: `ygd-hr-git-dev-[팀명].vercel.app`
+- HTTPS이므로 PWA 설치 가능
+- DB는 Production과 동일 Supabase 프로젝트 사용
+
+### 주의사항
+
+- `main`에 직접 커밋 금지 (반드시 dev → main PR 경유)
+- `public/sw.js`는 빌드 산출물 → `.gitignore` 처리됨 (Vercel 빌드 시 자동 생성)
+
+---
+
+## 3. 문서 구조
 
 ```
 docs/
