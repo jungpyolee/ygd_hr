@@ -5,6 +5,7 @@ import { Toaster } from "sonner";
 import Script from "next/script";
 import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 import KakaoEscape from "@/components/KakaoEscape";
+import NextTopLoader from "nextjs-toploader";
 
 const isDev = process.env.NEXT_PUBLIC_APP_ENV === "dev";
 const appName = isDev ? "연경당 테섭" : "연경당 HR";
@@ -76,6 +77,7 @@ export default function RootLayout({
   return (
     <html lang="ko" className="light" suppressHydrationWarning>
       <body className="antialiased font-pretendard">
+        <NextTopLoader color="#3182F6" height={3} showSpinner={false} />
         <KakaoEscape />
         {children}
         <Toaster />
