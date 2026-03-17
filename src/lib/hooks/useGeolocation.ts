@@ -8,10 +8,18 @@ export interface GeoState {
   lng?: number;
 }
 
+// 화면 표시용 (StoreDistanceList 등) — 45초 캐시 허용
 const GEO_OPTIONS: PositionOptions = {
   enableHighAccuracy: true,
   timeout: 5000,
   maximumAge: 45000,
+};
+
+// 출퇴근 기록용 — 10초 캐시만 허용 (이동 가능성 최소화)
+const GEO_ATTENDANCE_OPTIONS: PositionOptions = {
+  enableHighAccuracy: true,
+  timeout: 5000,
+  maximumAge: 10000,
 };
 
 export function useGeolocation() {
@@ -90,5 +98,35 @@ export function useGeolocation() {
     return doFetch();
   }, [doFetch]);
 
-  return { locationState: state, retry };
+  // 출퇴근 기록 전용 — 10초 초과 캐시는 재취득 (이동 후 진입 케이스 대응)
+  const fetchForAttendance = useCallback((): Promise<GeoState> => {
+    return new Promise<GeoState>((resolve) => {
+      if (!navigator.geolocation) {
+        const s: GeoState = { status: "unavailable" };
+        setState(s);
+        resolve(s);
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        ({ coords }) => {
+          const s: GeoState = {
+            status: "ready",
+            lat: coords.latitude,
+            lng: coords.longitude,
+          };
+          setState(s);
+          resolve(s);
+        },
+        ({ code }) => {
+          const status: GeoStatus = code === 1 ? "denied" : "timeout";
+          const s: GeoState = { status };
+          setState(s);
+          resolve(s);
+        },
+        GEO_ATTENDANCE_OPTIONS
+      );
+    });
+  }, []);
+
+  return { locationState: state, retry, fetchForAttendance };
 }

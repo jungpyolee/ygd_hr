@@ -29,8 +29,8 @@ export default function HomePage() {
   const supabase = createClient();
   const router = useRouter();
 
-  // 위치 훅 — 5초 타임아웃, 45초 캐시, 권한 변경 감시 포함
-  const { locationState, retry: retryLocation } = useGeolocation();
+  // 위치 훅 — 5초 타임아웃, 45초 캐시(표시용), 권한 변경 감시 포함
+  const { locationState, retry: retryLocation, fetchForAttendance } = useGeolocation();
 
   // 2. 전체 데이터 Fetch (온보딩 여부 포함)
   const fetchAllData = async () => {
@@ -183,6 +183,7 @@ export default function HomePage() {
           radius={RADIUS_METER}
           onSuccess={fetchAllData}
           onRetryLocation={retryLocation}
+          onFetchForAttendance={fetchForAttendance}
         />
 
         <WeeklyWorkStats />
