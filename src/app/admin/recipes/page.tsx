@@ -82,7 +82,15 @@ export default function AdminRecipesPage() {
   if (loading) {
     return (
       <div className="space-y-4">
-        <div className="h-10 w-48 bg-slate-200 animate-pulse rounded-xl" />
+        <div className="flex items-center justify-between">
+          <div className="h-8 w-28 bg-slate-200 animate-pulse rounded-xl" />
+          <div className="h-10 w-32 bg-slate-200 animate-pulse rounded-xl" />
+        </div>
+        <div className="flex gap-2 pb-1">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-9 w-16 bg-slate-200 animate-pulse rounded-full shrink-0" />
+          ))}
+        </div>
         {[1, 2, 3].map((i) => (
           <div
             key={i}
@@ -141,7 +149,7 @@ export default function AdminRecipesPage() {
       {filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3 bg-white rounded-[20px] border border-slate-100">
           <BookOpen className="w-10 h-10 text-[#8B95A1]" />
-          <p className="text-[15px] text-[#8B95A1]">등록된 레시피가 없어요</p>
+          <p className="text-[15px] text-[#8B95A1]">아직 등록된 레시피가 없어요</p>
           <button
             onClick={() => router.push("/admin/recipes/new")}
             className="mt-2 px-5 py-2.5 bg-[#3182F6] text-white rounded-xl text-[14px] font-bold"
