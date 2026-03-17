@@ -35,6 +35,7 @@ export default function AdminLayout({
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNoti, setShowNoti] = useState(false);
   const [notis, setNotis] = useState<any[]>([]);
+  const [pendingSubCount, setPendingSubCount] = useState(0);
 
   // 🚀 외부 클릭 감지를 위한 Ref 추가
   const notiRef = useRef<HTMLDivElement>(null);
@@ -78,7 +79,8 @@ export default function AdminLayout({
 
       if (profile?.role === "admin") {
         setIsAdmin(true);
-        fetchNotis(); // 알림 초기 로드
+        fetchNotis();
+        fetchPendingSubCount();
       } else {
         toast.error("접근 권한이 없어요");
         router.replace("/");
@@ -118,6 +120,14 @@ export default function AdminLayout({
       supabase.removeChannel(channel);
     };
   }, [isAdmin]);
+
+  const fetchPendingSubCount = async () => {
+    const { count } = await supabase
+      .from("substitute_requests")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "pending");
+    setPendingSubCount(count ?? 0);
+  };
 
   const fetchNotis = async () => {
     const { data } = await supabase
@@ -249,11 +259,12 @@ export default function AdminLayout({
         <nav className="space-y-2 flex-1">
           {menus.map((menu) => {
             const isActive = pathname === menu.path;
+            const isSchedule = menu.name === "스케줄 관리";
             return (
               <Link
                 key={menu.name}
                 href={menu.path}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium ${
+                className={`relative flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium ${
                   isActive
                     ? "bg-[#E8F3FF] text-[#3182F6]"
                     : "text-[#4E5968] hover:bg-[#F2F4F6]"
@@ -261,6 +272,11 @@ export default function AdminLayout({
               >
                 {menu.icon}
                 {menu.name}
+                {isSchedule && pendingSubCount > 0 && (
+                  <span className="ml-auto min-w-[20px] h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 leading-none">
+                    {pendingSubCount > 9 ? "9+" : pendingSubCount}
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -380,29 +396,31 @@ export default function AdminLayout({
               </button>
             </div>
             <nav className="space-y-3">
-              {menus.map((menu) => (
-                <Link
-                  key={menu.name}
-                  href={menu.path}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className={`flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-[16px] border ${
-                    pathname === menu.path
-                      ? "bg-[#E8F3FF] border-[#E8F3FF] text-[#3182F6]"
-                      : "bg-white border-slate-100 text-[#4E5968]"
-                  }`}
-                >
-                  <div
-                    className={
+              {menus.map((menu) => {
+                const isSchedule = menu.name === "스케줄 관리";
+                return (
+                  <Link
+                    key={menu.name}
+                    href={menu.path}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className={`flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-[16px] border ${
                       pathname === menu.path
-                        ? "text-[#3182F6]"
-                        : "text-[#8B95A1]"
-                    }
+                        ? "bg-[#E8F3FF] border-[#E8F3FF] text-[#3182F6]"
+                        : "bg-white border-slate-100 text-[#4E5968]"
+                    }`}
                   >
-                    {menu.icon}
-                  </div>
-                  {menu.name}
-                </Link>
-              ))}
+                    <div className={pathname === menu.path ? "text-[#3182F6]" : "text-[#8B95A1]"}>
+                      {menu.icon}
+                    </div>
+                    {menu.name}
+                    {isSchedule && pendingSubCount > 0 && (
+                      <span className="ml-auto min-w-[20px] h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 leading-none">
+                        {pendingSubCount > 9 ? "9+" : pendingSubCount}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
             </nav>
           </div>
         </div>
