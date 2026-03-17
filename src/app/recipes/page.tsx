@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, BookOpen } from "lucide-react";
+import { ChevronLeft, BookOpen, Search, X } from "lucide-react";
 import Image from "next/image";
 import type { RecipeCategory, RecipeItem } from "@/types/recipe";
 
@@ -11,6 +11,8 @@ export default function RecipesPage() {
   const [categories, setCategories] = useState<RecipeCategory[]>([]);
   const [recipes, setRecipes] = useState<RecipeItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [recentIds, setRecentIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const supabase = createClient();
   const router = useRouter();
@@ -33,13 +35,25 @@ export default function RecipesPage() {
       setCategories(catList);
       setRecipes(items ?? []);
       if (catList.length > 0) setSelectedCategory(catList[0].id);
+
+      try {
+        const stored: string[] = JSON.parse(
+          localStorage.getItem("recent_recipes") || "[]"
+        );
+        setRecentIds(stored);
+      } catch {}
+
       setLoading(false);
     };
 
     fetchData();
   }, []);
 
-  const filtered = selectedCategory
+  const filtered = searchQuery.trim()
+    ? recipes.filter((r) =>
+        r.name.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : selectedCategory
     ? recipes.filter((r) => r.category_id === selectedCategory)
     : recipes;
 
@@ -78,8 +92,30 @@ export default function RecipesPage() {
         <h1 className="text-[17px] font-bold text-[#191F28]">레시피</h1>
       </header>
 
+      {/* 검색 */}
+      <div className="px-5 py-3 bg-white border-b border-[#E5E8EB]">
+        <div className="relative">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8B95A1]" />
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="레시피 검색"
+            className="w-full bg-[#F2F4F6] rounded-xl pl-9 pr-9 py-2.5 text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] outline-none"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              aria-label="검색 초기화"
+              className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center"
+            >
+              <X className="w-4 h-4 text-[#8B95A1]" />
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* 카테고리 탭 */}
-      {categories.length > 0 && (
+      {!searchQuery && categories.length > 0 && (
         <div className="flex gap-2 px-5 py-4 overflow-x-auto scrollbar-hide bg-white border-b border-[#E5E8EB]">
           {categories.map((cat) => (
             <button
@@ -99,10 +135,49 @@ export default function RecipesPage() {
 
       {/* 레시피 목록 */}
       <main className="flex-1 px-5 py-5 space-y-3">
+        {/* 최근 본 레시피 */}
+        {!searchQuery && recentIds.length > 0 && (() => {
+          const recentRecipes = recentIds
+            .map((rid) => recipes.find((r) => r.id === rid))
+            .filter(Boolean) as typeof recipes;
+          if (recentRecipes.length === 0) return null;
+          return (
+            <div className="space-y-2 mb-1">
+              <p className="text-[13px] font-semibold text-[#8B95A1] px-1">최근 본 레시피</p>
+              <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-1">
+                {recentRecipes.map((recipe) => (
+                  <button
+                    key={recipe.id}
+                    onClick={() => router.push(`/recipes/${recipe.id}`)}
+                    className="shrink-0 flex flex-col items-center gap-1.5 active:scale-95 transition-transform"
+                  >
+                    <div className="w-[60px] h-[60px] rounded-[16px] overflow-hidden bg-[#E8F3FF] flex items-center justify-center shrink-0">
+                      {recipe.thumbnail_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={recipe.thumbnail_url}
+                          alt={recipe.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <BookOpen className="w-5 h-5 text-[#3182F6]" />
+                      )}
+                    </div>
+                    <p className="text-[11px] text-[#4E5968] font-medium w-[60px] text-center truncate">
+                      {recipe.name}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
             <BookOpen className="w-10 h-10 text-[#8B95A1]" />
-            <p className="text-[15px] text-[#8B95A1]">아직 등록된 레시피가 없어요</p>
+            <p className="text-[15px] text-[#8B95A1]">
+              {searchQuery ? `"${searchQuery}" 검색 결과가 없어요` : "아직 등록된 레시피가 없어요"}
+            </p>
           </div>
         ) : (
           filtered.map((recipe) => (

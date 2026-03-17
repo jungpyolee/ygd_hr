@@ -38,6 +38,16 @@ export default function RecipeDetailPage() {
       setRecipe(recipeData);
       setSteps(stepsData ?? []);
       setLoading(false);
+
+      // 최근 본 레시피 저장
+      try {
+        const prev: string[] = JSON.parse(
+          localStorage.getItem("recent_recipes") || "[]"
+        );
+        const updated = [id, ...prev.filter((rid) => rid !== id)].slice(0, 6);
+        localStorage.setItem("recent_recipes", JSON.stringify(updated));
+      } catch {}
+
     };
 
     fetchData();
