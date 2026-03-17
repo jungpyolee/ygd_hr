@@ -7,20 +7,22 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { sendNotification } from "@/lib/notifications";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
+import LocationPermissionGuide from "@/components/LocationPermissionGuide";
+import type { GeoState } from "@/lib/hooks/useGeolocation";
 
-// 부모에게서 받을 Props 정의
 interface AttendanceCardProps {
   stores: any[];
-  lastLog: any; // { type, attendance_type, time, date, store }
-  locationState: any;
+  lastLog: any;
+  locationState: GeoState;
   radius: number;
   onSuccess: () => void;
+  onRetryLocation: () => Promise<GeoState>;
 }
 
 interface PendingLocation {
   lat: number;
   lng: number;
-  nearestStore: any; // { id, name, distance }
+  nearestStore: any;
 }
 
 export default function AttendanceCard({
@@ -29,8 +31,10 @@ export default function AttendanceCard({
   locationState,
   radius,
   onSuccess,
+  onRetryLocation,
 }: AttendanceCardProps) {
   const [loading, setLoading] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
 
   // 원격퇴근 폼 상태
   const [showRemoteOutForm, setShowRemoteOutForm] = useState(false);
@@ -42,6 +46,11 @@ export default function AttendanceCard({
   // 위치 정보를 임시 보관 (반경 초과 시)
   const [pendingLocation, setPendingLocation] =
     useState<PendingLocation | null>(null);
+
+  // 위치 권한 안내 바텀시트
+  const [showPermissionGuide, setShowPermissionGuide] = useState(false);
+  // 위치 재시도 후 재개할 출퇴근 타입
+  const [pendingType, setPendingType] = useState<"IN" | "OUT" | null>(null);
 
   const supabase = createClient();
 
@@ -136,7 +145,6 @@ export default function AttendanceCard({
       notifTitle = "✈️ 출장 출근 알림";
       notifContent = `${employeeName}님이 출장 출근했어요`;
     } else {
-      // business_trip_out
       notifType = "attendance_business_trip_out";
       notifTitle = "✈️ 출장 퇴근 알림";
       notifContent = `${employeeName}님이 출장 퇴근했어요`;
@@ -169,29 +177,28 @@ export default function AttendanceCard({
     setLoading(false);
   };
 
-  // ─── 출퇴근 버튼 탭 ────────────────────────────────────────────────────────
-  const handleAttendance = async (type: "IN" | "OUT") => {
-    if (stores.length === 0) return toast.error("매장 정보를 불러오고 있어요.");
-    if (locationState.status !== "ready")
-      return toast.error("위치 정보를 가져올 수 없어요.");
-
-    setLoading(true);
-    const { lat, lng } = locationState;
+  // ─── 좌표 확정 후 출퇴근 진행 ─────────────────────────────────────────────
+  const proceedWithCoordinates = async (
+    type: "IN" | "OUT",
+    lat: number,
+    lng: number
+  ) => {
+    if (stores.length === 0) {
+      toast.error("매장 정보를 불러오고 있어요.", {
+        description: "잠시 후 다시 시도해주세요",
+      });
+      return;
+    }
 
     const nearestStore = stores
       .map((s) => ({ ...s, distance: getDistance(lat, lng, s.lat, s.lng) }))
       .sort((a, b) => a.distance - b.distance)[0];
 
-    // ── 반경 초과 분기 ──────────────────────────────────────
     if (nearestStore.distance > radius) {
-      setLoading(false);
       setPendingLocation({ lat, lng, nearestStore });
-
       if (type === "IN") {
-        // 출장출근 확인 다이얼로그
         setShowBizTripConfirm(true);
       } else {
-        // 원격퇴근 or 출장퇴근 폼
         const isBizTrip = lastLog?.attendance_type === "business_trip_in";
         setRemoteReason(isBizTrip ? "출장" : "");
         setShowRemoteOutForm(true);
@@ -199,8 +206,6 @@ export default function AttendanceCard({
       return;
     }
 
-    // ── 일반 출퇴근 ────────────────────────────────────────
-    setLoading(false);
     await processAttendance({
       type,
       nearestStore,
@@ -209,6 +214,67 @@ export default function AttendanceCard({
       attendanceType: "regular",
       distanceM: nearestStore.distance,
     });
+  };
+
+  // ─── 출퇴근 버튼 탭 ────────────────────────────────────────────────────────
+  const handleAttendance = async (type: "IN" | "OUT") => {
+    // 위치가 이미 준비된 경우 바로 진행
+    if (locationState.status === "ready") {
+      await proceedWithCoordinates(type, locationState.lat!, locationState.lng!);
+      return;
+    }
+
+    // 위치가 없으면 재시도
+    setIsRetrying(true);
+    setPendingType(type);
+    const result = await onRetryLocation();
+    setIsRetrying(false);
+
+    if (result.status === "ready") {
+      setPendingType(null);
+      await proceedWithCoordinates(type, result.lat!, result.lng!);
+      return;
+    }
+
+    if (result.status === "denied") {
+      // 권한 없음 → 안내 바텀시트 표시 (pendingType 유지)
+      setShowPermissionGuide(true);
+      return;
+    }
+
+    // timeout / unavailable
+    setPendingType(null);
+    toast.error("위치를 찾을 수 없어요", {
+      description: "Wi-Fi를 켜거나 실외에서 다시 시도해주세요",
+    });
+  };
+
+  // ─── 권한 안내 확인 후 재시도 ──────────────────────────────────────────────
+  const handlePermissionConfirm = async () => {
+    setShowPermissionGuide(false);
+    const type = pendingType;
+    if (!type) return;
+
+    setIsRetrying(true);
+    const result = await onRetryLocation();
+    setIsRetrying(false);
+
+    if (result.status === "ready") {
+      setPendingType(null);
+      await proceedWithCoordinates(type, result.lat!, result.lng!);
+      return;
+    }
+
+    setPendingType(null);
+    if (result.status === "denied") {
+      toast.error("위치 권한이 아직 없어요", {
+        description: "설정에서 Chrome의 위치 권한을 허용해주세요",
+      });
+    } else {
+      toast.error("위치를 찾을 수 없어요", {
+        description: "Wi-Fi를 켜거나 실외에서 다시 시도해주세요",
+      });
+    }
   };
 
   // ─── 출장출근 확인 ─────────────────────────────────────────────────────────
@@ -252,6 +318,8 @@ export default function AttendanceCard({
   const isBizTripOut =
     showRemoteOutForm && lastLog?.attendance_type === "business_trip_in";
 
+  const isButtonBusy = loading || isRetrying;
+
   return (
     <>
       <section className="bg-white rounded-[28px] p-6 shadow-sm border border-slate-100">
@@ -274,7 +342,6 @@ export default function AttendanceCard({
                   : "출근 전이에요"}
               </div>
             </div>
-            {/* 출장출근 중 뱃지 */}
             {lastLog?.type === "IN" &&
               lastLog?.attendance_type === "business_trip_in" && (
                 <span className="inline-block text-[11px] font-bold bg-[#FFF3BF] text-[#E67700] px-2 py-0.5 rounded-md">
@@ -300,24 +367,38 @@ export default function AttendanceCard({
         <div className="grid grid-cols-1 gap-3">
           <Button
             onClick={() => handleAttendance("IN")}
-            disabled={loading || lastLog?.type === "IN"}
+            disabled={isButtonBusy || lastLog?.type === "IN"}
             className="h-16 rounded-2xl bg-[#3182F6] text-white font-bold text-lg hover:bg-[#1B64DA] disabled:bg-[#D1D6DB] transition-all"
           >
-            {loading ? "위치 확인 중..." : "출근하기"}
+            {isRetrying
+              ? "위치 찾는 중..."
+              : loading
+              ? "처리 중..."
+              : "출근하기"}
           </Button>
           <Button
             onClick={() => handleAttendance("OUT")}
-            disabled={loading || lastLog?.type !== "IN"}
+            disabled={isButtonBusy || lastLog?.type !== "IN"}
             className={`h-16 rounded-2xl font-bold text-lg transition-all ${
-              lastLog?.type === "IN" && !loading
+              lastLog?.type === "IN" && !isButtonBusy
                 ? "bg-[#E8F3FF] text-[#3182F6] border-2 border-[#3182F6]/30"
                 : "bg-[#F2F4F6] text-[#4E5968] disabled:opacity-50"
             }`}
           >
-            퇴근하기
+            {isRetrying ? "위치 찾는 중..." : loading ? "처리 중..." : "퇴근하기"}
           </Button>
         </div>
       </section>
+
+      {/* ── 위치 권한 안내 ───────────────────────────────────── */}
+      <LocationPermissionGuide
+        isOpen={showPermissionGuide}
+        onConfirm={handlePermissionConfirm}
+        onCancel={() => {
+          setShowPermissionGuide(false);
+          setPendingType(null);
+        }}
+      />
 
       {/* ── 출장출근 확인 다이얼로그 ─────────────────────────────── */}
       <ConfirmDialog
