@@ -47,7 +47,9 @@ export default function AdminRecipesPage() {
       .eq("id", recipe.id);
 
     if (error) {
-      toast.error("공개 상태를 변경할 수 없어요. 잠시 후 다시 시도해요.");
+      toast.error("공개 상태를 변경할 수 없어요", {
+        description: "잠시 후 다시 시도해주세요",
+      });
       return;
     }
     toast.success(recipe.is_published ? "비공개로 전환했어요" : "공개로 전환했어요");
@@ -62,7 +64,9 @@ export default function AdminRecipesPage() {
       .eq("id", deleteTarget.id);
 
     if (error) {
-      toast.error("레시피를 삭제할 수 없어요. 잠시 후 다시 시도해요.");
+      toast.error("레시피를 삭제할 수 없어요", {
+        description: "잠시 후 다시 시도해주세요",
+      });
       return;
     }
     toast.success("레시피를 삭제했어요");
@@ -192,8 +196,8 @@ export default function AdminRecipesPage() {
               <div className="flex items-center gap-1 shrink-0">
                 <button
                   onClick={() => togglePublish(recipe)}
-                  className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-[#F2F4F6] transition-colors"
-                  title={recipe.is_published ? "비공개로 전환" : "공개로 전환"}
+                  aria-label={recipe.is_published ? "비공개로 전환" : "공개로 전환"}
+                  className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-[#F2F4F6] transition-colors"
                 >
                   {recipe.is_published ? (
                     <Eye className="w-4 h-4 text-[#3182F6]" />
@@ -205,13 +209,15 @@ export default function AdminRecipesPage() {
                   onClick={() =>
                     router.push(`/admin/recipes/${recipe.id}/edit`)
                   }
-                  className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-[#F2F4F6] transition-colors"
+                  aria-label="레시피 수정"
+                  className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-[#F2F4F6] transition-colors"
                 >
                   <Pencil className="w-4 h-4 text-[#4E5968]" />
                 </button>
                 <button
                   onClick={() => setDeleteTarget(recipe)}
-                  className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-red-50 transition-colors"
+                  aria-label="레시피 삭제"
+                  className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-red-50 transition-colors"
                 >
                   <Trash2 className="w-4 h-4 text-red-400" />
                 </button>
@@ -225,8 +231,9 @@ export default function AdminRecipesPage() {
         isOpen={!!deleteTarget}
         title={`"${deleteTarget?.name}"을 삭제할까요?`}
         description="삭제하면 모든 단계 정보도 함께 사라져요."
-        confirmLabel="삭제하기"
+        confirmLabel="삭제할게요"
         cancelLabel="취소"
+        variant="destructive"
         onConfirm={deleteRecipe}
         onCancel={() => setDeleteTarget(null)}
       />

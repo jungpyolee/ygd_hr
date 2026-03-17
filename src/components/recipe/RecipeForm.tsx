@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, GripVertical, ImageIcon, Video, ChevronDown } from "lucide-react";
+import { Plus, Trash2, ImageIcon, Video, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import type { RecipeCategory, RecipeItem, RecipeStep } from "@/types/recipe";
 
@@ -16,11 +16,23 @@ interface StepDraft {
   imageFile?: File;
 }
 
+interface FormErrors {
+  name?: string;
+  category?: string;
+  steps?: Record<number, string>;
+}
+
 interface RecipeFormProps {
   categories: RecipeCategory[];
   initialRecipe?: RecipeItem;
   initialSteps?: RecipeStep[];
 }
+
+const getStoragePath = (url: string): string | null => {
+  const marker = "/recipe-media/";
+  const idx = url.indexOf(marker);
+  return idx !== -1 ? url.slice(idx + marker.length) : null;
+};
 
 export default function RecipeForm({
   categories,
@@ -36,7 +48,9 @@ export default function RecipeForm({
     initialRecipe?.category_id ?? categories[0]?.id ?? ""
   );
   const [newCategoryName, setNewCategoryName] = useState("");
-  const [showNewCategory, setShowNewCategory] = useState(false);
+  const [showNewCategory, setShowNewCategory] = useState(
+    categories.length === 0
+  );
   const [name, setName] = useState(initialRecipe?.name ?? "");
   const [description, setDescription] = useState(
     initialRecipe?.description ?? ""
@@ -70,7 +84,21 @@ export default function RecipeForm({
       : [{ step_number: 1, title: "", content: "", image_url: null }]
   );
 
+  const [errors, setErrors] = useState<FormErrors>({});
   const [saving, setSaving] = useState(false);
+
+  // blob URL 추적 — 언마운트 시 메모리 해제
+  const blobUrlsRef = useRef<string[]>([]);
+  useEffect(() => {
+    return () => {
+      blobUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, []);
+
+  const trackBlob = (url: string) => {
+    blobUrlsRef.current.push(url);
+    return url;
+  };
 
   const uploadFile = async (
     file: File,
@@ -80,10 +108,7 @@ export default function RecipeForm({
       .from("recipe-media")
       .upload(path, file, { upsert: true });
     if (error) return null;
-
-    const { data } = supabase.storage
-      .from("recipe-media")
-      .getPublicUrl(path);
+    const { data } = supabase.storage.from("recipe-media").getPublicUrl(path);
     return data.publicUrl;
   };
 
@@ -91,29 +116,26 @@ export default function RecipeForm({
     const file = e.target.files?.[0];
     if (!file) return;
     setThumbnailFile(file);
-    setThumbnailUrl(URL.createObjectURL(file));
+    setThumbnailUrl(trackBlob(URL.createObjectURL(file)));
   };
 
   const handleVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 100 * 1024 * 1024) {
-      toast.error("영상 크기가 너무 커요. 100MB 이하로 올려줘요.");
+      toast.error("영상 크기가 너무 커요", {
+        description: "100MB 이하 파일을 올려주세요",
+      });
       return;
     }
     setVideoFile(file);
-    setVideoUrl(URL.createObjectURL(file));
+    setVideoUrl(trackBlob(URL.createObjectURL(file)));
   };
 
   const addStep = () => {
     setSteps((prev) => [
       ...prev,
-      {
-        step_number: prev.length + 1,
-        title: "",
-        content: "",
-        image_url: null,
-      },
+      { step_number: prev.length + 1, title: "", content: "", image_url: null },
     ]);
   };
 
@@ -123,12 +145,39 @@ export default function RecipeForm({
         .filter((_, i) => i !== index)
         .map((s, i) => ({ ...s, step_number: i + 1 }))
     );
+    setErrors((prev) => {
+      const next = { ...prev };
+      if (next.steps) {
+        delete next.steps[index];
+        // 인덱스 재정렬
+        const reindexed: Record<number, string> = {};
+        Object.entries(next.steps).forEach(([k, v]) => {
+          const ki = Number(k);
+          if (ki > index) reindexed[ki - 1] = v;
+          else if (ki < index) reindexed[ki] = v;
+        });
+        next.steps = Object.keys(reindexed).length > 0 ? reindexed : undefined;
+      }
+      return next;
+    });
   };
 
-  const updateStep = (index: number, field: keyof StepDraft, value: unknown) => {
+  const updateStep = (
+    index: number,
+    field: keyof StepDraft,
+    value: unknown
+  ) => {
     setSteps((prev) =>
       prev.map((s, i) => (i === index ? { ...s, [field]: value } : s))
     );
+    if (field === "content") {
+      setErrors((prev) => {
+        if (!prev.steps?.[index]) return prev;
+        const steps = { ...prev.steps };
+        delete steps[index];
+        return { ...prev, steps: Object.keys(steps).length > 0 ? steps : undefined };
+      });
+    }
   };
 
   const handleStepImageChange = (
@@ -137,24 +186,33 @@ export default function RecipeForm({
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const url = trackBlob(URL.createObjectURL(file));
     updateStep(index, "imageFile", file);
-    updateStep(index, "image_url", URL.createObjectURL(file));
+    updateStep(index, "image_url", url);
+  };
+
+  const validate = (): FormErrors => {
+    const errs: FormErrors = {};
+    if (!name.trim()) errs.name = "레시피 이름을 입력해줘요";
+    if (showNewCategory && !newCategoryName.trim())
+      errs.category = "카테고리 이름을 입력해줘요";
+    if (!showNewCategory && !categoryId)
+      errs.category = "카테고리를 선택해줘요";
+    const stepErrs: Record<number, string> = {};
+    steps.forEach((s, i) => {
+      if (!s.content.trim()) stepErrs[i] = "단계 내용을 입력해줘요";
+    });
+    if (Object.keys(stepErrs).length > 0) errs.steps = stepErrs;
+    return errs;
   };
 
   const handleSave = async () => {
-    if (!name.trim()) {
-      toast.error("레시피 이름을 입력해줘요.");
+    const errs = validate();
+    if (Object.keys(errs).length > 0) {
+      setErrors(errs);
       return;
     }
-    if (!categoryId) {
-      toast.error("카테고리를 선택해줘요.");
-      return;
-    }
-    if (steps.some((s) => !s.content.trim())) {
-      toast.error("모든 단계의 내용을 입력해줘요.");
-      return;
-    }
-
+    setErrors({});
     setSaving(true);
 
     try {
@@ -171,34 +229,56 @@ export default function RecipeForm({
           .select()
           .single();
         if (error || !newCat) {
-          toast.error("카테고리 생성에 실패했어요. 다시 시도해줘요.");
+          toast.error("카테고리 생성에 실패했어요", {
+            description: "다시 시도해주세요",
+          });
           setSaving(false);
           return;
         }
         finalCategoryId = newCat.id;
       }
 
-      // 파일 업로드
       const recipeId = initialRecipe?.id ?? crypto.randomUUID();
       let finalThumbnailUrl = thumbnailUrl;
       let finalVideoUrl = videoUrl;
 
+      // 썸네일 처리
       if (thumbnailFile) {
+        if (isEdit && initialRecipe?.thumbnail_url) {
+          const oldPath = getStoragePath(initialRecipe.thumbnail_url);
+          if (oldPath)
+            await supabase.storage.from("recipe-media").remove([oldPath]);
+        }
         const ext = thumbnailFile.name.split(".").pop();
         finalThumbnailUrl = await uploadFile(
           thumbnailFile,
           `${recipeId}/thumbnail.${ext}`
         );
+      } else if (thumbnailUrl === null && isEdit && initialRecipe?.thumbnail_url) {
+        const oldPath = getStoragePath(initialRecipe.thumbnail_url);
+        if (oldPath)
+          await supabase.storage.from("recipe-media").remove([oldPath]);
       }
+
+      // 영상 처리
       if (videoFile) {
+        if (isEdit && initialRecipe?.video_url) {
+          const oldPath = getStoragePath(initialRecipe.video_url);
+          if (oldPath)
+            await supabase.storage.from("recipe-media").remove([oldPath]);
+        }
         const ext = videoFile.name.split(".").pop();
         finalVideoUrl = await uploadFile(
           videoFile,
           `${recipeId}/video.${ext}`
         );
+      } else if (videoUrl === null && isEdit && initialRecipe?.video_url) {
+        const oldPath = getStoragePath(initialRecipe.video_url);
+        if (oldPath)
+          await supabase.storage.from("recipe-media").remove([oldPath]);
       }
 
-      // recipe_items upsert
+      // recipe_items 저장
       const recipePayload = {
         id: recipeId,
         category_id: finalCategoryId,
@@ -210,19 +290,26 @@ export default function RecipeForm({
       };
 
       const { error: recipeError } = isEdit
-        ? await supabase.from("recipe_items").update(recipePayload).eq("id", recipeId)
+        ? await supabase
+            .from("recipe_items")
+            .update(recipePayload)
+            .eq("id", recipeId)
         : await supabase.from("recipe_items").insert(recipePayload);
 
       if (recipeError) {
-        toast.error("레시피 저장에 실패했어요. 다시 시도해줘요.");
+        toast.error("레시피 저장에 실패했어요", {
+          description: "다시 시도해주세요",
+        });
         setSaving(false);
         return;
       }
 
-      // 단계 이미지 업로드 후 steps upsert
+      // 단계 이미지 업로드
       const stepsToSave = await Promise.all(
         steps.map(async (step, i) => {
-          let imageUrl = step.image_url;
+          let imageUrl = step.image_url?.startsWith("blob:")
+            ? null
+            : step.image_url;
           if (step.imageFile) {
             const ext = step.imageFile.name.split(".").pop();
             imageUrl = await uploadFile(
@@ -241,16 +328,33 @@ export default function RecipeForm({
         })
       );
 
-      // 기존 단계 삭제 후 재삽입
+      // 수정 시 orphaned 단계 이미지 Storage 삭제
       if (isEdit) {
-        await supabase.from("recipe_steps").delete().eq("recipe_id", recipeId);
+        const finalImageUrls = new Set(
+          stepsToSave.map((s) => s.image_url).filter(Boolean)
+        );
+        const orphanPaths = initialSteps
+          .map((s) => s.image_url)
+          .filter((url): url is string => !!url && !finalImageUrls.has(url))
+          .map((url) => getStoragePath(url))
+          .filter(Boolean) as string[];
+        if (orphanPaths.length > 0)
+          await supabase.storage.from("recipe-media").remove(orphanPaths);
+
+        await supabase
+          .from("recipe_steps")
+          .delete()
+          .eq("recipe_id", recipeId);
       }
+
       const { error: stepsError } = await supabase
         .from("recipe_steps")
         .insert(stepsToSave);
 
       if (stepsError) {
-        toast.error("단계 저장에 실패했어요. 레시피는 저장됐으니 다시 시도해줘요.");
+        toast.error("단계 저장에 실패했어요", {
+          description: "레시피는 저장됐어요. 단계만 다시 시도해주세요",
+        });
         setSaving(false);
         return;
       }
@@ -258,7 +362,9 @@ export default function RecipeForm({
       toast.success(isEdit ? "레시피를 수정했어요" : "레시피를 추가했어요");
       router.push("/admin/recipes");
     } catch {
-      toast.error("저장 중 오류가 발생했어요. 다시 시도해줘요.");
+      toast.error("저장 중 오류가 발생했어요", {
+        description: "다시 시도해주세요",
+      });
       setSaving(false);
     }
   };
@@ -274,8 +380,13 @@ export default function RecipeForm({
             <div className="relative">
               <select
                 value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
-                className="w-full appearance-none bg-[#F2F4F6] rounded-xl px-4 py-3 text-[15px] text-[#191F28] font-medium pr-10"
+                onChange={(e) => {
+                  setCategoryId(e.target.value);
+                  setErrors((p) => ({ ...p, category: undefined }));
+                }}
+                className={`w-full appearance-none bg-[#F2F4F6] rounded-xl px-4 py-3 text-[15px] text-[#191F28] font-medium pr-10 outline-none focus:ring-2 focus:ring-[#3182F6]/20 transition-colors ${
+                  errors.category ? "ring-2 ring-[#E03131]/30" : ""
+                }`}
               >
                 {categories.map((cat) => (
                   <option key={cat.id} value={cat.id}>
@@ -285,8 +396,14 @@ export default function RecipeForm({
               </select>
               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8B95A1] pointer-events-none" />
             </div>
+            {errors.category && (
+              <p className="text-[13px] text-[#E03131]">{errors.category}</p>
+            )}
             <button
-              onClick={() => setShowNewCategory(true)}
+              onClick={() => {
+                setShowNewCategory(true);
+                setErrors((p) => ({ ...p, category: undefined }));
+              }}
               className="text-[13px] text-[#3182F6] font-semibold"
             >
               + 새 카테고리 만들기
@@ -296,16 +413,29 @@ export default function RecipeForm({
           <div className="space-y-2">
             <input
               value={newCategoryName}
-              onChange={(e) => setNewCategoryName(e.target.value)}
+              onChange={(e) => {
+                setNewCategoryName(e.target.value);
+                setErrors((p) => ({ ...p, category: undefined }));
+              }}
               placeholder="카테고리 이름 (예: 음료)"
-              className="w-full bg-[#F2F4F6] rounded-xl px-4 py-3 text-[15px] text-[#191F28] placeholder:text-[#8B95A1]"
+              className={`w-full bg-[#F2F4F6] rounded-xl px-4 py-3 text-[15px] text-[#191F28] placeholder:text-[#B0B8C1] outline-none focus:ring-2 focus:ring-[#3182F6]/20 transition-colors ${
+                errors.category ? "ring-2 ring-[#E03131]/30" : ""
+              }`}
             />
-            <button
-              onClick={() => setShowNewCategory(false)}
-              className="text-[13px] text-[#8B95A1] font-semibold"
-            >
-              기존 카테고리 선택하기
-            </button>
+            {errors.category && (
+              <p className="text-[13px] text-[#E03131]">{errors.category}</p>
+            )}
+            {categories.length > 0 && (
+              <button
+                onClick={() => {
+                  setShowNewCategory(false);
+                  setErrors((p) => ({ ...p, category: undefined }));
+                }}
+                className="text-[13px] text-[#8B95A1] font-semibold"
+              >
+                기존 카테고리 선택하기
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -314,18 +444,28 @@ export default function RecipeForm({
       <div className="bg-white rounded-[20px] p-5 border border-slate-100 space-y-4">
         <h2 className="text-[16px] font-bold text-[#191F28]">기본 정보</h2>
         <div className="space-y-3">
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="레시피 이름"
-            className="w-full bg-[#F2F4F6] rounded-xl px-4 py-3 text-[15px] text-[#191F28] placeholder:text-[#8B95A1]"
-          />
+          <div>
+            <input
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                setErrors((p) => ({ ...p, name: undefined }));
+              }}
+              placeholder="레시피 이름"
+              className={`w-full bg-[#F2F4F6] rounded-xl px-4 py-3 text-[15px] text-[#191F28] placeholder:text-[#B0B8C1] outline-none focus:ring-2 focus:ring-[#3182F6]/20 transition-colors ${
+                errors.name ? "ring-2 ring-[#E03131]/30" : ""
+              }`}
+            />
+            {errors.name && (
+              <p className="text-[13px] text-[#E03131] mt-1">{errors.name}</p>
+            )}
+          </div>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="레시피 설명 (선택)"
             rows={3}
-            className="w-full bg-[#F2F4F6] rounded-xl px-4 py-3 text-[15px] text-[#191F28] placeholder:text-[#8B95A1] resize-none"
+            className="w-full bg-[#F2F4F6] rounded-xl px-4 py-3 text-[15px] text-[#191F28] placeholder:text-[#B0B8C1] outline-none focus:ring-2 focus:ring-[#3182F6]/20 transition-colors resize-none"
           />
         </div>
 
@@ -339,6 +479,7 @@ export default function RecipeForm({
           </div>
           <button
             onClick={() => setIsPublished((p) => !p)}
+            aria-label={isPublished ? "비공개로 전환" : "공개로 전환"}
             className={`w-12 h-6 rounded-full transition-colors relative ${
               isPublished ? "bg-[#3182F6]" : "bg-[#E5E8EB]"
             }`}
@@ -373,7 +514,7 @@ export default function RecipeForm({
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={thumbnailUrl}
-                alt="thumbnail"
+                alt="썸네일 미리보기"
                 className="w-full aspect-video object-cover rounded-xl"
               />
               <button
@@ -381,7 +522,8 @@ export default function RecipeForm({
                   setThumbnailUrl(null);
                   setThumbnailFile(null);
                 }}
-                className="absolute top-2 right-2 w-8 h-8 bg-black/50 rounded-full flex items-center justify-center"
+                aria-label="썸네일 삭제"
+                className="absolute top-2 right-2 w-11 h-11 bg-black/50 rounded-full flex items-center justify-center"
               >
                 <Trash2 className="w-4 h-4 text-white" />
               </button>
@@ -422,7 +564,8 @@ export default function RecipeForm({
                   setVideoUrl(null);
                   setVideoFile(null);
                 }}
-                className="absolute top-2 right-2 w-8 h-8 bg-black/50 rounded-full flex items-center justify-center"
+                aria-label="영상 삭제"
+                className="absolute top-2 right-2 w-11 h-11 bg-black/50 rounded-full flex items-center justify-center"
               >
                 <Trash2 className="w-4 h-4 text-white" />
               </button>
@@ -450,20 +593,18 @@ export default function RecipeForm({
               className="border border-[#E5E8EB] rounded-xl p-4 space-y-3"
             >
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <GripVertical className="w-4 h-4 text-[#8B95A1]" />
-                  <div className="w-6 h-6 rounded-full bg-[#3182F6] flex items-center justify-center">
-                    <span className="text-[12px] font-bold text-white">
-                      {index + 1}
-                    </span>
-                  </div>
+                <div className="w-6 h-6 rounded-full bg-[#3182F6] flex items-center justify-center">
+                  <span className="text-[12px] font-bold text-white">
+                    {index + 1}
+                  </span>
                 </div>
                 {steps.length > 1 && (
                   <button
                     onClick={() => removeStep(index)}
-                    className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-red-50 transition-colors"
+                    aria-label={`${index + 1}단계 삭제`}
+                    className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-red-50 transition-colors"
                   >
-                    <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                    <Trash2 className="w-4 h-4 text-red-400" />
                   </button>
                 )}
               </div>
@@ -472,15 +613,24 @@ export default function RecipeForm({
                 value={step.title}
                 onChange={(e) => updateStep(index, "title", e.target.value)}
                 placeholder="단계 제목 (선택)"
-                className="w-full bg-[#F2F4F6] rounded-xl px-4 py-3 text-[14px] text-[#191F28] placeholder:text-[#8B95A1]"
+                className="w-full bg-[#F2F4F6] rounded-xl px-4 py-3 text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] outline-none focus:ring-2 focus:ring-[#3182F6]/20 transition-colors"
               />
-              <textarea
-                value={step.content}
-                onChange={(e) => updateStep(index, "content", e.target.value)}
-                placeholder="단계 설명"
-                rows={2}
-                className="w-full bg-[#F2F4F6] rounded-xl px-4 py-3 text-[14px] text-[#191F28] placeholder:text-[#8B95A1] resize-none"
-              />
+              <div>
+                <textarea
+                  value={step.content}
+                  onChange={(e) => updateStep(index, "content", e.target.value)}
+                  placeholder="단계 설명"
+                  rows={2}
+                  className={`w-full bg-[#F2F4F6] rounded-xl px-4 py-3 text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] outline-none focus:ring-2 focus:ring-[#3182F6]/20 transition-colors resize-none ${
+                    errors.steps?.[index] ? "ring-2 ring-[#E03131]/30" : ""
+                  }`}
+                />
+                {errors.steps?.[index] && (
+                  <p className="text-[13px] text-[#E03131] mt-1">
+                    {errors.steps[index]}
+                  </p>
+                )}
+              </div>
 
               {/* 단계 이미지 */}
               <div>
@@ -496,7 +646,7 @@ export default function RecipeForm({
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={step.image_url}
-                      alt={`step ${index + 1}`}
+                      alt={`${index + 1}단계 이미지`}
                       className="w-full aspect-video object-cover rounded-xl"
                     />
                     <button
@@ -504,9 +654,10 @@ export default function RecipeForm({
                         updateStep(index, "image_url", null);
                         updateStep(index, "imageFile", undefined);
                       }}
-                      className="absolute top-2 right-2 w-7 h-7 bg-black/50 rounded-full flex items-center justify-center"
+                      aria-label={`${index + 1}단계 이미지 삭제`}
+                      className="absolute top-2 right-2 w-11 h-11 bg-black/50 rounded-full flex items-center justify-center"
                     >
-                      <Trash2 className="w-3 h-3 text-white" />
+                      <Trash2 className="w-4 h-4 text-white" />
                     </button>
                   </div>
                 ) : (
@@ -538,7 +689,13 @@ export default function RecipeForm({
         disabled={saving}
         className="w-full py-4 bg-[#3182F6] text-white rounded-2xl text-[16px] font-bold disabled:opacity-60 active:scale-[0.98] transition-all"
       >
-        {saving ? "저장 중..." : isEdit ? "수정하기" : "레시피 추가하기"}
+        {saving
+          ? isEdit
+            ? "수정하는 중이에요..."
+            : "추가하는 중이에요..."
+          : isEdit
+          ? "수정하기"
+          : "레시피 추가하기"}
       </button>
     </div>
   );
