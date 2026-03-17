@@ -64,7 +64,8 @@ export default function RecipeDetailPage() {
       <header className="sticky top-0 z-10 flex items-center gap-3 px-5 py-4 bg-white/80 backdrop-blur-md border-b border-[#E5E8EB]">
         <button
           onClick={() => router.back()}
-          className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-[#F2F4F6] transition-colors"
+          aria-label="뒤로가기"
+          className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-[#F2F4F6] transition-colors"
         >
           <ChevronLeft className="w-5 h-5 text-[#191F28]" />
         </button>
