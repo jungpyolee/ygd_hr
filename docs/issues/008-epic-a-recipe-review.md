@@ -3,7 +3,7 @@
 | 항목 | 내용 |
 |------|------|
 | 유형 | 코드 리뷰 + 개선 계획 |
-| 상태 | 🔄 Phase 1 완료 / Phase 2 대기 |
+| 상태 | ✅ Phase 1·2 완료 / Phase 3 대기 |
 | 검토일 | 2026-03-17 |
 | 대상 파일 | `src/app/recipes/`, `src/app/admin/recipes/`, `src/components/recipe/RecipeForm.tsx` |
 
