@@ -13,6 +13,15 @@ const nextConfig: NextConfig = {
   webpack: (config) => {
     return config;
   },
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "ymvdjxzkjodasctktunh.supabase.co",
+        pathname: "/storage/v1/object/public/**",
+      },
+    ],
+  },
 };
 
 // 설정을 Serwist로 감싸서 export
