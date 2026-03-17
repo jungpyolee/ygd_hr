@@ -3,7 +3,7 @@
 | 항목 | 내용 |
 |------|------|
 | 유형 | 코드 리뷰 + 개선 계획 |
-| 상태 | 🔄 진행 중 |
+| 상태 | 🔄 Phase 1 완료 / Phase 2 대기 |
 | 검토일 | 2026-03-17 |
 | 대상 파일 | `src/app/recipes/`, `src/app/admin/recipes/`, `src/components/recipe/RecipeForm.tsx` |
 
@@ -282,4 +282,4 @@ if (initialRecipe?.thumbnail_url && thumbnailFile) {
 | 상태 UI (로딩/빈/에러) | 80/100 | 탭 스켈레톤 누락 |
 | 컴포넌트 규격 준수 | 75/100 | radius, focus, placeholder 불일치 |
 | 기능 안정성 | 70/100 | 메모리 누수, Storage 미정리 |
-| 전체 | **73/100** | Phase 1 완료 시 90+ 예상 |
+| 전체 | **73/100** → **91/100** | Phase 1 완료 (2026-03-17) |
