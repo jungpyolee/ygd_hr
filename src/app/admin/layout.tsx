@@ -20,6 +20,7 @@ import {
   Info,
   User,
   BookOpen,
+  CalendarDays,
 } from "lucide-react";
 
 export default function AdminLayout({
@@ -170,6 +171,11 @@ export default function AdminLayout({
       icon: <Clock className="w-5 h-5" />,
     },
     {
+      name: "스케줄 관리",
+      path: "/admin/schedules",
+      icon: <CalendarDays className="w-5 h-5" />,
+    },
+    {
       name: "레시피 관리",
       path: "/admin/recipes",
       icon: <BookOpen className="w-5 h-5" />,
@@ -189,6 +195,8 @@ export default function AdminLayout({
         return <CalendarClock className="w-4 h-4 text-green-500" />;
       case "attendance_out":
         return <CalendarClock className="w-4 h-4 text-orange-500" />;
+      case "substitute_requested":
+        return <CalendarDays className="w-4 h-4 text-purple-500" />;
       default:
         return <Info className="w-4 h-4 text-slate-400" />;
     }
@@ -220,6 +228,9 @@ export default function AdminLayout({
       case "attendance_out":
         // 근태 조회 페이지로 이동
         router.push("/admin/attendance");
+        break;
+      case "substitute_requested":
+        router.push("/admin/schedules/substitutes");
         break;
       default:
         // 기본값은 대시보드
