@@ -60,6 +60,11 @@ const CAFE_POSITION_LABELS: Record<string, string> = {
 };
 const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
 
+function timeToMinutes(t: string): number {
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + m;
+}
+
 function generateTimeOptions(startH: number, endH: number): string[] {
   const opts: string[] = [];
   for (let h = startH; h <= endH; h++) {
@@ -117,6 +122,11 @@ function SlotBottomSheet({
   const handleSave = async () => {
     if (!form.profile_id || !form.slot_date || !form.start_time || !form.end_time || !form.work_location) {
       toast.error("모든 필드를 입력해주세요.");
+      return;
+    }
+    // 시간 순서 검사
+    if (timeToMinutes(form.start_time) >= timeToMinutes(form.end_time)) {
+      toast.error("시작 시간이 종료 시간보다 늦어요", { description: "시간을 다시 확인해주세요." });
       return;
     }
     setSaving(true);
@@ -294,21 +304,19 @@ export default function AdminSchedulesPage() {
   const [loading, setLoading] = useState(true);
   const [confirming, setConfirming] = useState(false);
   const [copying, setCopying] = useState(false);
+  const [pendingSubCount, setPendingSubCount] = useState(0);
 
   // Bottom sheet state
   const [editSlot, setEditSlot] = useState<{ slot: Partial<ScheduleSlot> | null; defaultDate?: string; defaultProfileId?: string } | null>(null);
 
   const weekDates = getWeekDates(weekStart);
   const weekStartStr = format(weekStart, "yyyy-MM-dd");
-  const weekEndStr = weekDates[6];
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
-    // Profiles
     const { data: pData } = await supabase.from("profiles").select("id, name, color_hex").order("name");
     if (pData) setProfiles(pData);
 
-    // Weekly schedule
     const { data: wsData } = await supabase
       .from("weekly_schedules")
       .select("*")
@@ -316,7 +324,6 @@ export default function AdminSchedulesPage() {
       .maybeSingle();
     setWeeklySchedule(wsData);
 
-    // Slots for this week
     if (wsData) {
       const { data: slotData } = await supabase
         .from("schedule_slots")
@@ -330,11 +337,19 @@ export default function AdminSchedulesPage() {
     setLoading(false);
   }, [weekStartStr]);
 
+  const fetchPendingSubCount = useCallback(async () => {
+    const { count } = await supabase
+      .from("substitute_requests")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "pending");
+    setPendingSubCount(count ?? 0);
+  }, []);
+
   useEffect(() => {
     fetchAll();
-  }, [fetchAll]);
+    fetchPendingSubCount();
+  }, [fetchAll, fetchPendingSubCount]);
 
-  // Get or create weekly schedule
   const getOrCreateWeeklySchedule = async (): Promise<string | null> => {
     if (weeklySchedule) return weeklySchedule.id;
     const { data: existing } = await supabase
@@ -354,6 +369,31 @@ export default function AdminSchedulesPage() {
   };
 
   const handleSaveSlot = async (data: Partial<ScheduleSlot>, isNew: boolean) => {
+    // 1. 시간 순서 검사 (bottom sheet에서도 하지만 이중 방어)
+    const startMin = timeToMinutes(data.start_time!);
+    const endMin = timeToMinutes(data.end_time!);
+    if (startMin >= endMin) {
+      toast.error("시작 시간이 종료 시간보다 늦어요", { description: "시간을 다시 확인해주세요." });
+      return;
+    }
+
+    // 2. 같은 직원·날짜 겹치는 근무 검사
+    const sameDay = slots.filter((s) =>
+      s.profile_id === data.profile_id &&
+      s.slot_date === data.slot_date &&
+      s.status === "active" &&
+      (isNew ? true : s.id !== data.id)
+    );
+    const hasOverlap = sameDay.some((s) => {
+      const sStart = timeToMinutes(s.start_time);
+      const sEnd = timeToMinutes(s.end_time);
+      return startMin < sEnd && endMin > sStart;
+    });
+    if (hasOverlap) {
+      toast.error("겹치는 근무가 있어요", { description: "같은 날 다른 근무 시간과 겹쳐요." });
+      return;
+    }
+
     const wsId = await getOrCreateWeeklySchedule();
     if (!wsId) return;
 
@@ -418,7 +458,6 @@ export default function AdminSchedulesPage() {
     const wsId = await getOrCreateWeeklySchedule();
     if (!wsId) { setCopying(false); return; }
 
-    // Map previous week dates to current week dates
     const prevWeekDates = getWeekDates(subWeeks(weekStart, 1));
     const newSlots = prevSlots.map((s: ScheduleSlot) => {
       const dayIndex = prevWeekDates.indexOf(s.slot_date);
@@ -454,7 +493,6 @@ export default function AdminSchedulesPage() {
 
     if (error) { toast.error("확정에 실패했어요", { description: error.message }); setConfirming(false); return; }
 
-    // Send notifications to affected employees
     const affectedProfileIds = [...new Set(slots.map((s) => s.profile_id))];
     if (affectedProfileIds.length > 0) {
       const notifications = affectedProfileIds.map((pid) => ({
@@ -512,8 +550,9 @@ export default function AdminSchedulesPage() {
                 {weekDates.map((d) => {
                   const daySlots = slots.filter((s) => s.profile_id === profile.id && s.slot_date === d);
                   return (
-                    <td key={d} className="px-1 py-2 align-top">
-                      <div className="space-y-1">
+                    // align-middle: 슬롯이 있어 행이 길어져도 + 버튼이 셀 중앙에 위치
+                    <td key={d} className="px-1 py-2 align-middle">
+                      <div className="flex flex-col items-stretch gap-1">
                         {daySlots.map((slot) => (
                           <button
                             key={slot.id}
@@ -549,13 +588,10 @@ export default function AdminSchedulesPage() {
     const hourStart = 7;
     const hourEnd = 22;
     const hours = Array.from({ length: hourEnd - hourStart + 1 }, (_, i) => hourStart + i);
-
-    // Find weekly schedule containing this date
     const daySlots = slots.filter((s) => s.slot_date === dateStr);
 
     return (
       <div>
-        {/* Date navigator */}
         <div className="flex items-center justify-center gap-2 mb-4">
           <button
             onClick={() => setDailyDate((d) => { const nd = new Date(d); nd.setDate(nd.getDate() - 1); return nd; })}
@@ -576,7 +612,6 @@ export default function AdminSchedulesPage() {
 
         <div className="overflow-x-auto">
           <div className="min-w-[800px]">
-            {/* Time header */}
             <div className="flex">
               <div className="w-[80px] shrink-0" />
               {hours.map((h) => (
@@ -586,7 +621,6 @@ export default function AdminSchedulesPage() {
               ))}
             </div>
 
-            {/* Employee rows */}
             {profiles.map((profile) => {
               const empSlots = daySlots.filter((s) => s.profile_id === profile.id);
               return (
@@ -601,7 +635,6 @@ export default function AdminSchedulesPage() {
                     <span className="text-[12px] font-bold text-[#191F28] truncate">{profile.name}</span>
                   </div>
                   <div className="flex-1 relative h-[52px]">
-                    {/* Background grid */}
                     <div className="absolute inset-0 flex">
                       {hours.map((h) => (
                         <div
@@ -615,8 +648,6 @@ export default function AdminSchedulesPage() {
                         />
                       ))}
                     </div>
-
-                    {/* Slot bars */}
                     {empSlots.map((slot) => {
                       const totalHours = hourEnd - hourStart;
                       const startH = parseInt(slot.start_time.split(":")[0]) + parseInt(slot.start_time.split(":")[1]) / 60;
@@ -645,7 +676,6 @@ export default function AdminSchedulesPage() {
               );
             })}
 
-            {/* Hourly headcount row */}
             <div className="flex border-t-2 border-slate-200 bg-[#F9FAFB]">
               <div className="w-[80px] shrink-0 px-2 py-2 text-[11px] font-bold text-[#8B95A1]">인원</div>
               {hours.map((h) => {
@@ -676,26 +706,22 @@ export default function AdminSchedulesPage() {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-[#191F28] mb-1">스케줄 관리</h1>
-          <p className="text-[14px] text-[#8B95A1]">
-            직원 근무 일정을 관리하고 확정해요.
-          </p>
+          <p className="text-[14px] text-[#8B95A1]">직원 근무 일정을 관리하고 확정해요.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {/* 대체근무 관리 — pending 뱃지 */}
           <Link
             href="/admin/schedules/substitutes"
-            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-[#4E5968] rounded-xl text-[13px] font-bold hover:bg-[#F2F4F6] transition-all"
+            className="relative flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-[#4E5968] rounded-xl text-[13px] font-bold hover:bg-[#F2F4F6] transition-all"
           >
             <ArrowRightLeft className="w-4 h-4" />
             대체근무 관리
+            {pendingSubCount > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 leading-none">
+                {pendingSubCount > 9 ? "9+" : pendingSubCount}
+              </span>
+            )}
           </Link>
-          <button
-            onClick={handleCopyPrevWeek}
-            disabled={copying}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-[#4E5968] rounded-xl text-[13px] font-bold hover:bg-[#F2F4F6] transition-all disabled:opacity-50"
-          >
-            <Copy className="w-4 h-4" />
-            {copying ? "복사 중..." : "이전 주 복사"}
-          </button>
           <button
             onClick={handleConfirmSchedule}
             disabled={confirming || weeklySchedule?.status === "confirmed"}
@@ -711,16 +737,16 @@ export default function AdminSchedulesPage() {
         </div>
       </div>
 
-      {/* Week Navigator */}
+      {/* Week Navigator — 뱃지를 absolute로 분리해서 화살표 중앙 고정 */}
       {tab === "weekly" && (
-        <div className="flex items-center justify-center gap-2 mb-4">
+        <div className="relative flex items-center justify-center gap-2 mb-4">
           <button
             onClick={() => setWeekStart((w) => subWeeks(w, 1))}
             className="p-2 rounded-full hover:bg-[#F2F4F6] text-[#8B95A1]"
           >
             <ChevronLeft className="w-5 h-5" />
           </button>
-          <span className="font-bold text-[#191F28] text-[15px]">
+          <span className="font-bold text-[#191F28] text-[15px] min-w-[220px] text-center">
             {format(weekStart, "yyyy년 M월 d일", { locale: ko })} ~{" "}
             {format(addDays(weekStart, 6), "M월 d일", { locale: ko })}
           </span>
@@ -730,28 +756,46 @@ export default function AdminSchedulesPage() {
           >
             <ChevronRight className="w-5 h-5" />
           </button>
-          {/* Status badge */}
-          {weeklySchedule && (
-            <span className={`ml-2 px-2 py-0.5 rounded-full text-[11px] font-bold ${
-              weeklySchedule.status === "confirmed" ? "bg-[#E6FAF0] text-[#00B761]" : "bg-[#FFF3BF] text-[#E67700]"
-            }`}>
-              {weeklySchedule.status === "confirmed" ? "확정" : "초안"}
+          {/* 뱃지: absolute 우측 고정 — 네비게이터 중앙 위치에 영향 없음 */}
+          <div className="absolute right-0">
+            <span
+              className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${
+                !weeklySchedule
+                  ? "invisible"
+                  : weeklySchedule.status === "confirmed"
+                  ? "bg-[#E6FAF0] text-[#00B761]"
+                  : "bg-[#FFF3BF] text-[#E67700]"
+              }`}
+            >
+              {weeklySchedule?.status === "confirmed" ? "확정" : "초안"}
             </span>
-          )}
+          </div>
         </div>
       )}
 
-      {/* Tab switcher */}
-      <div className="flex bg-[#F2F4F6] p-1 rounded-xl w-fit mb-4">
-        {(["weekly", "daily"] as const).map((t) => (
+      {/* Tab switcher + 이전 주 복사 (주간 탭일 때만) */}
+      <div className="flex items-center gap-3 mb-4">
+        <div className="flex bg-[#F2F4F6] p-1 rounded-xl">
+          {(["weekly", "daily"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`px-5 py-2 rounded-lg text-[13px] font-bold transition-all ${tab === t ? "bg-white text-[#191F28] shadow-sm" : "text-[#8B95A1]"}`}
+            >
+              {t === "weekly" ? "주간" : "일간"}
+            </button>
+          ))}
+        </div>
+        {tab === "weekly" && (
           <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-5 py-2 rounded-lg text-[13px] font-bold transition-all ${tab === t ? "bg-white text-[#191F28] shadow-sm" : "text-[#8B95A1]"}`}
+            onClick={handleCopyPrevWeek}
+            disabled={copying}
+            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 text-[#4E5968] rounded-xl text-[13px] font-bold hover:bg-[#F2F4F6] transition-all disabled:opacity-50"
           >
-            {t === "weekly" ? "주간" : "일간"}
+            <Copy className="w-3.5 h-3.5" />
+            {copying ? "복사 중..." : "이전 주 복사"}
           </button>
-        ))}
+        )}
       </div>
 
       {/* Content */}
