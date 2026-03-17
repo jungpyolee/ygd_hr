@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-import { Plus, BookOpen, Pencil, Eye, EyeOff, Trash2, Copy, Search, X, Settings2 } from "lucide-react";
+import { Plus, BookOpen, Eye, EyeOff, Trash2, Copy, Search, X, Settings2 } from "lucide-react";
 import Image from "next/image";
 import { toast } from "sonner";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
@@ -241,7 +241,8 @@ export default function AdminRecipesPage() {
           {filtered.map((recipe) => (
             <div
               key={recipe.id}
-              className="bg-white rounded-[20px] p-4 border border-slate-100 flex items-center gap-4"
+              onClick={() => router.push(`/admin/recipes/${recipe.id}/edit`)}
+              className="bg-white rounded-[20px] p-4 border border-slate-100 flex items-center gap-4 cursor-pointer active:bg-[#F2F4F6] transition-colors"
             >
               {recipe.thumbnail_url ? (
                 <div className="relative w-16 h-16 rounded-[12px] overflow-hidden shrink-0 bg-[#F2F4F6]">
@@ -282,14 +283,14 @@ export default function AdminRecipesPage() {
 
               <div className="flex items-center gap-1 shrink-0">
                 <button
-                  onClick={() => copyRecipe(recipe)}
+                  onClick={(e) => { e.stopPropagation(); copyRecipe(recipe); }}
                   aria-label="레시피 복사"
                   className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-[#F2F4F6] transition-colors"
                 >
                   <Copy className="w-4 h-4 text-[#4E5968]" />
                 </button>
                 <button
-                  onClick={() => togglePublish(recipe)}
+                  onClick={(e) => { e.stopPropagation(); togglePublish(recipe); }}
                   aria-label={recipe.is_published ? "비공개로 전환" : "공개로 전환"}
                   className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-[#F2F4F6] transition-colors"
                 >
@@ -300,16 +301,7 @@ export default function AdminRecipesPage() {
                   )}
                 </button>
                 <button
-                  onClick={() =>
-                    router.push(`/admin/recipes/${recipe.id}/edit`)
-                  }
-                  aria-label="레시피 수정"
-                  className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-[#F2F4F6] transition-colors"
-                >
-                  <Pencil className="w-4 h-4 text-[#4E5968]" />
-                </button>
-                <button
-                  onClick={() => setDeleteTarget(recipe)}
+                  onClick={(e) => { e.stopPropagation(); setDeleteTarget(recipe); }}
                   aria-label="레시피 삭제"
                   className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-red-50 transition-colors"
                 >
