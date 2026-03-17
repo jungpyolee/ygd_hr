@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase";
-import { AlertCircle, LogOut, UserCircle, LayoutDashboard } from "lucide-react";
+import { AlertCircle, LogOut, UserCircle, LayoutDashboard, BookOpen } from "lucide-react";
 import dynamic from "next/dynamic";
 import WeeklyWorkStats from "@/components/WeeklyWorkStats";
 import OnboardingFunnel from "@/components/OnboardingFunnel";
@@ -206,6 +206,20 @@ export default function HomePage() {
           locationState={locationState}
           radius={RADIUS_METER}
         />
+
+        {/* 레시피 바로가기 */}
+        <button
+          onClick={() => router.push("/recipes")}
+          className="w-full flex items-center gap-4 bg-white rounded-[28px] p-5 border border-slate-100 text-left active:scale-[0.98] transition-transform"
+        >
+          <div className="w-10 h-10 bg-[#E8F3FF] rounded-full flex items-center justify-center shrink-0">
+            <BookOpen className="w-5 h-5 text-[#3182F6]" />
+          </div>
+          <div>
+            <p className="text-[15px] font-bold text-[#333D4B]">레시피 보기</p>
+            <p className="text-sm text-[#6B7684]">음료 레시피를 확인해요</p>
+          </div>
+        </button>
 
         {/* 헬퍼 메시지 */}
         <section className="flex items-center justify-between bg-white rounded-[28px] p-5 border border-slate-100 mt-4">

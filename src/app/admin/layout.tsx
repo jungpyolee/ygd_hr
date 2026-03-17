@@ -19,6 +19,7 @@ import {
   UserPlus,
   Info,
   User,
+  BookOpen,
 } from "lucide-react";
 
 export default function AdminLayout({
@@ -167,6 +168,11 @@ export default function AdminLayout({
       name: "근태 조회",
       path: "/admin/attendance",
       icon: <Clock className="w-5 h-5" />,
+    },
+    {
+      name: "레시피 관리",
+      path: "/admin/recipes",
+      icon: <BookOpen className="w-5 h-5" />,
     },
     {
       name: "직원 모드로 변경",
