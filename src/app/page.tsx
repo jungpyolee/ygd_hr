@@ -71,9 +71,9 @@ export default function HomePage() {
       setProfile(profileData);
     }
 
-    // 매장 & 최근 로그 가져오기
+    // 매장 & 최근 로그 가져오기 (목동 매장 제외)
     const { data: storeData } = await supabase.from("stores").select("*");
-    if (storeData) setStores(storeData);
+    if (storeData) setStores(storeData.filter((s) => s.name !== "목동"));
 
     const { data: logData } = await supabase
       .from("attendance_logs")
