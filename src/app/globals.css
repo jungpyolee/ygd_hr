@@ -140,6 +140,17 @@ body,
 * {
   -ms-overflow-style: none;
   scrollbar-width: none;
+  /* Android Chrome 텍스트 선택 → 구글 검색 바텀시트 방지 */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* 입력 필드는 텍스트 선택 허용 */
+input,
+textarea,
+[contenteditable] {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 html::-webkit-scrollbar,
