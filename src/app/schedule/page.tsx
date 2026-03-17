@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase";
 import { toast } from "sonner";
-import { ChevronLeft, ChevronRight, Calendar, MapPin, Clock, ArrowRightLeft, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar, MapPin, Clock, ArrowRightLeft, X, Check } from "lucide-react";
 import { format, addWeeks, subWeeks, startOfWeek, addDays, isSameDay, isToday } from "date-fns";
 import { ko } from "date-fns/locale";
 import Link from "next/link";
@@ -19,6 +19,22 @@ interface ScheduleSlot {
   cafe_positions: string[];
   status: string;
   notes: string | null;
+}
+
+interface SubstituteRequest {
+  id: string;
+  slot_id: string;
+  requester_id: string;
+  reason: string | null;
+  status: string;
+  eligible_profile_ids: string[];
+  accepted_by: string | null;
+  requester_name: string;
+  slot_date: string;
+  start_time: string;
+  end_time: string;
+  work_location: string;
+  cafe_positions: string[];
 }
 
 const LOCATION_LABELS: Record<string, string> = {
@@ -59,6 +75,10 @@ export default function SchedulePage() {
   const [requestTarget, setRequestTarget] = useState<ScheduleSlot | null>(null);
   const [requestReason, setRequestReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  // Incoming substitute requests (대타 수락/거절)
+  const [incomingRequests, setIncomingRequests] = useState<SubstituteRequest[]>([]);
+  const [respondingId, setRespondingId] = useState<string | null>(null);
 
   useEffect(() => {
     const init = async () => {
@@ -104,9 +124,158 @@ export default function SchedulePage() {
     setLoading(false);
   }, [profileId, weekStart]);
 
+  const fetchIncomingRequests = useCallback(async () => {
+    if (!profileId) return;
+
+    // Fetch approved substitute requests where current user is eligible and hasn't responded yet
+    const { data: requests } = await supabase
+      .from("substitute_requests")
+      .select(`
+        id, slot_id, requester_id, reason, status, eligible_profile_ids, accepted_by,
+        schedule_slots!slot_id(slot_date, start_time, end_time, work_location, cafe_positions),
+        profiles!requester_id(name)
+      `)
+      .eq("status", "approved");
+
+    if (!requests) return;
+
+    // Filter: current user is in eligible_profile_ids AND not already responded
+    const eligibleRequests = requests.filter((r: any) =>
+      Array.isArray(r.eligible_profile_ids) && r.eligible_profile_ids.includes(profileId)
+    );
+
+    if (eligibleRequests.length === 0) {
+      setIncomingRequests([]);
+      return;
+    }
+
+    const requestIds = eligibleRequests.map((r: any) => r.id);
+    const { data: responses } = await supabase
+      .from("substitute_responses")
+      .select("request_id")
+      .eq("profile_id", profileId)
+      .in("request_id", requestIds);
+
+    const respondedIds = new Set((responses || []).map((r: any) => r.request_id));
+
+    const pendingRequests: SubstituteRequest[] = eligibleRequests
+      .filter((r: any) => !respondedIds.has(r.id))
+      .map((r: any) => ({
+        id: r.id,
+        slot_id: r.slot_id,
+        requester_id: r.requester_id,
+        reason: r.reason,
+        status: r.status,
+        eligible_profile_ids: r.eligible_profile_ids,
+        accepted_by: r.accepted_by,
+        requester_name: r.profiles?.name || "알 수 없음",
+        slot_date: r.schedule_slots?.slot_date || "",
+        start_time: r.schedule_slots?.start_time || "",
+        end_time: r.schedule_slots?.end_time || "",
+        work_location: r.schedule_slots?.work_location || "",
+        cafe_positions: r.schedule_slots?.cafe_positions || [],
+      }));
+
+    setIncomingRequests(pendingRequests);
+  }, [profileId]);
+
   useEffect(() => {
-    if (profileId) fetchSlots();
-  }, [fetchSlots, profileId]);
+    if (profileId) {
+      fetchSlots();
+      fetchIncomingRequests();
+    }
+  }, [fetchSlots, fetchIncomingRequests, profileId]);
+
+  const handleAcceptSubstitute = async (req: SubstituteRequest) => {
+    if (!profileId) return;
+    setRespondingId(req.id);
+
+    // 1. INSERT substitute_responses (accepted)
+    const { error: respError } = await supabase.from("substitute_responses").insert({
+      request_id: req.id,
+      profile_id: profileId,
+      response: "accepted",
+    });
+    if (respError) {
+      toast.error("수락에 실패했어요", { description: respError.message });
+      setRespondingId(null);
+      return;
+    }
+
+    // 2. UPDATE substitute_requests: status='filled', accepted_by
+    await supabase.from("substitute_requests").update({
+      status: "filled",
+      accepted_by: profileId,
+      accepted_at: new Date().toISOString(),
+    }).eq("id", req.id);
+
+    // 3. UPDATE original schedule_slot: status='substituted'
+    await supabase.from("schedule_slots").update({ status: "substituted" }).eq("id", req.slot_id);
+
+    // 4. Fetch original slot's weekly_schedule_id to create new slot for acceptor
+    const { data: origSlot } = await supabase
+      .from("schedule_slots")
+      .select("weekly_schedule_id")
+      .eq("id", req.slot_id)
+      .single();
+
+    if (origSlot) {
+      await supabase.from("schedule_slots").insert({
+        weekly_schedule_id: origSlot.weekly_schedule_id,
+        profile_id: profileId,
+        slot_date: req.slot_date,
+        start_time: req.start_time,
+        end_time: req.end_time,
+        work_location: req.work_location,
+        cafe_positions: req.cafe_positions,
+        status: "active",
+      });
+    }
+
+    // 5. Notify requester
+    const slotDateLabel = req.slot_date ? format(new Date(req.slot_date), "M월 d일", { locale: ko }) : "";
+    await supabase.from("notifications").insert([
+      {
+        profile_id: req.requester_id,
+        target_role: "employee",
+        type: "substitute_filled",
+        title: "대타가 구해졌어요",
+        content: `${slotDateLabel} ${LOCATION_LABELS[req.work_location] || req.work_location} 대타가 확정됐어요.`,
+        source_id: req.id,
+      },
+      {
+        target_role: "admin",
+        type: "substitute_filled",
+        title: "대타가 구해졌어요",
+        content: `${slotDateLabel} ${LOCATION_LABELS[req.work_location] || req.work_location} 대타가 확정됐어요.`,
+        source_id: req.id,
+      },
+    ]);
+
+    toast.success("대타를 수락했어요", { description: `${slotDateLabel} 근무가 추가됐어요.` });
+    setRespondingId(null);
+    fetchIncomingRequests();
+    fetchSlots();
+  };
+
+  const handleDeclineSubstitute = async (req: SubstituteRequest) => {
+    if (!profileId) return;
+    setRespondingId(req.id);
+
+    const { error } = await supabase.from("substitute_responses").insert({
+      request_id: req.id,
+      profile_id: profileId,
+      response: "declined",
+    });
+
+    if (error) {
+      toast.error("거절에 실패했어요", { description: error.message });
+    } else {
+      toast.success("거절했어요");
+      fetchIncomingRequests();
+    }
+    setRespondingId(null);
+  };
 
   const selectedDateStr = format(selectedDay, "yyyy-MM-dd");
   const selectedSlots = slots.filter((s) => s.slot_date === selectedDateStr);
@@ -292,6 +461,77 @@ export default function SchedulePage() {
             </div>
           )}
         </div>
+
+        {/* 나에게 온 대타 요청 섹션 */}
+        {incomingRequests.length > 0 && (
+          <div className="mt-2">
+            <h2 className="text-[16px] font-bold text-[#191F28] mb-3 flex items-center gap-2">
+              나에게 온 대타 요청
+              <span className="bg-red-500 text-white text-[11px] font-bold px-1.5 py-0.5 rounded-full">
+                {incomingRequests.length}
+              </span>
+            </h2>
+            <div className="space-y-3">
+              {incomingRequests.map((req) => {
+                const isResponding = respondingId === req.id;
+                const slotDate = req.slot_date ? new Date(req.slot_date + "T00:00:00") : null;
+                return (
+                  <div
+                    key={req.id}
+                    className="bg-white rounded-[20px] p-5 border border-orange-100 shadow-[0_2px_10px_rgba(0,0,0,0.03)]"
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-[14px] font-bold text-[#191F28]">
+                        {req.requester_name}님의 대타 요청
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span
+                        className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[12px] font-bold"
+                        style={{
+                          backgroundColor: LOCATION_BG[req.work_location] || "#F2F4F6",
+                          color: LOCATION_COLORS[req.work_location] || "#4E5968",
+                        }}
+                      >
+                        <MapPin className="w-3 h-3" />
+                        {LOCATION_LABELS[req.work_location] || req.work_location}
+                      </span>
+                      {slotDate && (
+                        <span className="text-[13px] font-bold text-[#4E5968]">
+                          {format(slotDate, "M월 d일 EEEE", { locale: ko })}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[15px] font-bold text-[#191F28] mb-1">
+                      {req.start_time?.slice(0, 5)} ~ {req.end_time?.slice(0, 5)}
+                    </p>
+                    {req.reason && (
+                      <p className="text-[13px] text-[#8B95A1] mb-3">&quot;{req.reason}&quot;</p>
+                    )}
+                    {!req.reason && <div className="mb-3" />}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleDeclineSubstitute(req)}
+                        disabled={isResponding}
+                        className="flex-1 py-2.5 bg-[#F2F4F6] text-[#4E5968] rounded-xl text-[14px] font-bold disabled:opacity-50 active:scale-[0.97] transition-all"
+                      >
+                        거절하기
+                      </button>
+                      <button
+                        onClick={() => handleAcceptSubstitute(req)}
+                        disabled={isResponding}
+                        className="flex-1 py-2.5 bg-[#3182F6] text-white rounded-xl text-[14px] font-bold disabled:opacity-50 active:scale-[0.97] transition-all flex items-center justify-center gap-1.5"
+                      >
+                        <Check className="w-4 h-4" />
+                        수락하기
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Substitute Request Bottom Sheet */}

@@ -2,12 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase";
-import { startOfWeek, differenceInMinutes } from "date-fns";
+import { startOfWeek, addDays, format, differenceInMinutes } from "date-fns";
 import { TrendingUp, ChevronRight } from "lucide-react";
 import Link from "next/link";
 
 export default function WeeklyWorkStats() {
   const [weeklyMinutes, setWeeklyMinutes] = useState(0);
+  const [plannedMinutes, setPlannedMinutes] = useState<number | null>(null);
   const [dailyMinutes, setDailyMinutes] = useState<number[]>(
     new Array(7).fill(0)
   );
@@ -26,13 +27,20 @@ export default function WeeklyWorkStats() {
       } = await supabase.auth.getUser();
       if (!user) return;
 
-      const start = startOfWeek(new Date(), { weekStartsOn: 1 });
+      // Week starts on Monday for stats display
+      const weekStartMon = startOfWeek(new Date(), { weekStartsOn: 1 });
+      // Week starts on Sunday for schedule query (matches weekly_schedules.week_start)
+      const weekStartSun = startOfWeek(new Date(), { weekStartsOn: 0 });
+      const weekEndSun = addDays(weekStartSun, 6);
+      const weekStartStr = format(weekStartSun, "yyyy-MM-dd");
+      const weekEndStr = format(weekEndSun, "yyyy-MM-dd");
 
+      // 1. Fetch actual work hours (existing logic)
       const { data: logs, error } = await supabase
         .from("attendance_logs")
         .select("type, created_at")
         .eq("profile_id", user.id)
-        .gte("created_at", start.toISOString())
+        .gte("created_at", weekStartMon.toISOString())
         .order("created_at", { ascending: true });
 
       if (error) {
@@ -68,6 +76,39 @@ export default function WeeklyWorkStats() {
 
       setWeeklyMinutes(totalMins);
       setDailyMinutes([...dailyMins]);
+
+      // 2. Fetch planned hours from confirmed schedule_slots
+      const { data: wsData } = await supabase
+        .from("weekly_schedules")
+        .select("id")
+        .eq("status", "confirmed")
+        .gte("week_start", weekStartStr)
+        .lte("week_start", weekEndStr);
+
+      if (wsData && wsData.length > 0) {
+        const wsIds = wsData.map((ws: { id: string }) => ws.id);
+        const { data: slotData } = await supabase
+          .from("schedule_slots")
+          .select("start_time, end_time")
+          .eq("profile_id", user.id)
+          .eq("status", "active")
+          .in("weekly_schedule_id", wsIds);
+
+        if (slotData && slotData.length > 0) {
+          let plannedTotal = 0;
+          slotData.forEach((slot: { start_time: string; end_time: string }) => {
+            const [sh, sm] = slot.start_time.split(":").map(Number);
+            const [eh, em] = slot.end_time.split(":").map(Number);
+            plannedTotal += (eh * 60 + em) - (sh * 60 + sm);
+          });
+          setPlannedMinutes(plannedTotal > 0 ? plannedTotal : null);
+        } else {
+          setPlannedMinutes(null);
+        }
+      } else {
+        setPlannedMinutes(null);
+      }
+
       setLoading(false);
     };
 
@@ -77,6 +118,7 @@ export default function WeeklyWorkStats() {
   const formatWorkTime = (totalMinutes: number) => {
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
+    if (minutes === 0) return `${hours}시간`;
     return `${hours}시간 ${minutes}분`;
   };
 
@@ -92,17 +134,35 @@ export default function WeeklyWorkStats() {
         </div>
 
         <div className="flex justify-between items-end">
-          <div className="space-y-1">
+          <div className="space-y-2">
             {loading ? (
-              <div className="h-9 w-32 bg-slate-100 animate-pulse rounded-lg" />
+              <>
+                <div className="h-5 w-40 bg-slate-100 animate-pulse rounded-lg" />
+                <div className="h-9 w-32 bg-slate-100 animate-pulse rounded-lg" />
+              </>
             ) : (
-              <p className="text-3xl font-bold text-[#191F28]">
-                {formatWorkTime(weeklyMinutes)}
-              </p>
+              <>
+                {plannedMinutes !== null && plannedMinutes > 0 && (
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-[13px] font-semibold text-[#8B95A1] w-8">예정</span>
+                    <span className="text-[17px] font-bold text-[#4E5968]">
+                      {formatWorkTime(plannedMinutes)}
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-baseline gap-2">
+                  {plannedMinutes !== null && plannedMinutes > 0 && (
+                    <span className="text-[13px] font-semibold text-[#8B95A1] w-8">실적</span>
+                  )}
+                  <p className="text-3xl font-bold text-[#191F28]">
+                    {formatWorkTime(weeklyMinutes)}
+                  </p>
+                </div>
+                <p className="text-sm text-[#8B95A1]">
+                  월요일부터 지금까지 일한 시간이에요
+                </p>
+              </>
             )}
-            <p className="text-sm text-[#8B95A1]">
-              월요일부터 지금까지 일한 시간이에요
-            </p>
           </div>
 
           {/* 요일별 바 그래프 영역 */}
@@ -111,12 +171,11 @@ export default function WeeklyWorkStats() {
               const isToday = index === todayIndex;
               const mins = dailyMinutes[index];
               const maxMins = Math.max(...dailyMinutes, 60);
-              // 8시간(480분) 기준 퍼센트 계산
               // 데이터가 있으면 최소 20% 높이 보장, 없으면 10%
               const heightPercent = loading
                 ? 15
                 : mins > 0
-                ? Math.max(20, (mins / maxMins) * 100) // 8시간 대신 maxMins 기준
+                ? Math.max(20, (mins / maxMins) * 100)
                 : 10;
 
               return (
