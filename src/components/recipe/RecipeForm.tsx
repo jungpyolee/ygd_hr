@@ -3,11 +3,28 @@
 import { useState, useRef, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, ImageIcon, Video, ChevronDown } from "lucide-react";
+import { Plus, Trash2, ImageIcon, Video, ChevronDown, GripVertical } from "lucide-react";
 import { toast } from "sonner";
 import type { RecipeCategory, RecipeItem, RecipeStep } from "@/types/recipe";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 interface StepDraft {
+  dndId: string;
   id?: string;
   step_number: number;
   title: string;
@@ -26,6 +43,133 @@ interface RecipeFormProps {
   categories: RecipeCategory[];
   initialRecipe?: RecipeItem;
   initialSteps?: RecipeStep[];
+}
+
+interface SortableStepProps {
+  step: StepDraft;
+  index: number;
+  isOnly: boolean;
+  errors?: Record<number, string>;
+  onUpdate: (index: number, field: keyof StepDraft, value: unknown) => void;
+  onRemove: (index: number) => void;
+  onImageChange: (index: number, e: React.ChangeEvent<HTMLInputElement>) => void;
+}
+
+function SortableStep({
+  step,
+  index,
+  isOnly,
+  errors,
+  onUpdate,
+  onRemove,
+  onImageChange,
+}: SortableStepProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: step.dndId });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="border border-[#E5E8EB] rounded-xl p-4 space-y-3 bg-white"
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <button
+            {...attributes}
+            {...listeners}
+            aria-label={`${index + 1}단계 순서 변경`}
+            className="w-8 h-8 flex items-center justify-center text-[#8B95A1] cursor-grab active:cursor-grabbing touch-none"
+          >
+            <GripVertical className="w-4 h-4" />
+          </button>
+          <div className="w-6 h-6 rounded-full bg-[#3182F6] flex items-center justify-center">
+            <span className="text-[12px] font-bold text-white">{index + 1}</span>
+          </div>
+        </div>
+        {!isOnly && (
+          <button
+            onClick={() => onRemove(index)}
+            aria-label={`${index + 1}단계 삭제`}
+            className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-red-50 transition-colors"
+          >
+            <Trash2 className="w-4 h-4 text-red-400" />
+          </button>
+        )}
+      </div>
+
+      <input
+        value={step.title}
+        onChange={(e) => onUpdate(index, "title", e.target.value)}
+        placeholder="단계 제목 (선택)"
+        className="w-full bg-[#F2F4F6] rounded-xl px-4 py-3 text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] outline-none focus:ring-2 focus:ring-[#3182F6]/20 transition-colors"
+      />
+      <div>
+        <textarea
+          value={step.content}
+          onChange={(e) => onUpdate(index, "content", e.target.value)}
+          placeholder="단계 설명"
+          rows={2}
+          className={`w-full bg-[#F2F4F6] rounded-xl px-4 py-3 text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] outline-none focus:ring-2 focus:ring-[#3182F6]/20 transition-colors resize-none ${
+            errors?.[index] ? "ring-2 ring-[#E03131]/30" : ""
+          }`}
+        />
+        {errors?.[index] && (
+          <p className="text-[13px] text-[#E03131] mt-1">{errors[index]}</p>
+        )}
+      </div>
+
+      <div>
+        <input
+          type="file"
+          accept="image/*"
+          className="hidden"
+          id={`step-img-${index}`}
+          onChange={(e) => onImageChange(index, e)}
+        />
+        {step.image_url ? (
+          <div className="relative">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={step.image_url}
+              alt={`${index + 1}단계 이미지`}
+              className="w-full aspect-video object-cover rounded-xl"
+            />
+            <button
+              onClick={() => {
+                onUpdate(index, "image_url", null);
+                onUpdate(index, "imageFile", undefined);
+              }}
+              aria-label={`${index + 1}단계 이미지 삭제`}
+              className="absolute top-2 right-2 w-11 h-11 bg-black/50 rounded-full flex items-center justify-center"
+            >
+              <Trash2 className="w-4 h-4 text-white" />
+            </button>
+          </div>
+        ) : (
+          <label
+            htmlFor={`step-img-${index}`}
+            className="flex items-center gap-2 text-[12px] text-[#3182F6] font-semibold cursor-pointer"
+          >
+            <ImageIcon className="w-3.5 h-3.5" />
+            이미지 추가하기
+          </label>
+        )}
+      </div>
+    </div>
+  );
 }
 
 const getStoragePath = (url: string): string | null => {
@@ -75,14 +219,33 @@ export default function RecipeForm({
   const [steps, setSteps] = useState<StepDraft[]>(
     initialSteps.length > 0
       ? initialSteps.map((s) => ({
+          dndId: s.id,
           id: s.id,
           step_number: s.step_number,
           title: s.title ?? "",
           content: s.content,
           image_url: s.image_url,
         }))
-      : [{ step_number: 1, title: "", content: "", image_url: null }]
+      : [{ dndId: crypto.randomUUID(), step_number: 1, title: "", content: "", image_url: null }]
   );
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor)
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setSteps((prev) => {
+      const oldIndex = prev.findIndex((s) => s.dndId === active.id);
+      const newIndex = prev.findIndex((s) => s.dndId === over.id);
+      return arrayMove(prev, oldIndex, newIndex).map((s, i) => ({
+        ...s,
+        step_number: i + 1,
+      }));
+    });
+  };
 
   const [errors, setErrors] = useState<FormErrors>({});
   const [saving, setSaving] = useState(false);
@@ -173,7 +336,7 @@ export default function RecipeForm({
   const addStep = () => {
     setSteps((prev) => [
       ...prev,
-      { step_number: prev.length + 1, title: "", content: "", image_url: null },
+      { dndId: crypto.randomUUID(), step_number: prev.length + 1, title: "", content: "", image_url: null },
     ]);
   };
 
@@ -625,93 +788,31 @@ export default function RecipeForm({
       <div className="bg-white rounded-[20px] p-5 border border-slate-100 space-y-4">
         <h2 className="text-[16px] font-bold text-[#191F28]">만드는 방법</h2>
 
-        <div className="space-y-4">
-          {steps.map((step, index) => (
-            <div
-              key={index}
-              className="border border-[#E5E8EB] rounded-xl p-4 space-y-3"
-            >
-              <div className="flex items-center justify-between">
-                <div className="w-6 h-6 rounded-full bg-[#3182F6] flex items-center justify-center">
-                  <span className="text-[12px] font-bold text-white">
-                    {index + 1}
-                  </span>
-                </div>
-                {steps.length > 1 && (
-                  <button
-                    onClick={() => removeStep(index)}
-                    aria-label={`${index + 1}단계 삭제`}
-                    className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-red-50 transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4 text-red-400" />
-                  </button>
-                )}
-              </div>
-
-              <input
-                value={step.title}
-                onChange={(e) => updateStep(index, "title", e.target.value)}
-                placeholder="단계 제목 (선택)"
-                className="w-full bg-[#F2F4F6] rounded-xl px-4 py-3 text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] outline-none focus:ring-2 focus:ring-[#3182F6]/20 transition-colors"
-              />
-              <div>
-                <textarea
-                  value={step.content}
-                  onChange={(e) => updateStep(index, "content", e.target.value)}
-                  placeholder="단계 설명"
-                  rows={2}
-                  className={`w-full bg-[#F2F4F6] rounded-xl px-4 py-3 text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] outline-none focus:ring-2 focus:ring-[#3182F6]/20 transition-colors resize-none ${
-                    errors.steps?.[index] ? "ring-2 ring-[#E03131]/30" : ""
-                  }`}
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext
+            items={steps.map((s) => s.dndId)}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="space-y-4">
+              {steps.map((step, index) => (
+                <SortableStep
+                  key={step.dndId}
+                  step={step}
+                  index={index}
+                  isOnly={steps.length === 1}
+                  errors={errors.steps}
+                  onUpdate={updateStep}
+                  onRemove={removeStep}
+                  onImageChange={handleStepImageChange}
                 />
-                {errors.steps?.[index] && (
-                  <p className="text-[13px] text-[#E03131] mt-1">
-                    {errors.steps[index]}
-                  </p>
-                )}
-              </div>
-
-              {/* 단계 이미지 */}
-              <div>
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  id={`step-img-${index}`}
-                  onChange={(e) => handleStepImageChange(index, e)}
-                />
-                {step.image_url ? (
-                  <div className="relative">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={step.image_url}
-                      alt={`${index + 1}단계 이미지`}
-                      className="w-full aspect-video object-cover rounded-xl"
-                    />
-                    <button
-                      onClick={() => {
-                        updateStep(index, "image_url", null);
-                        updateStep(index, "imageFile", undefined);
-                      }}
-                      aria-label={`${index + 1}단계 이미지 삭제`}
-                      className="absolute top-2 right-2 w-11 h-11 bg-black/50 rounded-full flex items-center justify-center"
-                    >
-                      <Trash2 className="w-4 h-4 text-white" />
-                    </button>
-                  </div>
-                ) : (
-                  <label
-                    htmlFor={`step-img-${index}`}
-                    className="flex items-center gap-2 text-[12px] text-[#3182F6] font-semibold cursor-pointer"
-                  >
-                    <ImageIcon className="w-3.5 h-3.5" />
-                    이미지 추가하기
-                  </label>
-                )}
-              </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </SortableContext>
+        </DndContext>
 
         <button
           onClick={addStep}

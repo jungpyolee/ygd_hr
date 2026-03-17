@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-import { Plus, BookOpen, Pencil, Eye, EyeOff, Trash2 } from "lucide-react";
+import { Plus, BookOpen, Pencil, Eye, EyeOff, Trash2, Copy, Search, X, Settings2 } from "lucide-react";
 import Image from "next/image";
 import { toast } from "sonner";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
@@ -17,6 +17,7 @@ export default function AdminRecipesPage() {
   );
   const [loading, setLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<RecipeItem | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const supabase = createClient();
   const router = useRouter();
 
@@ -74,10 +75,55 @@ export default function AdminRecipesPage() {
     fetchData();
   };
 
-  const filtered =
+  const copyRecipe = async (recipe: RecipeItem) => {
+    const newId = crypto.randomUUID();
+    const { error: recipeError } = await supabase.from("recipe_items").insert({
+      id: newId,
+      category_id: recipe.category_id,
+      name: `${recipe.name} (복사)`,
+      description: recipe.description,
+      thumbnail_url: recipe.thumbnail_url,
+      video_url: recipe.video_url,
+      is_published: false,
+      order_index: recipes.length,
+    });
+    if (recipeError) {
+      toast.error("레시피를 복사할 수 없어요", {
+        description: "잠시 후 다시 시도해주세요",
+      });
+      return;
+    }
+    const { data: stepsData } = await supabase
+      .from("recipe_steps")
+      .select("*")
+      .eq("recipe_id", recipe.id)
+      .order("step_number", { ascending: true });
+    if (stepsData && stepsData.length > 0) {
+      await supabase.from("recipe_steps").insert(
+        stepsData.map((s) => ({
+          id: crypto.randomUUID(),
+          recipe_id: newId,
+          step_number: s.step_number,
+          title: s.title,
+          content: s.content,
+          image_url: s.image_url,
+        }))
+      );
+    }
+    toast.success("레시피를 복사했어요", { description: "비공개로 저장됐어요" });
+    fetchData();
+  };
+
+  const baseFiltered =
     selectedCategory === "all"
       ? recipes
       : recipes.filter((r) => r.category_id === selectedCategory);
+
+  const filtered = searchQuery.trim()
+    ? recipes.filter((r) =>
+        r.name.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : baseFiltered;
 
   if (loading) {
     return (
@@ -106,16 +152,46 @@ export default function AdminRecipesPage() {
       {/* 헤더 */}
       <div className="flex items-center justify-between">
         <h1 className="text-[22px] font-bold text-[#191F28]">레시피 관리</h1>
-        <button
-          onClick={() => router.push("/admin/recipes/new")}
-          className="flex items-center gap-2 px-4 py-2.5 bg-[#3182F6] text-white rounded-xl text-[14px] font-bold hover:bg-blue-600 transition-colors active:scale-95"
-        >
-          <Plus className="w-4 h-4" />
-          레시피 추가하기
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => router.push("/admin/recipes/categories")}
+            aria-label="카테고리 관리"
+            className="w-11 h-11 flex items-center justify-center rounded-xl bg-[#F2F4F6] hover:bg-[#E5E8EB] transition-colors"
+          >
+            <Settings2 className="w-5 h-5 text-[#4E5968]" />
+          </button>
+          <button
+            onClick={() => router.push("/admin/recipes/new")}
+            className="flex items-center gap-2 px-4 py-2.5 bg-[#3182F6] text-white rounded-xl text-[14px] font-bold hover:bg-blue-600 transition-colors active:scale-95"
+          >
+            <Plus className="w-4 h-4" />
+            레시피 추가하기
+          </button>
+        </div>
+      </div>
+
+      {/* 검색 */}
+      <div className="relative">
+        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8B95A1]" />
+        <input
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="레시피 검색"
+          className="w-full bg-[#F2F4F6] rounded-xl pl-9 pr-9 py-2.5 text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] outline-none"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery("")}
+            aria-label="검색 초기화"
+            className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center"
+          >
+            <X className="w-4 h-4 text-[#8B95A1]" />
+          </button>
+        )}
       </div>
 
       {/* 카테고리 필터 */}
+      {!searchQuery && (
       <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
         <button
           onClick={() => setSelectedCategory("all")}
@@ -144,12 +220,15 @@ export default function AdminRecipesPage() {
           );
         })}
       </div>
+      )}
 
       {/* 레시피 목록 */}
       {filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3 bg-white rounded-[20px] border border-slate-100">
           <BookOpen className="w-10 h-10 text-[#8B95A1]" />
-          <p className="text-[15px] text-[#8B95A1]">아직 등록된 레시피가 없어요</p>
+          <p className="text-[15px] text-[#8B95A1]">
+            {searchQuery ? `"${searchQuery}" 검색 결과가 없어요` : "아직 등록된 레시피가 없어요"}
+          </p>
           <button
             onClick={() => router.push("/admin/recipes/new")}
             className="mt-2 px-5 py-2.5 bg-[#3182F6] text-white rounded-xl text-[14px] font-bold"
@@ -202,6 +281,13 @@ export default function AdminRecipesPage() {
               </div>
 
               <div className="flex items-center gap-1 shrink-0">
+                <button
+                  onClick={() => copyRecipe(recipe)}
+                  aria-label="레시피 복사"
+                  className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-[#F2F4F6] transition-colors"
+                >
+                  <Copy className="w-4 h-4 text-[#4E5968]" />
+                </button>
                 <button
                   onClick={() => togglePublish(recipe)}
                   aria-label={recipe.is_published ? "비공개로 전환" : "공개로 전환"}
