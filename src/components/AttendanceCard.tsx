@@ -17,6 +17,7 @@ interface AttendanceCardProps {
   radius: number;
   onSuccess: () => void;
   onRetryLocation: () => Promise<GeoState>;
+  onFetchForAttendance: () => Promise<GeoState>;
 }
 
 interface PendingLocation {
@@ -32,6 +33,7 @@ export default function AttendanceCard({
   radius,
   onSuccess,
   onRetryLocation,
+  onFetchForAttendance,
 }: AttendanceCardProps) {
   const [loading, setLoading] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
@@ -218,16 +220,12 @@ export default function AttendanceCard({
 
   // ─── 출퇴근 버튼 탭 ────────────────────────────────────────────────────────
   const handleAttendance = async (type: "IN" | "OUT") => {
-    // 위치가 이미 준비된 경우 바로 진행
-    if (locationState.status === "ready") {
-      await proceedWithCoordinates(type, locationState.lat!, locationState.lng!);
-      return;
-    }
-
-    // 위치가 없으면 재시도
     setIsRetrying(true);
     setPendingType(type);
-    const result = await onRetryLocation();
+
+    // 출퇴근 기록은 항상 10초 캐시 기준으로 신선한 위치 사용
+    // (45초 캐시 위치를 그대로 쓰면 이동 후 진입 케이스에서 오판 가능)
+    const result = await onFetchForAttendance();
     setIsRetrying(false);
 
     if (result.status === "ready") {
@@ -237,12 +235,23 @@ export default function AttendanceCard({
     }
 
     if (result.status === "denied") {
-      // 권한 없음 → 안내 바텀시트 표시 (pendingType 유지)
       setShowPermissionGuide(true);
       return;
     }
 
-    // timeout / unavailable
+    // timeout / unavailable → 권한은 있으나 GPS 응답 없음, onRetryLocation으로 재시도
+    const retryResult = await onRetryLocation();
+    if (retryResult.status === "ready") {
+      setPendingType(null);
+      await proceedWithCoordinates(type, retryResult.lat!, retryResult.lng!);
+      return;
+    }
+
+    if (retryResult.status === "denied") {
+      setShowPermissionGuide(true);
+      return;
+    }
+
     setPendingType(null);
     toast.error("위치를 찾을 수 없어요", {
       description: "Wi-Fi를 켜거나 실외에서 다시 시도해주세요",
