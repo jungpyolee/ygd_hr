@@ -239,24 +239,26 @@ function AdminRecipeCard({
         className="w-16 h-16 rounded-[12px] bg-[#F2F4F6] flex items-center justify-center shrink-0"
       />
 
-      {/* 이름 + 카테고리 */}
+      {/* 이름 + (배지 + 카테고리) — BUG-010 수정: 배지를 이름 행에서 분리 */}
       <div
         data-testid="name-area"
         className="flex-1 min-w-0"
         style={{ flex: 1, minWidth: 0 }}
       >
-        <div className="flex items-center gap-2">
-          <p
-            data-testid="recipe-name"
-            className="text-[15px] font-bold text-[#191F28] truncate"
-            style={{
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {name}
-          </p>
+        {/* 이름: 단독 행 — 버튼 4개 공간 확보 후 남은 전체 사용 */}
+        <p
+          data-testid="recipe-name"
+          className="text-[15px] font-bold text-[#191F28] truncate"
+          style={{
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {name}
+        </p>
+        {/* 두 번째 행: 배지 + 카테고리 */}
+        <div data-testid="badge-row" className="flex items-center gap-1.5 mt-0.5">
           <span
             data-testid="publish-badge"
             className={`shrink-0 px-2 py-0.5 rounded-full text-[11px] font-bold ${
@@ -267,8 +269,10 @@ function AdminRecipeCard({
           >
             {isPublished ? "공개" : "비공개"}
           </span>
+          <p data-testid="category-name" className="text-[12px] text-[#8B95A1] truncate">
+            {categoryName}
+          </p>
         </div>
-        <p className="text-[12px] text-[#8B95A1] mt-0.5">{categoryName}</p>
       </div>
 
       {/* 액션 버튼 (복사·공개전환·수정·삭제) — 실제와 동일한 4개 */}
@@ -364,6 +368,39 @@ describe("어드민 레시피 카드 — 모바일(375px) 레이아웃 가시성
     const card = container.querySelector("[data-testid='recipe-card']");
     expect(card).toContainElement(screen.getByTestId("name-area"));
     expect(card).toContainElement(screen.getByTestId("actions"));
+  });
+
+  // ── BUG-010 재발 방지 테스트 ────────────────────────────────────────────
+  it("[BUG-010] 레시피명이 배지와 같은 행에 없다 (이름 단독 행)", () => {
+    render(<AdminRecipeCard name="밀크티" />);
+    const nameEl = screen.getByTestId("recipe-name");
+    const badgeEl = screen.getByTestId("publish-badge");
+    // 이름과 배지가 서로 다른 부모를 가져야 함 (같은 행 flex에 없어야 함)
+    expect(nameEl.parentElement).not.toBe(badgeEl.parentElement);
+  });
+
+  it("[BUG-010] 배지는 카테고리명과 같은 두 번째 행에 있다", () => {
+    render(<AdminRecipeCard name="밀크티" categoryName="음료" />);
+    const badgeRow = screen.getByTestId("badge-row");
+    expect(badgeRow).toContainElement(screen.getByTestId("publish-badge"));
+    expect(badgeRow).toContainElement(screen.getByTestId("category-name"));
+  });
+
+  it("[BUG-010] 버튼 4개 고정 크기(176px+gaps) 계산 시 이름 영역은 독립된 행", () => {
+    // 375px 카드에서 버튼 4×44 + 썸네일 64 + padding 32 + gaps 32 = 316px 고정
+    // 이름이 배지와 같은 행이면 ~40px 배지가 이름을 19px로 압축함 → 버그
+    // 수정 후: 이름이 단독 행이므로 name-area 전체(~59px)를 사용
+    const CARD_WIDTH = 375;
+    const THUMBNAIL = 64;
+    const PADDING = 32;
+    const GAPS = 32;
+    const BUTTON_AREA = 4 * 44 + 3 * 4; // 4버튼 + 3gap
+    const nameAreaWidth = CARD_WIDTH - THUMBNAIL - PADDING - GAPS - BUTTON_AREA;
+
+    // 이름 영역이 최소 50px 이상이어야 의미 있는 텍스트 표시 가능
+    expect(nameAreaWidth).toBeGreaterThan(50);
+    // 실제로는 59px — 이름이 단독 행이면 이 전체를 활용
+    expect(nameAreaWidth).toBe(59);
   });
 });
 

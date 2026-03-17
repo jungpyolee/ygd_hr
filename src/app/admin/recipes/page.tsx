@@ -259,10 +259,10 @@ export default function AdminRecipesPage() {
               )}
 
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="text-[15px] font-bold text-[#191F28] truncate">
-                    {recipe.name}
-                  </p>
+                <p className="text-[15px] font-bold text-[#191F28] truncate">
+                  {recipe.name}
+                </p>
+                <div className="flex items-center gap-1.5 mt-0.5">
                   <span
                     className={`shrink-0 px-2 py-0.5 rounded-full text-[11px] font-bold ${
                       recipe.is_published
@@ -272,12 +272,12 @@ export default function AdminRecipesPage() {
                   >
                     {recipe.is_published ? "공개" : "비공개"}
                   </span>
+                  {recipe.recipe_categories && (
+                    <p className="text-[12px] text-[#8B95A1] truncate">
+                      {recipe.recipe_categories.name}
+                    </p>
+                  )}
                 </div>
-                {recipe.recipe_categories && (
-                  <p className="text-[12px] text-[#8B95A1] mt-0.5">
-                    {recipe.recipe_categories.name}
-                  </p>
-                )}
               </div>
 
               <div className="flex items-center gap-1 shrink-0">
