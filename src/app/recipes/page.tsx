@@ -47,11 +47,16 @@ export default function RecipesPage() {
     return (
       <div className="flex min-h-screen flex-col bg-[#F2F4F6] font-pretendard">
         <div className="h-14 bg-white border-b border-[#E5E8EB]" />
-        <div className="px-5 pt-6 space-y-3">
+        <div className="flex gap-2 px-5 py-4 bg-white border-b border-[#E5E8EB]">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-9 w-16 bg-slate-200 animate-pulse rounded-full shrink-0" />
+          ))}
+        </div>
+        <div className="px-5 pt-5 space-y-3">
           {[1, 2, 3].map((i) => (
             <div
               key={i}
-              className="bg-white rounded-[20px] h-[100px] animate-pulse border border-slate-100"
+              className="bg-white rounded-[28px] h-[100px] animate-pulse border border-slate-100"
             />
           ))}
         </div>
@@ -97,14 +102,14 @@ export default function RecipesPage() {
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
             <BookOpen className="w-10 h-10 text-[#8B95A1]" />
-            <p className="text-[15px] text-[#8B95A1]">등록된 레시피가 없어요</p>
+            <p className="text-[15px] text-[#8B95A1]">아직 등록된 레시피가 없어요</p>
           </div>
         ) : (
           filtered.map((recipe) => (
             <button
               key={recipe.id}
               onClick={() => router.push(`/recipes/${recipe.id}`)}
-              className="w-full bg-white rounded-[20px] p-4 border border-slate-100 flex items-center gap-4 text-left active:scale-[0.98] transition-transform"
+              className="w-full bg-white rounded-[28px] p-4 border border-slate-100 flex items-center gap-4 text-left active:scale-[0.98] transition-transform"
             >
               {recipe.thumbnail_url ? (
                 <div className="relative w-[72px] h-[72px] rounded-[14px] overflow-hidden shrink-0 bg-[#F2F4F6]">

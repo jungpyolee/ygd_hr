@@ -86,6 +86,7 @@ export default function RecipeForm({
 
   const [errors, setErrors] = useState<FormErrors>({});
   const [saving, setSaving] = useState(false);
+  const [videoUploadProgress, setVideoUploadProgress] = useState<number | null>(null);
 
   // blob URL 추적 — 언마운트 시 메모리 해제
   const blobUrlsRef = useRef<string[]>([]);
@@ -110,6 +111,43 @@ export default function RecipeForm({
     if (error) return null;
     const { data } = supabase.storage.from("recipe-media").getPublicUrl(path);
     return data.publicUrl;
+  };
+
+  const uploadVideoWithProgress = async (
+    file: File,
+    path: string
+  ): Promise<string | null> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const uploadUrl = `${supabaseUrl}/storage/v1/object/recipe-media/${path}`;
+
+    return new Promise((resolve) => {
+      const xhr = new XMLHttpRequest();
+      xhr.upload.addEventListener("progress", (e) => {
+        if (e.lengthComputable)
+          setVideoUploadProgress(Math.round((e.loaded / e.total) * 100));
+      });
+      xhr.addEventListener("load", () => {
+        setVideoUploadProgress(null);
+        if (xhr.status >= 200 && xhr.status < 300) {
+          const { data } = supabase.storage.from("recipe-media").getPublicUrl(path);
+          resolve(data.publicUrl);
+        } else {
+          resolve(null);
+        }
+      });
+      xhr.addEventListener("error", () => {
+        setVideoUploadProgress(null);
+        resolve(null);
+      });
+      xhr.open("POST", uploadUrl);
+      xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+      xhr.setRequestHeader("apikey", process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+      xhr.setRequestHeader("x-upsert", "true");
+      xhr.setRequestHeader("Content-Type", file.type || "video/mp4");
+      xhr.send(file);
+    });
   };
 
   const handleThumbnailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -268,7 +306,8 @@ export default function RecipeForm({
             await supabase.storage.from("recipe-media").remove([oldPath]);
         }
         const ext = videoFile.name.split(".").pop();
-        finalVideoUrl = await uploadFile(
+        setVideoUploadProgress(0);
+        finalVideoUrl = await uploadVideoWithProgress(
           videoFile,
           `${recipeId}/video.${ext}`
         );
@@ -682,6 +721,23 @@ export default function RecipeForm({
           단계 추가하기
         </button>
       </div>
+
+      {/* 영상 업로드 진행률 */}
+      {videoUploadProgress !== null && (
+        <div className="bg-white rounded-[20px] p-5 border border-slate-100 space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-[14px] font-semibold text-[#191F28]">영상 업로드 중...</p>
+            <p className="text-[14px] font-bold text-[#3182F6]">{videoUploadProgress}%</p>
+          </div>
+          <div className="w-full bg-[#F2F4F6] rounded-full h-2 overflow-hidden">
+            <div
+              className="bg-[#3182F6] h-2 rounded-full transition-all duration-200"
+              style={{ width: `${videoUploadProgress}%` }}
+            />
+          </div>
+          <p className="text-[12px] text-[#8B95A1]">잠시만 기다려주세요. 창을 닫지 마세요.</p>
+        </div>
+      )}
 
       {/* 저장 버튼 */}
       <button
