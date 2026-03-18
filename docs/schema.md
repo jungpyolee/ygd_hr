@@ -465,6 +465,7 @@ DELETE FROM auth.users WHERE id = target_user_id
 | `substitute_rejected` | 대타 반려 (→ 요청자) |
 | `substitute_filled` | 대타 확정 (→ 요청자 + 어드민) |
 | `schedule_published` | 스케줄 확정 (→ 해당 직원) |
+| `schedule_updated` | 확정 스케줄 슬롯 수정/삭제 시 (→ 해당 직원) |
 
 ---
 
