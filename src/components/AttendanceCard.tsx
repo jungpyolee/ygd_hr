@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase";
 import { getDistance } from "@/lib/utils/distance";
 import { toast } from "sonner";
@@ -63,7 +63,27 @@ export default function AttendanceCard({
   // 위치 재시도 후 재개할 출퇴근 타입
   const [pendingType, setPendingType] = useState<"IN" | "OUT" | null>(null);
 
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
+
+  // 직원 프로필 (체크리스트 필터링용)
+  const [userProfile, setUserProfile] = useState<{
+    work_locations: string[] | null;
+    cafe_positions: string[] | null;
+  } | null>(null);
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from("profiles")
+        .select("work_locations, cafe_positions")
+        .eq("id", user.id)
+        .single();
+      if (data) setUserProfile(data);
+    };
+    loadProfile();
+  }, [supabase]);
 
   // ─── 체크리스트 헬퍼 ───────────────────────────────────────────────────────
   const fetchChecklistItems = async (trigger: "check_in" | "check_out") => {
@@ -73,7 +93,21 @@ export default function AttendanceCard({
       .eq("trigger", trigger)
       .eq("is_active", true)
       .order("order_index");
-    return (data as ChecklistTemplate[]) ?? [];
+
+    const all = (data as ChecklistTemplate[]) ?? [];
+
+    // work_location / cafe_position 필터링
+    return all.filter((item) => {
+      if (item.work_location) {
+        const myLocations = userProfile?.work_locations ?? [];
+        if (!myLocations.includes(item.work_location)) return false;
+      }
+      if (item.cafe_position) {
+        const myPositions = userProfile?.cafe_positions ?? [];
+        if (!myPositions.includes(item.cafe_position)) return false;
+      }
+      return true;
+    });
   };
 
   const saveChecklistSubmission = async (
@@ -86,13 +120,18 @@ export default function AttendanceCard({
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) return;
-    await supabase.from("checklist_submissions").insert({
+    const { error } = await supabase.from("checklist_submissions").insert({
       profile_id: user.id,
       trigger,
       attendance_log_id: logId,
       checked_item_ids: checkedIds,
       all_checked: checkedIds.length === totalItems,
     });
+    if (error) {
+      toast.error("체크리스트 저장에 실패했어요", {
+        description: "출퇴근은 정상 처리됐어요. 관리자에게 문의해 주세요.",
+      });
+    }
   };
 
   // ─── 핵심 저장 로직 ────────────────────────────────────────────────────────
@@ -230,7 +269,7 @@ export default function AttendanceCard({
 
     // ── check_out 체크리스트 submission 저장 ─────────────────
     if (type === "OUT" && pendingCheckoutCheckedIds.length > 0) {
-      await saveChecklistSubmission("check_out", pendingCheckoutCheckedIds, logData.id, pendingCheckoutCheckedIds.length);
+      await saveChecklistSubmission("check_out", pendingCheckoutCheckedIds, logData.id, checklistItems.length);
       setPendingCheckoutCheckedIds([]);
     }
 
