@@ -70,6 +70,13 @@ export default function RecipeEditPage() {
         return;
       }
 
+      // 본인 글이 아니면 접근 차단
+      if (recipeData.created_by !== user.id) {
+        setUnauthorized(true);
+        setLoading(false);
+        return;
+      }
+
       setCategories(cats ?? []);
       setRecipe(recipeData);
       setSteps(stepsData ?? []);

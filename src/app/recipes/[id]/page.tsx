@@ -13,7 +13,6 @@ export default function RecipeDetailPage() {
   const [recipe, setRecipe] = useState<RecipeItem | null>(null);
   const [steps, setSteps] = useState<RecipeStep[]>([]);
   const [loading, setLoading] = useState(true);
-  const [canEdit, setCanEdit] = useState(false);
   const [canDelete, setCanDelete] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const supabase = createClient();
@@ -40,7 +39,6 @@ export default function RecipeDetailPage() {
           .single();
         isAdmin = profile?.role === "admin";
         isFullTime = profile?.employment_type === "full_time";
-        setCanEdit(isAdmin || isFullTime);
       }
 
       const [{ data: recipeData }, { data: stepsData }] = await Promise.all([
@@ -119,7 +117,7 @@ export default function RecipeDetailPage() {
           )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          {canEdit && (
+          {canDelete && (
             <button
               onClick={() => router.push(`/recipes/${id}/edit`)}
               aria-label="레시피 수정"
