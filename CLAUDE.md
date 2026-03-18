@@ -43,13 +43,19 @@ npm run lint       # ESLint
 
 psql 직접 연결 불가. **Supabase Management API**로 SQL 실행.
 
+> ⚠️ **반드시 Dev DB에서만 실행할 것. Production은 절대 직접 건드리지 않는다.**
+
 ```bash
 source .env.local
 
-curl -s -X POST "https://api.supabase.com/v1/projects/ymvdjxzkjodasctktunh/database/query" \
+# ✅ Dev (기본 — 항상 이걸 사용)
+curl -s -X POST "https://api.supabase.com/v1/projects/aayedfstvegiswgjwcuw/database/query" \
   -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query": "SQL HERE"}'
+
+# 🚫 Production — 절대 직접 실행 금지 (배포 시 사용자가 직접 승인 후 실행)
+# curl -s -X POST "https://api.supabase.com/v1/projects/ymvdjxzkjodasctktunh/database/query" \
 ```
 
 ### DB 스키마 변경 플로우
@@ -57,10 +63,11 @@ curl -s -X POST "https://api.supabase.com/v1/projects/ymvdjxzkjodasctktunh/datab
 ```
 1. docs/db-issues/NNN-제목.md 작성 (배경, 원인, 계획)
 2. docs/migrations/NNN_설명.sql 작성
-3. Management API로 SQL 실행
-4. 검증 SQL 실행
+3. Dev DB에 SQL 실행 (aayedfstvegiswgjwcuw)
+4. Dev에서 검증 SQL 실행
 5. docs/db-issues/NNN-제목.md 결과 기록
 6. docs/schema.md 갱신
+7. Production 반영은 배포 시 사용자가 직접 승인 후 실행
 ```
 
 ### ⚠️ Storage 버킷 생성 시 필수 체크리스트

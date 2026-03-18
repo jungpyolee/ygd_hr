@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase";
 import { useRouter, useParams } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
@@ -8,7 +8,7 @@ import AnnouncementForm from "@/components/announcement/AnnouncementForm";
 import type { Announcement } from "@/types/announcement";
 
 export default function AdminAnnouncementEditPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
   const params = useParams();
   const id = params.id as string;

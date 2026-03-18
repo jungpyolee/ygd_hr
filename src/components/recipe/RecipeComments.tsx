@@ -139,13 +139,14 @@ export default function RecipeComments({
 
     const parentAuthorId = replyingTo.profile_id;
     const mentionedId = replyingTo.profile_id;
+    const finalMentionedId = mentionedId !== currentUser.id ? mentionedId : null;
 
     const { error } = await supabase.from("recipe_comments").insert({
       recipe_id: recipeId,
       profile_id: currentUser.id,
       parent_id: replyingTo.id,
       content: replyText.trim(),
-      mentioned_profile_id: mentionedId !== currentUser.id ? mentionedId : null,
+      mentioned_profile_id: finalMentionedId,
     });
     if (error) {
       toast.error("답글 등록에 실패했어요", {
@@ -164,6 +165,18 @@ export default function RecipeComments({
         target_role: "employee",
         type: "recipe_reply",
         title: `${currentUser.name}님이 답글을 달았어요`,
+        content: snippet,
+        source_id: recipeId,
+      });
+    }
+
+    // 알림: 멘션된 사용자가 부모 작성자와 다를 경우 (본인 제외)
+    if (finalMentionedId && finalMentionedId !== parentAuthorId) {
+      await sendNotification({
+        profile_id: finalMentionedId,
+        target_role: "employee",
+        type: "recipe_mention",
+        title: `${currentUser.name}님이 회원님을 언급했어요`,
         content: snippet,
         source_id: recipeId,
       });
@@ -217,8 +230,8 @@ export default function RecipeComments({
   }) => {
     const replies = comments.filter((c) => c.parent_id === comment.id);
     const isShowingReplyInput = replyingTo?.id === comment.id;
-    const initial = comment.profiles.name.charAt(0);
-    const color = comment.profiles.color_hex || "#8B95A1";
+    const initial = (comment.profiles?.name || "?").charAt(0);
+    const color = comment.profiles?.color_hex || "#8B95A1";
 
     return (
       <div className={isReply ? "ml-8" : ""}>
@@ -232,7 +245,7 @@ export default function RecipeComments({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-0.5">
               <span className="text-[13px] font-bold text-[#191F28]">
-                {comment.profiles.name}
+                {comment.profiles?.name || "알 수 없음"}
               </span>
               <span className="text-[11px] text-[#B0B8C1]">
                 {timeAgo(comment.created_at)}
@@ -315,15 +328,15 @@ export default function RecipeComments({
                 <div
                   className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
                   style={{
-                    backgroundColor: reply.profiles.color_hex || "#8B95A1",
+                    backgroundColor: reply.profiles?.color_hex || "#8B95A1",
                   }}
                 >
-                  {reply.profiles.name.charAt(0)}
+                  {(reply.profiles?.name || "?").charAt(0)}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
                     <span className="text-[12px] font-bold text-[#191F28]">
-                      {reply.profiles.name}
+                      {reply.profiles?.name || "알 수 없음"}
                     </span>
                     <span className="text-[11px] text-[#B0B8C1]">
                       {timeAgo(reply.created_at)}
