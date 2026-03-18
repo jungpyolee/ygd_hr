@@ -861,11 +861,11 @@ export default function RecipeForm({
 
         {ingredients.length > 0 && (
           <div className="space-y-2">
-            <div className="flex gap-2 text-[11px] font-bold text-[#8B95A1] px-1">
-              <span className="flex-1">재료명</span>
-              <span className="w-16">양</span>
-              <span className="w-16">단위</span>
-              <span className="w-9" />
+            <div className="flex gap-1.5 text-[11px] font-bold text-[#8B95A1] px-1">
+              <span className="flex-1 min-w-0">재료명</span>
+              <span className="w-14 text-center shrink-0">양</span>
+              <span className="w-12 text-center shrink-0">단위</span>
+              <span className="w-8 shrink-0" />
             </div>
             {ingredients.map((ing, idx) => (
               <div key={idx} className="flex gap-1.5 items-center min-w-0">

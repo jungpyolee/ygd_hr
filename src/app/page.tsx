@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase";
-import { AlertCircle, UserCircle, BookOpen, CalendarDays, MapPin, Clock, Bell, BellDot, CheckCircle, ArrowRightLeft, Info } from "lucide-react";
+import { UserCircle, BookOpen, MapPin, Clock, Bell, BellDot, CheckCircle, ArrowRightLeft, Info } from "lucide-react";
 import dynamic from "next/dynamic";
 import WeeklyScheduleCard from "@/components/WeeklyScheduleCard";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
@@ -349,6 +349,8 @@ export default function HomePage() {
           onFetchForAttendance={fetchForAttendance}
         />
 
+        <AnnouncementBanner />
+
         {/* 오늘 스케줄 위젯 */}
         {todaySlots.length > 0 && (
           <section className="bg-white rounded-[28px] p-5 border border-slate-100 shadow-sm space-y-3">
@@ -390,29 +392,7 @@ export default function HomePage() {
           </section>
         )}
 
-        <AnnouncementBanner />
-
         <WeeklyScheduleCard />
-
-        <StoreDistanceList
-          stores={stores}
-          locationState={locationState}
-          radius={RADIUS_METER}
-        />
-
-        {/* 스케줄 바로가기 */}
-        <button
-          onClick={() => router.push("/schedule")}
-          className="w-full flex items-center gap-4 bg-white rounded-[28px] p-5 border border-slate-100 text-left active:scale-[0.98] transition-transform"
-        >
-          <div className="w-10 h-10 bg-[#E8F3FF] rounded-full flex items-center justify-center shrink-0">
-            <CalendarDays className="w-5 h-5 text-[#3182F6]" />
-          </div>
-          <div>
-            <p className="text-[15px] font-bold text-[#333D4B]">내 스케줄</p>
-            <p className="text-sm text-[#6B7684]">이번 주 근무 일정을 확인해요</p>
-          </div>
-        </button>
 
         {/* 레시피 바로가기 */}
         <button
@@ -428,22 +408,11 @@ export default function HomePage() {
           </div>
         </button>
 
-        {/* 헬퍼 메시지 */}
-        <section className="flex items-center justify-between bg-white rounded-[28px] p-5 border border-slate-100 mt-4">
-          <div className="flex gap-4 items-center">
-            <div className="w-10 h-10 bg-[#F2F4F6] rounded-full flex items-center justify-center">
-              <AlertCircle className="w-6 h-6 text-[#4E5968]" />
-            </div>
-            <div>
-              <p className="text-[15px] font-bold text-[#333D4B]">
-                기록이 안 되나요?
-              </p>
-              <p className="text-sm text-[#6B7684]">
-                Wi-Fi를 켜면 위치가 더 정확해요.
-              </p>
-            </div>
-          </div>
-        </section>
+        <StoreDistanceList
+          stores={stores}
+          locationState={locationState}
+          radius={RADIUS_METER}
+        />
       </main>
       <MyInfoModal
         isOpen={isEditModalOpen}

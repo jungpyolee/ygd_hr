@@ -237,16 +237,16 @@ export default function AdminChecklistsPage() {
               <div className="flex items-center gap-2 shrink-0">
                 {/* 활성/비활성 토글 */}
                 <button
+                  type="button"
                   onClick={() => toggleActive(item)}
-                  className={`w-10 h-5.5 rounded-full transition-colors relative flex items-center ${
+                  className={`w-11 h-6 rounded-full transition-colors relative overflow-hidden shrink-0 ${
                     item.is_active ? "bg-[#3182F6]" : "bg-[#D1D6DB]"
                   }`}
-                  style={{ height: "22px", width: "40px" }}
                   aria-label={item.is_active ? "비활성화" : "활성화"}
                 >
                   <span
-                    className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${
-                      item.is_active ? "left-5" : "left-0.5"
+                    className={`absolute top-0.5 left-0 w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${
+                      item.is_active ? "translate-x-5" : "translate-x-0.5"
                     }`}
                   />
                 </button>
