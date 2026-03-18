@@ -48,7 +48,7 @@ export default function RecipeComments({
   const fetchComments = async () => {
     const { data } = await supabase
       .from("recipe_comments")
-      .select("*, profiles(name, color_hex)")
+      .select("*, profiles!recipe_comments_profile_id_fkey(name, color_hex)")
       .eq("recipe_id", recipeId)
       .order("created_at", { ascending: true });
     setComments((data as CommentRow[]) ?? []);
