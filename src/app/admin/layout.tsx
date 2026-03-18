@@ -23,6 +23,7 @@ import {
   User,
   BookOpen,
   CalendarDays,
+  Megaphone,
 } from "lucide-react";
 
 export default function AdminLayout({
@@ -238,6 +239,11 @@ export default function AdminLayout({
       icon: <BookOpen className="w-5 h-5" />,
     },
     {
+      name: "공지사항 관리",
+      path: "/admin/announcements",
+      icon: <Megaphone className="w-5 h-5" />,
+    },
+    {
       name: "직원 모드로 변경",
       path: "/",
       icon: <User className="w-5 h-5" />,
@@ -290,6 +296,9 @@ export default function AdminLayout({
         break;
       case "substitute_requested":
         router.push("/admin/schedules/substitutes");
+        break;
+      case "announcement":
+        router.push("/admin/announcements");
         break;
       default:
         // 기본값은 대시보드
