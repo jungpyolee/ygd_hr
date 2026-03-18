@@ -15,6 +15,7 @@ export interface RecipeItem {
   video_url: string | null;
   is_published: boolean;
   order_index: number;
+  created_by: string | null;
   created_at: string;
   updated_at: string;
   recipe_categories?: RecipeCategory;

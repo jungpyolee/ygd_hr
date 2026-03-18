@@ -5,6 +5,8 @@ import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import { toast } from "sonner";
 import Link from "next/link";
+import { format, addDays, differenceInDays } from "date-fns";
+import { sendNotification } from "@/lib/notifications";
 import {
   Users,
   Clock,
@@ -81,6 +83,7 @@ export default function AdminLayout({
         setIsAdmin(true);
         fetchNotis();
         fetchPendingSubCount();
+        checkHealthCertExpiry();
       } else {
         toast.error("접근 권한이 없어요");
         router.replace("/");
@@ -124,6 +127,46 @@ export default function AdminLayout({
       supabase.removeChannel(subChannel);
     };
   }, [isAdmin]);
+
+  const checkHealthCertExpiry = async () => {
+    const today = new Date();
+    const todayStr = format(today, "yyyy-MM-dd");
+    const thirtyDaysLaterStr = format(addDays(today, 30), "yyyy-MM-dd");
+    const tomorrowStr = format(addDays(today, 1), "yyyy-MM-dd");
+
+    const { data: expiring } = await supabase
+      .from("profiles")
+      .select("id, name, health_cert_date")
+      .not("health_cert_date", "is", null)
+      .gte("health_cert_date", todayStr)
+      .lte("health_cert_date", thirtyDaysLaterStr);
+
+    if (!expiring || expiring.length === 0) return;
+
+    const { data: todayNotis } = await supabase
+      .from("notifications")
+      .select("source_id")
+      .eq("type", "health_cert_expiry")
+      .gte("created_at", `${todayStr}T00:00:00+09:00`)
+      .lt("created_at", `${tomorrowStr}T00:00:00+09:00`);
+
+    const notifiedIds = new Set(todayNotis?.map((n) => n.source_id) ?? []);
+
+    for (const emp of expiring) {
+      if (notifiedIds.has(emp.id)) continue;
+      const daysLeft = differenceInDays(
+        new Date(emp.health_cert_date),
+        today
+      );
+      await sendNotification({
+        target_role: "admin",
+        type: "health_cert_expiry",
+        title: "보건증 만료 임박",
+        content: `${emp.name}님의 보건증이 ${daysLeft === 0 ? "오늘" : `${daysLeft}일 후`} 만료돼요. 갱신을 안내해 주세요.`,
+        source_id: emp.id,
+      });
+    }
+  };
 
   const fetchPendingSubCount = async () => {
     const { count } = await supabase
@@ -211,6 +254,8 @@ export default function AdminLayout({
         return <CalendarClock className="w-4 h-4 text-orange-500" />;
       case "substitute_requested":
         return <CalendarDays className="w-4 h-4 text-purple-500" />;
+      case "health_cert_expiry":
+        return <Info className="w-4 h-4 text-amber-500" />;
       default:
         return <Info className="w-4 h-4 text-slate-400" />;
     }

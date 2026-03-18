@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase";
 import { AlertCircle, LogOut, UserCircle, LayoutDashboard, BookOpen, CalendarDays, MapPin, Clock, Bell, BellDot, CheckCircle, ArrowRightLeft, Info } from "lucide-react";
 import dynamic from "next/dynamic";
-import WeeklyWorkStats from "@/components/WeeklyWorkStats";
+import WeeklyScheduleCard from "@/components/WeeklyScheduleCard";
 import OnboardingFunnel from "@/components/OnboardingFunnel";
 import AttendanceCard from "@/components/AttendanceCard";
 import StoreDistanceList from "@/components/StoreDistanceList";
@@ -401,7 +401,7 @@ export default function HomePage() {
           </section>
         )}
 
-        <WeeklyWorkStats />
+        <WeeklyScheduleCard />
 
         <StoreDistanceList
           stores={stores}
