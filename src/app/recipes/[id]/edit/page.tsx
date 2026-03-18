@@ -5,12 +5,13 @@ import { createClient } from "@/lib/supabase";
 import { useRouter, useParams } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import RecipeForm from "@/components/recipe/RecipeForm";
-import type { RecipeCategory, RecipeItem, RecipeStep } from "@/types/recipe";
+import type { RecipeCategory, RecipeIngredient, RecipeItem, RecipeStep } from "@/types/recipe";
 
 export default function RecipeEditPage() {
   const [categories, setCategories] = useState<RecipeCategory[]>([]);
   const [recipe, setRecipe] = useState<RecipeItem | null>(null);
   const [steps, setSteps] = useState<RecipeStep[]>([]);
+  const [ingredients, setIngredients] = useState<RecipeIngredient[]>([]);
   const [loading, setLoading] = useState(true);
   const [unauthorized, setUnauthorized] = useState(false);
   const supabase = createClient();
@@ -51,7 +52,7 @@ export default function RecipeEditPage() {
         return;
       }
 
-      const [{ data: cats }, { data: recipeData }, { data: stepsData }] =
+      const [{ data: cats }, { data: recipeData }, { data: stepsData }, { data: ingredientsData }] =
         await Promise.all([
           supabase
             .from("recipe_categories")
@@ -63,6 +64,11 @@ export default function RecipeEditPage() {
             .select("*")
             .eq("recipe_id", id)
             .order("step_number", { ascending: true }),
+          supabase
+            .from("recipe_ingredients")
+            .select("*")
+            .eq("recipe_id", id)
+            .order("order_index", { ascending: true }),
         ]);
 
       if (!recipeData) {
@@ -80,6 +86,7 @@ export default function RecipeEditPage() {
       setCategories(cats ?? []);
       setRecipe(recipeData);
       setSteps(stepsData ?? []);
+      setIngredients((ingredientsData as RecipeIngredient[]) ?? []);
       setLoading(false);
     };
 
@@ -138,7 +145,9 @@ export default function RecipeEditPage() {
           categories={categories}
           initialRecipe={recipe}
           initialSteps={steps}
+          initialIngredients={ingredients}
           redirectAfterSave={`/recipes/${id}`}
+          canCreateCategory={false}
         />
       </main>
     </div>

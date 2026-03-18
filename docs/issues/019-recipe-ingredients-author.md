@@ -1,12 +1,12 @@
-# [FEAT-018] 레시피 재료 + 작성자명
+# [FEAT-019] 레시피 재료 + 작성자명
 
 | 항목 | 내용 |
 |------|------|
 | 유형 | 기능 추가 |
-| 상태 | 🔄 미시작 |
+| 상태 | ✅ 완료 |
 | 파일 | `src/app/recipes/[id]/page.tsx`, `src/components/recipe/RecipeForm.tsx`, `src/types/recipe.ts` |
 | 발견일 | 2026-03-18 |
-| 완료일 | - |
+| 완료일 | 2026-03-18 |
 
 ## 배경
 
