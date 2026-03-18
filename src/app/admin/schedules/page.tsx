@@ -11,8 +11,9 @@ import {
   Check,
   Copy,
   ArrowRightLeft,
+  LayoutTemplate,
 } from "lucide-react";
-import { format, addWeeks, subWeeks, startOfWeek, addDays } from "date-fns";
+import { format, addWeeks, subWeeks, startOfWeek, addDays, parseISO } from "date-fns";
 import { ko } from "date-fns/locale";
 import Link from "next/link";
 
@@ -262,6 +263,7 @@ function SlotBottomSheet({
               value={form.notes || ""}
               onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
               placeholder="특이사항을 입력해요"
+              maxLength={200}
               className="w-full px-3 py-2.5 bg-[#F9FAFB] border border-slate-200 rounded-xl text-[14px] text-[#191F28] focus:outline-none focus:border-[#3182F6]"
             />
           </div>
@@ -462,6 +464,17 @@ export default function AdminSchedulesPage() {
         notes: data.notes || null,
       }).eq("id", data.id!);
       if (error) { toast.error("수정에 실패했어요", { description: error.message }); return; }
+      if (weeklySchedule?.status === "confirmed" && data.profile_id) {
+        const slotDateLabel = data.slot_date ? format(new Date(data.slot_date + "T00:00:00"), "M월 d일", { locale: ko }) : "";
+        await supabase.from("notifications").insert({
+          profile_id: data.profile_id,
+          target_role: "employee",
+          type: "schedule_updated",
+          title: "스케줄이 변경됐어요",
+          content: `${slotDateLabel} 근무 일정이 수정됐어요. 확인해보세요.`,
+          source_id: weeklySchedule.id,
+        });
+      }
       toast.success("근무 슬롯을 수정했어요");
     }
     setEditSlot(null);
@@ -469,8 +482,20 @@ export default function AdminSchedulesPage() {
   };
 
   const handleDeleteSlot = async (id: string) => {
+    const deletingSlot = slots.find((s) => s.id === id);
     const { error } = await supabase.from("schedule_slots").update({ status: "cancelled" }).eq("id", id);
     if (error) { toast.error("삭제에 실패했어요"); return; }
+    if (weeklySchedule?.status === "confirmed" && deletingSlot) {
+      const slotDateLabel = format(new Date(deletingSlot.slot_date + "T00:00:00"), "M월 d일", { locale: ko });
+      await supabase.from("notifications").insert({
+        profile_id: deletingSlot.profile_id,
+        target_role: "employee",
+        type: "schedule_updated",
+        title: "스케줄이 변경됐어요",
+        content: `${slotDateLabel} 근무가 삭제됐어요. 확인해보세요.`,
+        source_id: weeklySchedule.id,
+      });
+    }
     toast.success("슬롯을 삭제했어요");
     setEditSlot(null);
     fetchAll();
@@ -561,12 +586,12 @@ export default function AdminSchedulesPage() {
     // 3. Fetch existing active slots for this week to check duplicates
     const { data: existingSlots } = await supabase
       .from("schedule_slots")
-      .select("profile_id, slot_date")
+      .select("profile_id, slot_date, work_location")
       .eq("weekly_schedule_id", wsId)
       .neq("status", "cancelled");
 
     const existingSet = new Set(
-      (existingSlots || []).map((s: { profile_id: string; slot_date: string }) => `${s.profile_id}_${s.slot_date}`)
+      (existingSlots || []).map((s: { profile_id: string; slot_date: string; work_location: string }) => `${s.profile_id}_${s.slot_date}_${s.work_location}`)
     );
 
     // 4. Calculate target date for each work_default based on day_of_week
@@ -586,7 +611,7 @@ export default function AdminSchedulesPage() {
       const dow = wd.day_of_week;
       if (typeof dow !== "number" || dow < 0 || dow > 6) continue;
       const targetDate = weekDates[dow]; // 0=일,1=월...6=토
-      const key = `${wd.profile_id}_${targetDate}`;
+      const key = `${wd.profile_id}_${targetDate}_${wd.work_location}`;
       if (existingSet.has(key)) continue; // skip duplicate
 
       newSlots.push({
@@ -666,9 +691,9 @@ export default function AdminSchedulesPage() {
           <thead>
             <tr className="bg-[#F9FAFB] border-b border-slate-100">
               <th className="w-[100px] px-4 py-3 text-left text-[12px] font-bold text-[#8B95A1]">직원</th>
-              {weekDates.map((d, i) => (
+              {weekDates.map((d) => (
                 <th key={d} className="px-2 py-3 text-center text-[12px] font-bold text-[#8B95A1]">
-                  <div>{DAY_LABELS[i]}</div>
+                  <div>{format(parseISO(d), "EEE", { locale: ko })}</div>
                   <div className="text-[11px] font-normal">{d.slice(5)}</div>
                 </th>
               ))}
@@ -694,17 +719,20 @@ export default function AdminSchedulesPage() {
                     // align-middle: 슬롯이 있어 행이 길어져도 + 버튼이 셀 중앙에 위치
                     <td key={d} className="px-1 py-2 align-middle">
                       <div className="flex flex-col items-stretch gap-1">
-                        {daySlots.map((slot) => (
-                          <button
-                            key={slot.id}
-                            onClick={() => setEditSlot({ slot })}
-                            className="w-full text-left px-2 py-1.5 rounded-lg text-white text-[11px] font-bold transition-all hover:opacity-80 active:scale-[0.97]"
-                            style={{ backgroundColor: LOCATION_COLORS[slot.work_location] }}
-                          >
-                            <div>{LOCATION_LABELS[slot.work_location]}</div>
-                            <div className="opacity-90">{slot.start_time.slice(0, 5)}~{slot.end_time.slice(0, 5)}</div>
-                          </button>
-                        ))}
+                        {daySlots.map((slot) => {
+                          const isSubstituted = slot.status === "substituted";
+                          return (
+                            <button
+                              key={slot.id}
+                              onClick={() => setEditSlot({ slot })}
+                              className={`w-full text-left px-2 py-1.5 rounded-lg text-[12px] font-bold transition-all hover:opacity-80 active:scale-[0.97] ${isSubstituted ? "text-[#8B95A1] line-through" : "text-white"}`}
+                              style={{ backgroundColor: isSubstituted ? "#F2F4F6" : LOCATION_COLORS[slot.work_location] }}
+                            >
+                              <div>{LOCATION_LABELS[slot.work_location]}</div>
+                              <div className="opacity-90">{slot.start_time.slice(0, 5)}~{slot.end_time.slice(0, 5)}</div>
+                            </button>
+                          );
+                        })}
                         <button
                           onClick={() => setEditSlot({ slot: null, defaultDate: d, defaultProfileId: profile.id })}
                           className="w-full flex items-center justify-center py-1 rounded-lg text-[#D1D6DB] hover:text-[#3182F6] hover:bg-[#E8F3FF] transition-all"
@@ -880,7 +908,8 @@ export default function AdminSchedulesPage() {
         <div className="relative flex items-center justify-center gap-2 mb-4">
           <button
             onClick={() => setWeekStart((w) => subWeeks(w, 1))}
-            className="p-2 rounded-full hover:bg-[#F2F4F6] text-[#8B95A1]"
+            aria-label="이전 주"
+            className="p-2 rounded-full hover:bg-[#F2F4F6] text-[#8B95A1] min-w-[44px] min-h-[44px] flex items-center justify-center"
           >
             <ChevronLeft className="w-5 h-5" />
           </button>
@@ -890,7 +919,8 @@ export default function AdminSchedulesPage() {
           </span>
           <button
             onClick={() => setWeekStart((w) => addWeeks(w, 1))}
-            className="p-2 rounded-full hover:bg-[#F2F4F6] text-[#8B95A1]"
+            aria-label="다음 주"
+            className="p-2 rounded-full hover:bg-[#F2F4F6] text-[#8B95A1] min-w-[44px] min-h-[44px] flex items-center justify-center"
           >
             <ChevronRight className="w-5 h-5" />
           </button>
@@ -939,7 +969,7 @@ export default function AdminSchedulesPage() {
               disabled={fillingDefaults}
               className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 text-[#4E5968] rounded-xl text-[13px] font-bold hover:bg-[#F2F4F6] transition-all disabled:opacity-50"
             >
-              <Copy className="w-3.5 h-3.5" />
+              <LayoutTemplate className="w-3.5 h-3.5" />
               {fillingDefaults ? "채우는 중이에요" : "기본 패턴으로 채우기"}
             </button>
           </>
@@ -965,6 +995,7 @@ export default function AdminSchedulesPage() {
       {/* Slot bottom sheet */}
       {editSlot !== null && (
         <SlotBottomSheet
+          key={editSlot.slot?.id ?? "new"}
           slot={editSlot.slot}
           profiles={profiles}
           weekDates={weekDates}

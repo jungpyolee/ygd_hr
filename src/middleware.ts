@@ -42,9 +42,23 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  const { pathname } = request.nextUrl;
+
   // 로그인이 안 된 상태에서 메인 페이지 접근 시 로그인 페이지로 리다이렉트
-  if (!user && !request.nextUrl.pathname.startsWith("/login")) {
+  if (!user && !pathname.startsWith("/login")) {
     return NextResponse.redirect(new URL("/login", request.url));
+  }
+
+  // /admin/** 경로에서 admin role 확인
+  if (user && pathname.startsWith("/admin")) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+    if (profile?.role !== "admin") {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
   }
 
   return response;
