@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { Pin, PinOff, Pencil, Trash2, Plus, Megaphone } from "lucide-react";
@@ -17,7 +17,7 @@ const TARGET_LABEL: Record<string, string> = {
 };
 
 export default function AdminAnnouncementsPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(true);

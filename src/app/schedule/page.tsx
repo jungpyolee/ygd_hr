@@ -214,9 +214,9 @@ function SchedulePageInner() {
       .eq("slot_date", req.slot_date)
       .eq("status", "active");
 
-    const reqStart = req.start_time.slice(0, 5).split(":").reduce((h, m, i) => i === 0 ? +h * 60 : +h + +m, 0 as number);
-    const reqEnd = req.end_time.slice(0, 5).split(":").reduce((h, m, i) => i === 0 ? +h * 60 : +h + +m, 0 as number);
     const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+    const reqStart = toMin(req.start_time.slice(0, 5));
+    const reqEnd = toMin(req.end_time.slice(0, 5));
     const hasOverlap = (existingSlots || []).some((s) =>
       toMin(s.start_time) < reqEnd && toMin(s.end_time) > reqStart
     );

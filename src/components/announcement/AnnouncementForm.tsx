@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { Pin } from "lucide-react";
@@ -18,7 +18,7 @@ const TARGET_OPTIONS: { value: AnnouncementTargetRole; label: string }[] = [
 ];
 
 export default function AnnouncementForm({ initialData }: AnnouncementFormProps) {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
 
   const [title, setTitle] = useState(initialData?.title ?? "");

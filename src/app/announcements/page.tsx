@@ -36,7 +36,7 @@ export default function AnnouncementsPage() {
       ]);
 
       setAnnouncements((items as Announcement[]) ?? []);
-      setReadIds(new Set((reads ?? []).map((r: any) => r.announcement_id)));
+      setReadIds(new Set((reads ?? []).map((r: { announcement_id: string }) => r.announcement_id)));
       setLoading(false);
     };
     fetchData();

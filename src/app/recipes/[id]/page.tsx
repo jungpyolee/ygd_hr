@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase";
 import { useRouter, useParams } from "next/navigation";
 import { ChevronLeft, Pencil, Trash2 } from "lucide-react";
@@ -17,7 +17,7 @@ export default function RecipeDetailPage() {
   const [loading, setLoading] = useState(true);
   const [canDelete, setCanDelete] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
   const params = useParams();
   const id = params.id as string;
