@@ -3,14 +3,19 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase";
 import { useRouter, useParams } from "next/navigation";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, Pencil, Trash2 } from "lucide-react";
 import Image from "next/image";
+import { toast } from "sonner";
+import ConfirmDialog from "@/components/ui/confirm-dialog";
 import type { RecipeItem, RecipeStep } from "@/types/recipe";
 
 export default function RecipeDetailPage() {
   const [recipe, setRecipe] = useState<RecipeItem | null>(null);
   const [steps, setSteps] = useState<RecipeStep[]>([]);
   const [loading, setLoading] = useState(true);
+  const [canEdit, setCanEdit] = useState(false);
+  const [canDelete, setCanDelete] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const supabase = createClient();
   const router = useRouter();
   const params = useParams();
@@ -18,6 +23,26 @@ export default function RecipeDetailPage() {
 
   useEffect(() => {
     const fetchData = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      let userId: string | null = null;
+      let isAdmin = false;
+      let isFullTime = false;
+
+      if (user) {
+        userId = user.id;
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role, employment_type")
+          .eq("id", user.id)
+          .single();
+        isAdmin = profile?.role === "admin";
+        isFullTime = profile?.employment_type === "full_time";
+        setCanEdit(isAdmin || isFullTime);
+      }
+
       const [{ data: recipeData }, { data: stepsData }] = await Promise.all([
         supabase
           .from("recipe_items")
@@ -37,6 +62,10 @@ export default function RecipeDetailPage() {
       }
       setRecipe(recipeData);
       setSteps(stepsData ?? []);
+      setCanDelete(
+        isAdmin ||
+          (isFullTime && !!userId && recipeData.created_by === userId)
+      );
       setLoading(false);
 
       // 최근 본 레시피 저장
@@ -87,6 +116,26 @@ export default function RecipeDetailPage() {
             <p className="text-[12px] text-[#8B95A1]">
               {recipe.recipe_categories.name}
             </p>
+          )}
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          {canEdit && (
+            <button
+              onClick={() => router.push(`/recipes/${id}/edit`)}
+              aria-label="레시피 수정"
+              className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-[#F2F4F6] transition-colors"
+            >
+              <Pencil className="w-4 h-4 text-[#4E5968]" />
+            </button>
+          )}
+          {canDelete && (
+            <button
+              onClick={() => setDeleteOpen(true)}
+              aria-label="레시피 삭제"
+              className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-red-50 transition-colors"
+            >
+              <Trash2 className="w-4 h-4 text-red-400" />
+            </button>
           )}
         </div>
       </header>
@@ -165,6 +214,31 @@ export default function RecipeDetailPage() {
           </div>
         )}
       </main>
+
+      <ConfirmDialog
+        isOpen={deleteOpen}
+        title="레시피를 삭제할까요?"
+        description="삭제하면 복구할 수 없어요."
+        confirmLabel="삭제하기"
+        cancelLabel="취소"
+        onConfirm={async () => {
+          setDeleteOpen(false);
+          await supabase.from("recipe_steps").delete().eq("recipe_id", id);
+          const { error } = await supabase
+            .from("recipe_items")
+            .delete()
+            .eq("id", id);
+          if (error) {
+            toast.error("삭제에 실패했어요", {
+              description: "잠시 후 다시 시도해 주세요.",
+            });
+          } else {
+            toast.success("레시피를 삭제했어요");
+            router.replace("/recipes");
+          }
+        }}
+        onCancel={() => setDeleteOpen(false)}
+      />
     </div>
   );
 }

@@ -43,6 +43,9 @@ interface RecipeFormProps {
   categories: RecipeCategory[];
   initialRecipe?: RecipeItem;
   initialSteps?: RecipeStep[];
+  redirectAfterSave?: string;
+  defaultPublished?: boolean;
+  canCreateCategory?: boolean;
 }
 
 interface SortableStepProps {
@@ -182,6 +185,9 @@ export default function RecipeForm({
   categories,
   initialRecipe,
   initialSteps = [],
+  redirectAfterSave = "/admin/recipes",
+  defaultPublished = false,
+  canCreateCategory = true,
 }: RecipeFormProps) {
   const isEdit = !!initialRecipe;
   const supabase = createClient();
@@ -200,7 +206,7 @@ export default function RecipeForm({
     initialRecipe?.description ?? ""
   );
   const [isPublished, setIsPublished] = useState(
-    initialRecipe?.is_published ?? false
+    initialRecipe?.is_published ?? defaultPublished
   );
 
   // 썸네일
@@ -481,7 +487,7 @@ export default function RecipeForm({
       }
 
       // recipe_items 저장
-      const recipePayload = {
+      const basePayload = {
         id: recipeId,
         category_id: finalCategoryId,
         name: name.trim(),
@@ -491,12 +497,18 @@ export default function RecipeForm({
         is_published: isPublished,
       };
 
-      const { error: recipeError } = isEdit
-        ? await supabase
-            .from("recipe_items")
-            .update(recipePayload)
-            .eq("id", recipeId)
-        : await supabase.from("recipe_items").insert(recipePayload);
+      let recipeError;
+      if (isEdit) {
+        ({ error: recipeError } = await supabase
+          .from("recipe_items")
+          .update(basePayload)
+          .eq("id", recipeId));
+      } else {
+        const { data: { user } } = await supabase.auth.getUser();
+        ({ error: recipeError } = await supabase
+          .from("recipe_items")
+          .insert({ ...basePayload, created_by: user?.id ?? null }));
+      }
 
       if (recipeError) {
         toast.error("레시피 저장에 실패했어요", {
@@ -562,7 +574,7 @@ export default function RecipeForm({
       }
 
       toast.success(isEdit ? "레시피를 수정했어요" : "레시피를 추가했어요");
-      router.push("/admin/recipes");
+      router.push(redirectAfterSave);
     } catch {
       toast.error("저장 중 오류가 발생했어요", {
         description: "다시 시도해주세요",
@@ -601,15 +613,17 @@ export default function RecipeForm({
             {errors.category && (
               <p className="text-[13px] text-[#E03131]">{errors.category}</p>
             )}
-            <button
-              onClick={() => {
-                setShowNewCategory(true);
-                setErrors((p) => ({ ...p, category: undefined }));
-              }}
-              className="text-[13px] text-[#3182F6] font-semibold"
-            >
-              + 새 카테고리 만들기
-            </button>
+            {canCreateCategory && (
+              <button
+                onClick={() => {
+                  setShowNewCategory(true);
+                  setErrors((p) => ({ ...p, category: undefined }));
+                }}
+                className="text-[13px] text-[#3182F6] font-semibold"
+              >
+                + 새 카테고리 만들기
+              </button>
+            )}
           </div>
         ) : (
           <div className="space-y-2">

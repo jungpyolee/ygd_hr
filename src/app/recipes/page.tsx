@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, BookOpen, Search, X } from "lucide-react";
+import { ChevronLeft, BookOpen, Search, X, Plus } from "lucide-react";
 import Image from "next/image";
 import type { RecipeCategory, RecipeItem } from "@/types/recipe";
 
@@ -14,11 +14,28 @@ export default function RecipesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [recentIds, setRecentIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [canCreate, setCanCreate] = useState(false);
   const supabase = createClient();
   const router = useRouter();
 
   useEffect(() => {
     const fetchData = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (user) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role, employment_type")
+          .eq("id", user.id)
+          .single();
+        setCanCreate(
+          profile?.role === "admin" ||
+            profile?.employment_type === "full_time"
+        );
+      }
+
       const [{ data: cats }, { data: items }] = await Promise.all([
         supabase
           .from("recipe_categories")
@@ -134,7 +151,7 @@ export default function RecipesPage() {
       )}
 
       {/* 레시피 목록 */}
-      <main className="flex-1 px-5 py-5 space-y-3">
+      <main className="flex-1 px-5 py-5 pb-24 space-y-3">
         {/* 최근 본 레시피 */}
         {!searchQuery && recentIds.length > 0 && (() => {
           const recentRecipes = recentIds
@@ -215,6 +232,16 @@ export default function RecipesPage() {
           ))
         )}
       </main>
+
+      {canCreate && (
+        <button
+          onClick={() => router.push("/recipes/new")}
+          className="fixed bottom-6 right-6 w-14 h-14 bg-[#3182F6] text-white rounded-full shadow-lg shadow-blue-500/30 flex items-center justify-center active:scale-95 transition-all z-50"
+          aria-label="레시피 추가하기"
+        >
+          <Plus className="w-6 h-6" />
+        </button>
+      )}
     </div>
   );
 }
