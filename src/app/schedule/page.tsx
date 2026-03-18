@@ -368,6 +368,7 @@ export default function SchedulePage() {
             <div className="bg-white rounded-[24px] border border-slate-100 p-10 text-center">
               <Calendar className="w-8 h-8 text-[#D1D6DB] mx-auto mb-3" />
               <p className="text-[#8B95A1] text-[15px] font-medium">이 날은 근무가 없어요</p>
+              <p className="text-[#8B95A1] text-[13px] mt-1">스케줄이 궁금하면 관리자에게 확인해보세요.</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -521,12 +522,12 @@ export default function SchedulePage() {
               <label className="block text-[12px] font-medium text-[#8B95A1] mb-1">
                 요청 사유 (선택)
               </label>
-              <input
-                type="text"
+              <textarea
                 value={requestReason}
                 onChange={(e) => setRequestReason(e.target.value)}
                 placeholder="사유를 입력해요 (예: 개인 사정, 몸 상태 불량)"
-                className="w-full px-4 py-3 bg-[#F9FAFB] border border-slate-200 rounded-xl text-[14px] text-[#191F28] focus:outline-none focus:border-[#3182F6]"
+                rows={3}
+                className="w-full px-4 py-3 bg-[#F9FAFB] border border-slate-200 rounded-xl text-[14px] text-[#191F28] focus:outline-none focus:border-[#3182F6] resize-none"
               />
             </div>
 
