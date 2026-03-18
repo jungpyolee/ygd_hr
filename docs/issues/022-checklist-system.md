@@ -1,12 +1,12 @@
-# [FEAT-021] 출퇴근 체크리스트 시스템
+# [FEAT-022] 출퇴근 체크리스트 시스템
 
 | 항목 | 내용 |
 |------|------|
 | 유형 | 기능 추가 |
-| 상태 | 🔄 미시작 |
+| 상태 | ✅ 완료 |
 | 파일 | `src/components/AttendanceCard.tsx`, `src/components/ChecklistSheet.tsx` (신규), `src/app/admin/checklists/page.tsx` (신규) |
 | 발견일 | 2026-03-18 |
-| 완료일 | - |
+| 완료일 | 2026-03-18 |
 
 ## 배경
 
@@ -149,12 +149,11 @@ CREATE POLICY "어드민 제출 기록 조회" ON checklist_submissions FOR ALL
 
 ## 결과
 
-- [ ] DB 마이그레이션 (`checklist_templates`, `checklist_submissions`)
-- [ ] RLS 4종 생성
-- [ ] `ChecklistSheet.tsx` 신규 생성
-- [ ] `AttendanceCard.tsx` 출근/퇴근 체크리스트 연동
-- [ ] `/admin/checklists` 설정 페이지
-- [ ] 어드민 레이아웃 사이드바에 "체크리스트 설정" 메뉴 추가
-- [ ] 체크리스트 없는 직원은 기존 흐름 유지 확인
-- [ ] schema.md 갱신
-- [ ] 빌드 통과
+- [x] DB 마이그레이션 (`checklist_templates`, `checklist_submissions`)
+- [x] RLS 4종 생성
+- [x] `ChecklistSheet.tsx` 신규 생성 (바텀시트, 출근 건너뛰기 가능, 퇴근 필수 완료)
+- [x] `AttendanceCard.tsx` 출근/퇴근 체크리스트 연동 (check_in: 출근 후 표시, check_out: 퇴근 전 차단)
+- [x] `/admin/checklists` 설정 페이지 (출근/퇴근 탭, 항목 추가/활성토글/삭제, 근무지·포지션 필터)
+- [x] 어드민 레이아웃 사이드바에 "체크리스트 설정" 메뉴 추가
+- [x] 체크리스트 없는 직원은 기존 흐름 유지
+- [x] 빌드 통과

@@ -24,6 +24,7 @@ import {
   BookOpen,
   CalendarDays,
   Megaphone,
+  ClipboardList,
 } from "lucide-react";
 
 export default function AdminLayout({
@@ -242,6 +243,11 @@ export default function AdminLayout({
       name: "공지사항 관리",
       path: "/admin/announcements",
       icon: <Megaphone className="w-5 h-5" />,
+    },
+    {
+      name: "체크리스트 설정",
+      path: "/admin/checklists",
+      icon: <ClipboardList className="w-5 h-5" />,
     },
     {
       name: "직원 모드로 변경",
