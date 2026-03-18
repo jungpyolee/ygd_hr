@@ -275,7 +275,12 @@ export default function RecipeComments({
 
   useEffect(() => {
     if (replyingTo && replyInputRef.current) {
-      replyInputRef.current.focus();
+      const el = replyInputRef.current;
+      // RAF로 value가 DOM에 반영된 뒤 커서를 맨 끝으로
+      requestAnimationFrame(() => {
+        el.focus();
+        el.setSelectionRange(el.value.length, el.value.length);
+      });
     }
   }, [replyingTo]);
 
