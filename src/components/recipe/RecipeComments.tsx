@@ -119,6 +119,7 @@ export default function RecipeComments({
     }
     setText("");
     setSubmitting(false);
+    await fetchComments();
 
     // 알림: 레시피 작성자에게 (본인 제외)
     if (recipeCreatedBy && recipeCreatedBy !== currentUser.id) {
@@ -185,6 +186,7 @@ export default function RecipeComments({
     setReplyText("");
     setReplyingTo(null);
     setSubmitting(false);
+    await fetchComments();
   };
 
   const deleteComment = async (comment: CommentRow) => {
@@ -393,14 +395,14 @@ export default function RecipeComments({
 
       {/* 댓글 입력 */}
       {currentUser && (
-        <div className="flex gap-2 pt-3 border-t border-[#F2F4F6] items-end">
-          <div
-            className="w-8 h-8 rounded-full flex items-center justify-center text-[12px] font-bold text-white shrink-0 mb-1"
-            style={{ backgroundColor: "#8B95A1" }}
-          >
-            {currentUser.name.charAt(0)}
-          </div>
-          <div className="flex-1 flex flex-col gap-2">
+        <div className="pt-3 border-t border-[#F2F4F6] space-y-2">
+          <div className="flex gap-2 items-start">
+            <div
+              className="w-8 h-8 rounded-full flex items-center justify-center text-[12px] font-bold text-white shrink-0 mt-0.5"
+              style={{ backgroundColor: "#8B95A1" }}
+            >
+              {currentUser.name.charAt(0)}
+            </div>
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
@@ -410,18 +412,18 @@ export default function RecipeComments({
                   submitComment();
                 }
               }}
-              rows={1}
-              placeholder="궁금한 점이나 메모를 남겨보세요."
-              className="w-full bg-[#F2F4F6] rounded-xl px-3 py-2.5 text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] outline-none focus:ring-2 focus:ring-[#3182F6]/20 resize-none"
+              rows={2}
+              placeholder="궁금한점을 댓글로 남겨보세요."
+              className="flex-1 bg-[#F2F4F6] rounded-xl px-3 py-2.5 text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] outline-none focus:ring-2 focus:ring-[#3182F6]/20 resize-none"
             />
-            <button
-              onClick={submitComment}
-              disabled={!text.trim() || submitting}
-              className="w-full h-10 bg-[#3182F6] text-white text-[14px] font-bold rounded-xl disabled:opacity-40 transition-opacity"
-            >
-              등록하기
-            </button>
           </div>
+          <button
+            onClick={submitComment}
+            disabled={!text.trim() || submitting}
+            className="w-full h-10 bg-[#3182F6] text-white text-[14px] font-bold rounded-xl disabled:opacity-40 transition-opacity"
+          >
+            등록하기
+          </button>
         </div>
       )}
 

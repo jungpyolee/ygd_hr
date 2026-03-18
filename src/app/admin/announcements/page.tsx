@@ -93,7 +93,8 @@ export default function AdminAnnouncementsPage() {
           {announcements.map((item) => (
             <div
               key={item.id}
-              className="bg-white rounded-[20px] px-5 py-4 border border-slate-100 flex items-start gap-3"
+              className="bg-white rounded-[20px] px-5 py-4 border border-slate-100 flex items-start gap-3 cursor-pointer active:scale-[0.99] transition-transform"
+              onClick={() => router.push(`/admin/announcements/${item.id}/edit`)}
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
@@ -114,7 +115,7 @@ export default function AdminAnnouncementsPage() {
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 <button
-                  onClick={() => togglePin(item)}
+                  onClick={(e) => { e.stopPropagation(); togglePin(item); }}
                   className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-[#F2F4F6] transition-colors"
                   aria-label={item.is_pinned ? "고정 해제" : "상단 고정"}
                 >
@@ -125,14 +126,14 @@ export default function AdminAnnouncementsPage() {
                   )}
                 </button>
                 <button
-                  onClick={() => router.push(`/admin/announcements/${item.id}/edit`)}
+                  onClick={(e) => { e.stopPropagation(); router.push(`/admin/announcements/${item.id}/edit`); }}
                   className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-[#F2F4F6] transition-colors"
                   aria-label="수정"
                 >
                   <Pencil className="w-4 h-4 text-[#4E5968]" />
                 </button>
                 <button
-                  onClick={() => setDeleteTarget(item)}
+                  onClick={(e) => { e.stopPropagation(); setDeleteTarget(item); }}
                   className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-red-50 transition-colors"
                   aria-label="삭제"
                 >
