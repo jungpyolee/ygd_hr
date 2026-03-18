@@ -19,6 +19,16 @@ export interface RecipeItem {
   created_at: string;
   updated_at: string;
   recipe_categories?: RecipeCategory;
+  profiles?: { name: string | null };
+}
+
+export interface RecipeIngredient {
+  id: string;
+  recipe_id: string;
+  name: string;
+  amount: string;
+  unit: string | null;
+  order_index: number;
 }
 
 export interface RecipeStep {
