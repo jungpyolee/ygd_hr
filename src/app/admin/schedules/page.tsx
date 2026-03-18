@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase";
 import { toast } from "sonner";
 import {
@@ -118,6 +118,7 @@ function SlotBottomSheet({
   });
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const handleSave = async () => {
     if (!form.profile_id || !form.slot_date || !form.start_time || !form.end_time || !form.work_location) {
@@ -272,19 +273,40 @@ function SlotBottomSheet({
             disabled={saving}
             className="w-full h-14 bg-[#3182F6] text-white rounded-2xl font-bold text-[16px] disabled:opacity-50 active:scale-[0.98] transition-all"
           >
-            {saving ? "저장 중..." : "저장하기"}
+            {saving ? "저장하는 중이에요" : "저장하기"}
           </button>
           {!isNew && onDelete && (
-            <button
-              onClick={handleDelete}
-              disabled={deleting}
-              className="w-full h-14 bg-[#FFEBEB] text-[#E03131] rounded-2xl font-bold text-[16px] disabled:opacity-50 active:scale-[0.98] transition-all"
-            >
-              {deleting ? "삭제 중..." : "이 슬롯 삭제하기"}
-            </button>
+            confirmDelete ? (
+              <div className="bg-[#FFF5F5] rounded-2xl p-4 space-y-3">
+                <p className="text-[14px] font-bold text-[#E03131] text-center">정말 삭제할까요?</p>
+                <p className="text-[13px] text-[#8B95A1] text-center">삭제하면 복구할 수 없어요.</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setConfirmDelete(false)}
+                    className="flex-1 py-2.5 bg-white border border-slate-200 text-[#4E5968] rounded-xl text-[14px] font-bold"
+                  >
+                    취소하기
+                  </button>
+                  <button
+                    onClick={handleDelete}
+                    disabled={deleting}
+                    className="flex-1 py-2.5 bg-[#E03131] text-white rounded-xl text-[14px] font-bold disabled:opacity-50"
+                  >
+                    {deleting ? "삭제하는 중이에요" : "삭제하기"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="w-full h-14 bg-[#FFEBEB] text-[#E03131] rounded-2xl font-bold text-[16px] active:scale-[0.98] transition-all"
+              >
+                이 슬롯 삭제하기
+              </button>
+            )
           )}
           <button onClick={onClose} className="w-full h-14 bg-[#F2F4F6] text-[#4E5968] rounded-2xl font-bold text-[16px] active:scale-[0.98] transition-all">
-            취소
+            닫기
           </button>
         </div>
       </div>
@@ -294,7 +316,7 @@ function SlotBottomSheet({
 
 // --------------- Main Page ---------------
 export default function AdminSchedulesPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [tab, setTab] = useState<"weekly" | "daily">("weekly");
   const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date(), { weekStartsOn: 0 }));
   const [dailyDate, setDailyDate] = useState<Date>(new Date());
@@ -394,14 +416,15 @@ export default function AdminSchedulesPage() {
       return;
     }
 
-    // 2. 같은 직원·날짜 겹치는 근무 검사
-    const sameDay = slots.filter((s) =>
-      s.profile_id === data.profile_id &&
-      s.slot_date === data.slot_date &&
-      s.status === "active" &&
-      (isNew ? true : s.id !== data.id)
-    );
-    const hasOverlap = sameDay.some((s) => {
+    // 2. 같은 직원·날짜 겹치는 근무 검사 (DB 직접 조회 — 대타 슬롯 누락 방지)
+    const { data: dbSameDay } = await supabase
+      .from("schedule_slots")
+      .select("id, start_time, end_time")
+      .eq("profile_id", data.profile_id!)
+      .eq("slot_date", data.slot_date!)
+      .eq("status", "active")
+      .neq("id", data.id ?? "00000000-0000-0000-0000-000000000000");
+    const hasOverlap = (dbSameDay || []).some((s) => {
       const sStart = timeToMinutes(s.start_time);
       const sEnd = timeToMinutes(s.end_time);
       return startMin < sEnd && endMin > sStart;
@@ -475,22 +498,40 @@ export default function AdminSchedulesPage() {
     const wsId = await getOrCreateWeeklySchedule();
     if (!wsId) { setCopying(false); return; }
 
+    // 현재 주 기존 슬롯 확인 (중복 방지)
+    const { data: existingSlots } = await supabase
+      .from("schedule_slots")
+      .select("profile_id, slot_date")
+      .eq("weekly_schedule_id", wsId)
+      .neq("status", "cancelled");
+    const existingSet = new Set(
+      (existingSlots || []).map((s: { profile_id: string; slot_date: string }) => `${s.profile_id}_${s.slot_date}`)
+    );
+
     const prevWeekDates = getWeekDates(subWeeks(weekStart, 1));
-    const newSlots = prevSlots.map((s: ScheduleSlot) => {
-      const dayIndex = prevWeekDates.indexOf(s.slot_date);
-      const newDate = dayIndex >= 0 ? weekDates[dayIndex] : weekDates[0];
-      return {
-        weekly_schedule_id: wsId,
-        profile_id: s.profile_id,
-        slot_date: newDate,
-        start_time: s.start_time,
-        end_time: s.end_time,
-        work_location: s.work_location,
-        cafe_positions: s.cafe_positions,
-        notes: s.notes,
-        status: "active",
-      };
-    });
+    const newSlots = prevSlots
+      .map((s: ScheduleSlot) => {
+        const dayIndex = prevWeekDates.indexOf(s.slot_date);
+        if (dayIndex === -1) return null;
+        return {
+          weekly_schedule_id: wsId,
+          profile_id: s.profile_id,
+          slot_date: weekDates[dayIndex],
+          start_time: s.start_time,
+          end_time: s.end_time,
+          work_location: s.work_location,
+          cafe_positions: s.cafe_positions,
+          notes: s.notes,
+          status: "active",
+        };
+      })
+      .filter((s): s is NonNullable<typeof s> => s !== null && !existingSet.has(`${s.profile_id}_${s.slot_date}`));
+
+    if (newSlots.length === 0) {
+      toast.error("복사할 슬롯이 없어요", { description: "이미 이번 주에 동일한 슬롯이 있어요." });
+      setCopying(false);
+      return;
+    }
 
     const { error } = await supabase.from("schedule_slots").insert(newSlots);
     if (error) { toast.error("복사에 실패했어요", { description: error.message }); }
@@ -542,7 +583,9 @@ export default function AdminSchedulesPage() {
     }> = [];
 
     for (const wd of defaults) {
-      const targetDate = weekDates[wd.day_of_week]; // 0=일,1=월...6=토
+      const dow = wd.day_of_week;
+      if (typeof dow !== "number" || dow < 0 || dow > 6) continue;
+      const targetDate = weekDates[dow]; // 0=일,1=월...6=토
       const key = `${wd.profile_id}_${targetDate}`;
       if (existingSet.has(key)) continue; // skip duplicate
 
@@ -575,6 +618,10 @@ export default function AdminSchedulesPage() {
   };
 
   const handleConfirmSchedule = async () => {
+    if (weeklySchedule?.status === "confirmed") {
+      toast.error("이미 확정된 스케줄이에요", { description: "직원들에게 이미 알림이 전송됐어요." });
+      return;
+    }
     setConfirming(true);
     const wsId = await getOrCreateWeeklySchedule();
     if (!wsId) { setConfirming(false); return; }
@@ -582,7 +629,8 @@ export default function AdminSchedulesPage() {
     const { error } = await supabase
       .from("weekly_schedules")
       .update({ status: "confirmed", published_at: new Date().toISOString() })
-      .eq("id", wsId);
+      .eq("id", wsId)
+      .eq("status", "draft");
 
     if (error) { toast.error("확정에 실패했어요", { description: error.message }); setConfirming(false); return; }
 
@@ -771,11 +819,10 @@ export default function AdminSchedulesPage() {
             <div className="flex border-t-2 border-slate-200 bg-[#F9FAFB]">
               <div className="w-[80px] shrink-0 px-2 py-2 text-[11px] font-bold text-[#8B95A1]">인원</div>
               {hours.map((h) => {
-                const count = dailySlotsData.filter((s) => {
-                  const start = parseInt(s.start_time.split(":")[0]);
-                  const end = parseInt(s.end_time.split(":")[0]);
-                  return h >= start && h < end;
-                }).length;
+                const count = dailySlotsData.filter((s) =>
+                  timeToMinutes(s.start_time) < (h + 1) * 60 &&
+                  timeToMinutes(s.end_time) > h * 60
+                ).length;
                 return (
                   <div key={h} className="flex-1 border-l border-slate-100 text-center py-2">
                     <span className={`text-[12px] font-bold ${count > 0 ? "text-[#3182F6]" : "text-[#D1D6DB]"}`}>
@@ -797,7 +844,7 @@ export default function AdminSchedulesPage() {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-[#191F28] mb-1">스케줄 관리</h1>
-          <p className="text-[14px] text-[#8B95A1]">직원 근무 일정을 관리하고 확정해요.</p>
+          <p className="text-[14px] text-[#8B95A1]">직원 근무 일정을 한눈에 관리해요.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {/* 대체근무 관리 — pending 뱃지 */}
@@ -823,7 +870,7 @@ export default function AdminSchedulesPage() {
             }`}
           >
             <Check className="w-4 h-4" />
-            {weeklySchedule?.status === "confirmed" ? "확정됨" : confirming ? "확정 중..." : "스케줄 확정하기"}
+            {weeklySchedule?.status === "confirmed" ? "확정됨" : confirming ? "확정하는 중이에요" : "스케줄 확정하기"}
           </button>
         </div>
       </div>
@@ -885,7 +932,7 @@ export default function AdminSchedulesPage() {
               className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 text-[#4E5968] rounded-xl text-[13px] font-bold hover:bg-[#F2F4F6] transition-all disabled:opacity-50"
             >
               <Copy className="w-3.5 h-3.5" />
-              {copying ? "복사 중..." : "이전 주 복사"}
+              {copying ? "복사하는 중이에요" : "이전 주 복사"}
             </button>
             <button
               onClick={handleFillDefaults}
@@ -893,7 +940,7 @@ export default function AdminSchedulesPage() {
               className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 text-[#4E5968] rounded-xl text-[13px] font-bold hover:bg-[#F2F4F6] transition-all disabled:opacity-50"
             >
               <Copy className="w-3.5 h-3.5" />
-              {fillingDefaults ? "채우는 중..." : "기본 패턴으로 채우기"}
+              {fillingDefaults ? "채우는 중이에요" : "기본 패턴으로 채우기"}
             </button>
           </>
         )}
@@ -901,8 +948,17 @@ export default function AdminSchedulesPage() {
 
       {/* Content */}
       {loading ? (
-        <div className="flex justify-center items-center h-64">
-          <div className="w-8 h-8 border-4 border-[#3182F6] border-t-transparent rounded-full animate-spin" />
+        <div className="overflow-x-auto rounded-[20px] border border-slate-100 bg-white shadow-sm">
+          <div className="min-w-[700px] p-4 space-y-3">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="flex gap-2">
+                <div className="w-[100px] h-8 bg-[#F2F4F6] rounded-lg animate-pulse" />
+                {[1, 2, 3, 4, 5, 6, 7].map((j) => (
+                  <div key={j} className="flex-1 h-8 bg-[#F2F4F6] rounded-lg animate-pulse" />
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
       ) : tab === "weekly" ? renderWeeklyGrid() : renderDailyView()}
 

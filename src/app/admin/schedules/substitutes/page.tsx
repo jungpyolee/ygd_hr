@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase";
 import { toast } from "sonner";
 import { ChevronLeft, X, Check, AlertCircle, Clock, MapPin } from "lucide-react";
@@ -50,7 +50,7 @@ const LOCATION_COLORS: Record<string, string> = {
 };
 
 export default function AdminSubstitutesPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [tab, setTab] = useState<"pending" | "done">("pending");
   const [requests, setRequests] = useState<SubstituteRequest[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -142,7 +142,7 @@ export default function AdminSubstitutesPage() {
         target_role: "employee",
         type: "substitute_rejected",
         title: "대타 요청이 반려됐어요",
-        content: `${format(new Date(rejectTarget.slot_date), "M월 d일", { locale: ko })} 대타 요청이 반려됐어요.${rejectReason ? ` 사유: ${rejectReason}` : ""}`,
+        content: `${format(new Date(rejectTarget.slot_date + "T00:00:00"), "M월 d일", { locale: ko })} 대타 요청이 반려됐어요.${rejectReason ? ` 사유: ${rejectReason}` : ""}`,
         source_id: rejectTarget.id,
       });
       toast.success("반려 처리했어요");
@@ -166,7 +166,7 @@ export default function AdminSubstitutesPage() {
 
   const handleApprove = async () => {
     if (!approveTarget || !currentAdminId) return;
-    if (eligibleIds.length === 0) { toast.error("대타 가능한 직원을 선택해주세요."); return; }
+    if (eligibleIds.length === 0) { toast.error("대타 가능한 직원을 선택해주세요.", { description: "목록에서 대타 가능한 직원을 1명 이상 선택해주세요." }); return; }
     setApproving(true);
 
     const { error } = await supabase
@@ -187,7 +187,7 @@ export default function AdminSubstitutesPage() {
         target_role: "employee" as const,
         type: "substitute_approved",
         title: "대타 요청이 왔어요",
-        content: `${format(new Date(approveTarget.slot_date), "M월 d일", { locale: ko })} ${LOCATION_LABELS[approveTarget.work_location]} ${approveTarget.start_time.slice(0, 5)}~${approveTarget.end_time.slice(0, 5)} 대타를 설 수 있어요. 확인해보세요.`,
+        content: `${format(new Date(approveTarget.slot_date + "T00:00:00"), "M월 d일", { locale: ko })} ${LOCATION_LABELS[approveTarget.work_location]} ${approveTarget.start_time.slice(0, 5)}~${approveTarget.end_time.slice(0, 5)} 대타를 설 수 있어요. 확인해보세요.`,
         source_id: approveTarget.id,
       }));
       await supabase.from("notifications").insert(notifications);
@@ -222,7 +222,7 @@ export default function AdminSubstitutesPage() {
         </Link>
         <div>
           <h1 className="text-2xl font-bold text-[#191F28]">대체근무 관리</h1>
-          <p className="text-[14px] text-[#8B95A1]">직원들의 대타 요청을 처리해요.</p>
+          <p className="text-[14px] text-[#8B95A1]">직원들의 대타 요청을 검토하고 승인해요.</p>
         </div>
       </div>
 
@@ -240,8 +240,17 @@ export default function AdminSubstitutesPage() {
       </div>
 
       {loading ? (
-        <div className="flex justify-center items-center h-40">
-          <div className="w-8 h-8 border-4 border-[#3182F6] border-t-transparent rounded-full animate-spin" />
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="bg-white rounded-[20px] p-5 border border-slate-100">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-8 h-8 rounded-full bg-[#F2F4F6] animate-pulse" />
+                <div className="w-24 h-4 bg-[#F2F4F6] rounded animate-pulse" />
+              </div>
+              <div className="w-full h-3 bg-[#F2F4F6] rounded animate-pulse mb-2" />
+              <div className="w-2/3 h-3 bg-[#F2F4F6] rounded animate-pulse" />
+            </div>
+          ))}
         </div>
       ) : filtered.length === 0 ? (
         <div className="bg-white rounded-[24px] border border-slate-100 p-12 text-center">
@@ -272,7 +281,7 @@ export default function AdminSubstitutesPage() {
               <div className="flex flex-wrap gap-3 mb-3 text-[13px] text-[#4E5968]">
                 <span className="flex items-center gap-1 font-medium">
                   <Clock className="w-3.5 h-3.5 text-[#8B95A1]" />
-                  {req.slot_date ? format(new Date(req.slot_date), "M월 d일 (EEE)", { locale: ko }) : ""}
+                  {req.slot_date ? format(new Date(req.slot_date + "T00:00:00"), "M월 d일 (EEE)", { locale: ko }) : ""}
                 </span>
                 <span className="font-medium">{req.start_time.slice(0, 5)} ~ {req.end_time.slice(0, 5)}</span>
                 <span
@@ -351,10 +360,10 @@ export default function AdminSubstitutesPage() {
                 disabled={rejecting}
                 className="w-full h-14 bg-[#FFEBEB] text-[#E03131] rounded-2xl font-bold text-[16px] disabled:opacity-50 active:scale-[0.98] transition-all"
               >
-                {rejecting ? "처리 중..." : "반려하기"}
+                {rejecting ? "처리하는 중이에요" : "반려하기"}
               </button>
               <button onClick={() => setRejectTarget(null)} className="w-full h-14 bg-[#F2F4F6] text-[#4E5968] rounded-2xl font-bold text-[16px]">
-                취소
+                닫기
               </button>
             </div>
           </div>
@@ -417,10 +426,10 @@ export default function AdminSubstitutesPage() {
                 disabled={approving}
                 className="w-full h-14 bg-[#3182F6] text-white rounded-2xl font-bold text-[16px] disabled:opacity-50 active:scale-[0.98] transition-all"
               >
-                {approving ? "처리 중..." : `승인 및 알림 보내기 (${eligibleIds.length}명)`}
+                {approving ? "처리하는 중이에요" : `승인 및 알림 보내기 (${eligibleIds.length}명)`}
               </button>
               <button onClick={() => setApproveTarget(null)} className="w-full h-14 bg-[#F2F4F6] text-[#4E5968] rounded-2xl font-bold text-[16px]">
-                취소
+                닫기
               </button>
             </div>
           </div>
