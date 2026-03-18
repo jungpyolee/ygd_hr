@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase";
-import { AlertCircle, LogOut, UserCircle, LayoutDashboard, BookOpen, CalendarDays, MapPin, Clock, Bell, BellDot, CheckCircle, ArrowRightLeft, Info } from "lucide-react";
+import { AlertCircle, UserCircle, BookOpen, CalendarDays, MapPin, Clock, Bell, BellDot, CheckCircle, ArrowRightLeft, Info } from "lucide-react";
 import dynamic from "next/dynamic";
 import WeeklyScheduleCard from "@/components/WeeklyScheduleCard";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
@@ -42,7 +42,6 @@ export default function HomePage() {
   const [stores, setStores] = useState<any[]>([]);
   const [lastLog, setLastLog] = useState<any>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
   const [todaySlots, setTodaySlots] = useState<TodaySlot[]>([]);
   // 알림 관련 상태
   const [notis, setNotis] = useState<any[]>([]);
@@ -325,26 +324,6 @@ export default function HomePage() {
             )}
           </div>
 
-          {profile?.role === "admin" && (
-            <button
-              onClick={() => router.push("/admin")}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 rounded-full transition-all shadow-sm"
-            >
-              <LayoutDashboard className="w-3.5 h-3.5 text-[#4E5968]" />
-              <span className="text-[13px] font-semibold text-[#4E5968]">
-                어드민
-              </span>
-            </button>
-          )}
-          <button
-            onClick={() => setIsLogoutConfirmOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 rounded-full transition-all shadow-sm"
-          >
-            <LogOut className="w-3.5 h-3.5 text-[#4E5968]" />
-            <span className="text-[13px] font-semibold text-[#4E5968]">
-              로그아웃
-            </span>
-          </button>
         </div>
       </nav>
 
@@ -471,17 +450,6 @@ export default function HomePage() {
         profile={profile}
         onClose={() => setIsEditModalOpen(false)}
         onUpdate={fetchAllData}
-      />
-      <ConfirmDialog
-        isOpen={isLogoutConfirmOpen}
-        title="로그아웃할까요?"
-        confirmLabel="로그아웃할게요"
-        cancelLabel="취소"
-        onConfirm={async () => {
-          await supabase.auth.signOut();
-          window.location.href = "/login";
-        }}
-        onCancel={() => setIsLogoutConfirmOpen(false)}
       />
     </div>
   );
