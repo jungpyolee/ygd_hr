@@ -519,12 +519,11 @@ function SchedulePageInner() {
         )}
       </main>
 
-      {/* 대타 요청하기 바텀시트 */}
+      {/* 대타 요청하기 모달 */}
       {requestTarget && (
-        <div className="fixed inset-0 z-[200] flex items-end justify-center">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-5">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setRequestTarget(null)} />
-          <div className="relative w-full max-w-md bg-white rounded-t-[28px] px-5 pt-8 pb-10 shadow-2xl animate-in slide-in-from-bottom-4 duration-250">
-            <div className="absolute top-3 left-1/2 -translate-x-1/2 w-9 h-1 bg-[#D1D6DB] rounded-full" />
+          <div className="relative w-full max-w-sm bg-white rounded-[28px] px-5 pt-7 pb-7 shadow-2xl animate-in fade-in zoom-in-95 duration-250">
             <div className="flex justify-between items-center mb-2">
               <h3 className="text-[18px] font-bold text-[#191F28]">대타 요청하기</h3>
               <button
@@ -569,12 +568,11 @@ function SchedulePageInner() {
         </div>
       )}
 
-      {/* 대타 수락 확인 바텀시트 */}
+      {/* 대타 수락 확인 모달 */}
       {activeRequest && (
-        <div className="fixed inset-0 z-[200] flex items-end justify-center">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-5">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={closeActiveRequest} />
-          <div className="relative w-full max-w-md bg-white rounded-t-[28px] px-5 pt-8 pb-10 shadow-2xl animate-in slide-in-from-bottom-4 duration-250">
-            <div className="absolute top-3 left-1/2 -translate-x-1/2 w-9 h-1 bg-[#D1D6DB] rounded-full" />
+          <div className="relative w-full max-w-sm bg-white rounded-[28px] px-5 pt-7 pb-7 shadow-2xl animate-in fade-in zoom-in-95 duration-250">
             <div className="flex justify-between items-center mb-5">
               <h3 className="text-[18px] font-bold text-[#191F28]">대타 요청 확인</h3>
               <button aria-label="닫기" onClick={closeActiveRequest} className="w-8 h-8 flex items-center justify-center rounded-full bg-[#F2F4F6]">

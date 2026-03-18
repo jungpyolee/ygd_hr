@@ -393,14 +393,14 @@ export default function RecipeComments({
 
       {/* 댓글 입력 */}
       {currentUser && (
-        <div className="flex gap-2 pt-2 border-t border-[#F2F4F6]">
+        <div className="flex gap-2 pt-3 border-t border-[#F2F4F6] items-end">
           <div
-            className="w-8 h-8 rounded-full flex items-center justify-center text-[12px] font-bold text-white shrink-0"
+            className="w-8 h-8 rounded-full flex items-center justify-center text-[12px] font-bold text-white shrink-0 mb-1"
             style={{ backgroundColor: "#8B95A1" }}
           >
             {currentUser.name.charAt(0)}
           </div>
-          <div className="flex-1 flex gap-2">
+          <div className="flex-1 flex flex-col gap-2">
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
@@ -412,12 +412,12 @@ export default function RecipeComments({
               }}
               rows={1}
               placeholder="궁금한 점이나 메모를 남겨보세요."
-              className="flex-1 bg-[#F2F4F6] rounded-xl px-3 py-2 text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] outline-none focus:ring-2 focus:ring-[#3182F6]/20 resize-none"
+              className="w-full bg-[#F2F4F6] rounded-xl px-3 py-2.5 text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] outline-none focus:ring-2 focus:ring-[#3182F6]/20 resize-none"
             />
             <button
               onClick={submitComment}
               disabled={!text.trim() || submitting}
-              className="px-4 py-2 bg-[#3182F6] text-white text-[13px] font-bold rounded-xl disabled:opacity-40 shrink-0"
+              className="w-full h-10 bg-[#3182F6] text-white text-[14px] font-bold rounded-xl disabled:opacity-40 transition-opacity"
             >
               등록하기
             </button>

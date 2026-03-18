@@ -750,14 +750,15 @@ export default function RecipeForm({
             </p>
           </div>
           <button
+            type="button"
             onClick={() => setIsPublished((p) => !p)}
             aria-label={isPublished ? "비공개로 전환" : "공개로 전환"}
-            className={`w-12 h-6 rounded-full transition-colors relative ${
+            className={`w-12 h-6 rounded-full transition-colors relative overflow-hidden ${
               isPublished ? "bg-[#3182F6]" : "bg-[#E5E8EB]"
             }`}
           >
             <span
-              className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${
+              className={`absolute top-0.5 left-0 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${
                 isPublished ? "translate-x-6" : "translate-x-0.5"
               }`}
             />
@@ -867,29 +868,30 @@ export default function RecipeForm({
               <span className="w-9" />
             </div>
             {ingredients.map((ing, idx) => (
-              <div key={idx} className="flex gap-2 items-center">
+              <div key={idx} className="flex gap-1.5 items-center min-w-0">
                 <input
                   value={ing.name}
                   onChange={(e) => updateIngredient(idx, "name", e.target.value)}
                   placeholder="우유, 설탕 ..."
-                  className="flex-1 bg-[#F2F4F6] rounded-xl px-3 py-2.5 text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] outline-none focus:ring-2 focus:ring-[#3182F6]/20"
+                  className="flex-1 min-w-0 bg-[#F2F4F6] rounded-xl px-3 py-2.5 text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] outline-none focus:ring-2 focus:ring-[#3182F6]/20"
                 />
                 <input
                   value={ing.amount}
                   onChange={(e) => updateIngredient(idx, "amount", e.target.value)}
                   placeholder="200"
-                  className="w-16 bg-[#F2F4F6] rounded-xl px-3 py-2.5 text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] outline-none focus:ring-2 focus:ring-[#3182F6]/20 text-center"
+                  className="w-14 shrink-0 bg-[#F2F4F6] rounded-xl px-2 py-2.5 text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] outline-none focus:ring-2 focus:ring-[#3182F6]/20 text-center"
                 />
                 <input
                   value={ing.unit}
                   onChange={(e) => updateIngredient(idx, "unit", e.target.value)}
-                  placeholder="ml, g ..."
-                  className="w-16 bg-[#F2F4F6] rounded-xl px-3 py-2.5 text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] outline-none focus:ring-2 focus:ring-[#3182F6]/20 text-center"
+                  placeholder="ml"
+                  className="w-12 shrink-0 bg-[#F2F4F6] rounded-xl px-2 py-2.5 text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] outline-none focus:ring-2 focus:ring-[#3182F6]/20 text-center"
                 />
                 <button
+                  type="button"
                   onClick={() => removeIngredient(idx)}
                   aria-label={`${idx + 1}번째 재료 삭제`}
-                  className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-red-50 transition-colors shrink-0"
+                  className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-red-50 transition-colors shrink-0"
                 >
                   <Trash2 className="w-4 h-4 text-red-400" />
                 </button>

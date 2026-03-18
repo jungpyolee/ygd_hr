@@ -2,13 +2,11 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase";
-import {
-  X,
-  UploadCloud,
-} from "lucide-react";
+import { X, UploadCloud, LogOut, LayoutDashboard } from "lucide-react";
 import { toast } from "sonner";
 import { DatePicker } from "@/components/ui/date-picker";
 import { sendNotification } from "@/lib/notifications";
+import ConfirmDialog from "@/components/ui/confirm-dialog";
 
 interface MyInfoModalProps {
   profile: any;
@@ -27,6 +25,7 @@ export default function MyInfoModal({
   onClose,
   onUpdate,
 }: MyInfoModalProps) {
+  const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
   const [editForm, setEditForm] = useState({
     ...profile,
     health_cert_date: profile.health_cert_date
@@ -330,8 +329,40 @@ export default function MyInfoModal({
           >
             저장하기
           </button>
+
+          <div className="h-[1px] bg-slate-100 mt-4" />
+
+          {profile?.role === "admin" && (
+            <button
+              onClick={() => { onClose(); window.location.href = "/admin"; }}
+              className="w-full py-3.5 bg-[#F2F4F6] text-[#4E5968] rounded-2xl font-bold flex items-center justify-center gap-2 active:scale-95 transition-all mt-3"
+            >
+              <LayoutDashboard className="w-4 h-4" />
+              어드민 대시보드
+            </button>
+          )}
+
+          <button
+            onClick={() => setIsLogoutConfirmOpen(true)}
+            className="w-full py-3.5 text-[#E03131] rounded-2xl font-bold flex items-center justify-center gap-2 active:scale-95 transition-all hover:bg-red-50 mt-1"
+          >
+            <LogOut className="w-4 h-4" />
+            로그아웃
+          </button>
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={isLogoutConfirmOpen}
+        title="로그아웃할까요?"
+        confirmLabel="로그아웃할게요"
+        cancelLabel="취소"
+        onConfirm={async () => {
+          await supabase.auth.signOut();
+          window.location.href = "/login";
+        }}
+        onCancel={() => setIsLogoutConfirmOpen(false)}
+      />
     </div>
   );
 }
