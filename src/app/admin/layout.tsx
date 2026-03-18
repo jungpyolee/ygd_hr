@@ -5,6 +5,8 @@ import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import { toast } from "sonner";
 import Link from "next/link";
+import { format, addDays, differenceInDays } from "date-fns";
+import { sendNotification } from "@/lib/notifications";
 import {
   Users,
   Clock,
@@ -20,6 +22,9 @@ import {
   Info,
   User,
   BookOpen,
+  CalendarDays,
+  Megaphone,
+  ClipboardList,
 } from "lucide-react";
 
 export default function AdminLayout({
@@ -34,6 +39,7 @@ export default function AdminLayout({
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNoti, setShowNoti] = useState(false);
   const [notis, setNotis] = useState<any[]>([]);
+  const [pendingSubCount, setPendingSubCount] = useState(0);
 
   // 🚀 외부 클릭 감지를 위한 Ref 추가
   const notiRef = useRef<HTMLDivElement>(null);
@@ -77,7 +83,9 @@ export default function AdminLayout({
 
       if (profile?.role === "admin") {
         setIsAdmin(true);
-        fetchNotis(); // 알림 초기 로드
+        fetchNotis();
+        fetchPendingSubCount();
+        checkHealthCertExpiry();
       } else {
         toast.error("접근 권한이 없어요");
         router.replace("/");
@@ -92,31 +100,83 @@ export default function AdminLayout({
   useEffect(() => {
     if (!isAdmin) return;
 
-    const channel = supabase
+    const notiChannel = supabase
       .channel("admin-notifications")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "notifications",
-          // 필터 조건이 가끔 안 먹히는 경우를 대비해 핸들러 내부에서도 체크
-        },
-        (payload) => {
-          if (
-            payload.new.target_role === "admin" ||
-            payload.new.target_role === "all"
-          ) {
-            fetchNotis();
-          }
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications" }, (payload) => {
+        if (payload.new.target_role === "admin" || payload.new.target_role === "all") {
+          fetchNotis();
         }
-      )
+        // 대체근무 확정 알림 시 pending 카운트도 갱신
+        if (payload.new.type === "substitute_filled") {
+          fetchPendingSubCount();
+        }
+      })
+      .subscribe();
+
+    // substitute_requests 상태 변경(승인/반려) 시 pending 카운트 갱신
+    const subChannel = supabase
+      .channel("substitute-requests-changes")
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "substitute_requests" }, () => {
+        fetchPendingSubCount();
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "substitute_requests" }, () => {
+        fetchPendingSubCount();
+      })
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(notiChannel);
+      supabase.removeChannel(subChannel);
     };
   }, [isAdmin]);
+
+  const checkHealthCertExpiry = async () => {
+    const today = new Date();
+    const todayStr = format(today, "yyyy-MM-dd");
+    const thirtyDaysLaterStr = format(addDays(today, 30), "yyyy-MM-dd");
+    const tomorrowStr = format(addDays(today, 1), "yyyy-MM-dd");
+
+    const { data: expiring } = await supabase
+      .from("profiles")
+      .select("id, name, health_cert_date")
+      .not("health_cert_date", "is", null)
+      .gte("health_cert_date", todayStr)
+      .lte("health_cert_date", thirtyDaysLaterStr);
+
+    if (!expiring || expiring.length === 0) return;
+
+    const { data: todayNotis } = await supabase
+      .from("notifications")
+      .select("source_id")
+      .eq("type", "health_cert_expiry")
+      .gte("created_at", `${todayStr}T00:00:00+09:00`)
+      .lt("created_at", `${tomorrowStr}T00:00:00+09:00`);
+
+    const notifiedIds = new Set(todayNotis?.map((n) => n.source_id) ?? []);
+
+    for (const emp of expiring) {
+      if (notifiedIds.has(emp.id)) continue;
+      const daysLeft = differenceInDays(
+        new Date(emp.health_cert_date),
+        today
+      );
+      await sendNotification({
+        target_role: "admin",
+        type: "health_cert_expiry",
+        title: "보건증 만료 임박",
+        content: `${emp.name}님의 보건증이 ${daysLeft === 0 ? "오늘" : `${daysLeft}일 후`} 만료돼요. 갱신을 안내해 주세요.`,
+        source_id: emp.id,
+      });
+    }
+  };
+
+  const fetchPendingSubCount = async () => {
+    const { count } = await supabase
+      .from("substitute_requests")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "pending");
+    setPendingSubCount(count ?? 0);
+  };
 
   const fetchNotis = async () => {
     const { data } = await supabase
@@ -170,9 +230,24 @@ export default function AdminLayout({
       icon: <Clock className="w-5 h-5" />,
     },
     {
+      name: "스케줄 관리",
+      path: "/admin/schedules",
+      icon: <CalendarDays className="w-5 h-5" />,
+    },
+    {
       name: "레시피 관리",
       path: "/admin/recipes",
       icon: <BookOpen className="w-5 h-5" />,
+    },
+    {
+      name: "공지사항 관리",
+      path: "/admin/announcements",
+      icon: <Megaphone className="w-5 h-5" />,
+    },
+    {
+      name: "체크리스트 설정",
+      path: "/admin/checklists",
+      icon: <ClipboardList className="w-5 h-5" />,
     },
     {
       name: "직원 모드로 변경",
@@ -189,6 +264,10 @@ export default function AdminLayout({
         return <CalendarClock className="w-4 h-4 text-green-500" />;
       case "attendance_out":
         return <CalendarClock className="w-4 h-4 text-orange-500" />;
+      case "substitute_requested":
+        return <CalendarDays className="w-4 h-4 text-purple-500" />;
+      case "health_cert_expiry":
+        return <Info className="w-4 h-4 text-amber-500" />;
       default:
         return <Info className="w-4 h-4 text-slate-400" />;
     }
@@ -221,6 +300,12 @@ export default function AdminLayout({
         // 근태 조회 페이지로 이동
         router.push("/admin/attendance");
         break;
+      case "substitute_requested":
+        router.push("/admin/schedules/substitutes");
+        break;
+      case "announcement":
+        router.push("/admin/announcements");
+        break;
       default:
         // 기본값은 대시보드
         router.push("/admin");
@@ -238,11 +323,12 @@ export default function AdminLayout({
         <nav className="space-y-2 flex-1">
           {menus.map((menu) => {
             const isActive = pathname === menu.path;
+            const isSchedule = menu.name === "스케줄 관리";
             return (
               <Link
                 key={menu.name}
                 href={menu.path}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium ${
+                className={`relative flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium ${
                   isActive
                     ? "bg-[#E8F3FF] text-[#3182F6]"
                     : "text-[#4E5968] hover:bg-[#F2F4F6]"
@@ -250,6 +336,11 @@ export default function AdminLayout({
               >
                 {menu.icon}
                 {menu.name}
+                {isSchedule && pendingSubCount > 0 && (
+                  <span className="ml-auto min-w-[20px] h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 leading-none">
+                    {pendingSubCount > 9 ? "9+" : pendingSubCount}
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -369,29 +460,31 @@ export default function AdminLayout({
               </button>
             </div>
             <nav className="space-y-3">
-              {menus.map((menu) => (
-                <Link
-                  key={menu.name}
-                  href={menu.path}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className={`flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-[16px] border ${
-                    pathname === menu.path
-                      ? "bg-[#E8F3FF] border-[#E8F3FF] text-[#3182F6]"
-                      : "bg-white border-slate-100 text-[#4E5968]"
-                  }`}
-                >
-                  <div
-                    className={
+              {menus.map((menu) => {
+                const isSchedule = menu.name === "스케줄 관리";
+                return (
+                  <Link
+                    key={menu.name}
+                    href={menu.path}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className={`flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-[16px] border ${
                       pathname === menu.path
-                        ? "text-[#3182F6]"
-                        : "text-[#8B95A1]"
-                    }
+                        ? "bg-[#E8F3FF] border-[#E8F3FF] text-[#3182F6]"
+                        : "bg-white border-slate-100 text-[#4E5968]"
+                    }`}
                   >
-                    {menu.icon}
-                  </div>
-                  {menu.name}
-                </Link>
-              ))}
+                    <div className={pathname === menu.path ? "text-[#3182F6]" : "text-[#8B95A1]"}>
+                      {menu.icon}
+                    </div>
+                    {menu.name}
+                    {isSchedule && pendingSubCount > 0 && (
+                      <span className="ml-auto min-w-[20px] h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 leading-none">
+                        {pendingSubCount > 9 ? "9+" : pendingSubCount}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
             </nav>
           </div>
         </div>

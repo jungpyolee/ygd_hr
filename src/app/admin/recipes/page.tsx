@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { Plus, BookOpen, Eye, EyeOff, Trash2, Copy, Search, X, Settings2 } from "lucide-react";
@@ -18,7 +18,7 @@ export default function AdminRecipesPage() {
   const [loading, setLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<RecipeItem | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
 
   const fetchData = async () => {

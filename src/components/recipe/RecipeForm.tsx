@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2, ImageIcon, Video, ChevronDown, GripVertical } from "lucide-react";
 import { toast } from "sonner";
-import type { RecipeCategory, RecipeItem, RecipeStep } from "@/types/recipe";
+import type { RecipeCategory, RecipeIngredient, RecipeItem, RecipeStep } from "@/types/recipe";
 import {
   DndContext,
   closestCenter,
@@ -39,10 +39,21 @@ interface FormErrors {
   steps?: Record<number, string>;
 }
 
+interface IngredientDraft {
+  id?: string;
+  name: string;
+  amount: string;
+  unit: string;
+}
+
 interface RecipeFormProps {
   categories: RecipeCategory[];
   initialRecipe?: RecipeItem;
   initialSteps?: RecipeStep[];
+  initialIngredients?: RecipeIngredient[];
+  redirectAfterSave?: string;
+  defaultPublished?: boolean;
+  canCreateCategory?: boolean;
 }
 
 interface SortableStepProps {
@@ -182,6 +193,10 @@ export default function RecipeForm({
   categories,
   initialRecipe,
   initialSteps = [],
+  initialIngredients = [],
+  redirectAfterSave = "/admin/recipes",
+  defaultPublished = false,
+  canCreateCategory = true,
 }: RecipeFormProps) {
   const isEdit = !!initialRecipe;
   const supabase = createClient();
@@ -200,7 +215,7 @@ export default function RecipeForm({
     initialRecipe?.description ?? ""
   );
   const [isPublished, setIsPublished] = useState(
-    initialRecipe?.is_published ?? false
+    initialRecipe?.is_published ?? defaultPublished
   );
 
   // 썸네일
@@ -228,6 +243,32 @@ export default function RecipeForm({
         }))
       : [{ dndId: crypto.randomUUID(), step_number: 1, title: "", content: "", image_url: null }]
   );
+
+  const [ingredients, setIngredients] = useState<IngredientDraft[]>(
+    initialIngredients.length > 0
+      ? initialIngredients.map((i) => ({
+          id: i.id,
+          name: i.name,
+          amount: i.amount,
+          unit: i.unit ?? "",
+        }))
+      : []
+  );
+
+  const addIngredient = () =>
+    setIngredients((prev) => [...prev, { name: "", amount: "", unit: "" }]);
+
+  const removeIngredient = (idx: number) =>
+    setIngredients((prev) => prev.filter((_, i) => i !== idx));
+
+  const updateIngredient = (
+    idx: number,
+    field: keyof IngredientDraft,
+    value: string
+  ) =>
+    setIngredients((prev) =>
+      prev.map((ing, i) => (i === idx ? { ...ing, [field]: value } : ing))
+    );
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -481,7 +522,7 @@ export default function RecipeForm({
       }
 
       // recipe_items 저장
-      const recipePayload = {
+      const basePayload = {
         id: recipeId,
         category_id: finalCategoryId,
         name: name.trim(),
@@ -491,12 +532,18 @@ export default function RecipeForm({
         is_published: isPublished,
       };
 
-      const { error: recipeError } = isEdit
-        ? await supabase
-            .from("recipe_items")
-            .update(recipePayload)
-            .eq("id", recipeId)
-        : await supabase.from("recipe_items").insert(recipePayload);
+      let recipeError;
+      if (isEdit) {
+        ({ error: recipeError } = await supabase
+          .from("recipe_items")
+          .update(basePayload)
+          .eq("id", recipeId));
+      } else {
+        const { data: { user } } = await supabase.auth.getUser();
+        ({ error: recipeError } = await supabase
+          .from("recipe_items")
+          .insert({ ...basePayload, created_by: user?.id ?? null }));
+      }
 
       if (recipeError) {
         toast.error("레시피 저장에 실패했어요", {
@@ -561,8 +608,29 @@ export default function RecipeForm({
         return;
       }
 
+      // 재료 저장
+      if (isEdit) {
+        await supabase
+          .from("recipe_ingredients")
+          .delete()
+          .eq("recipe_id", recipeId);
+      }
+      const ingredientsToSave = ingredients
+        .filter((ing) => ing.name.trim() && ing.amount.trim())
+        .map((ing, i) => ({
+          id: ing.id ?? crypto.randomUUID(),
+          recipe_id: recipeId,
+          name: ing.name.trim(),
+          amount: ing.amount.trim(),
+          unit: ing.unit.trim() || null,
+          order_index: i,
+        }));
+      if (ingredientsToSave.length > 0) {
+        await supabase.from("recipe_ingredients").insert(ingredientsToSave);
+      }
+
       toast.success(isEdit ? "레시피를 수정했어요" : "레시피를 추가했어요");
-      router.push("/admin/recipes");
+      router.push(redirectAfterSave);
     } catch {
       toast.error("저장 중 오류가 발생했어요", {
         description: "다시 시도해주세요",
@@ -601,15 +669,17 @@ export default function RecipeForm({
             {errors.category && (
               <p className="text-[13px] text-[#E03131]">{errors.category}</p>
             )}
-            <button
-              onClick={() => {
-                setShowNewCategory(true);
-                setErrors((p) => ({ ...p, category: undefined }));
-              }}
-              className="text-[13px] text-[#3182F6] font-semibold"
-            >
-              + 새 카테고리 만들기
-            </button>
+            {canCreateCategory && (
+              <button
+                onClick={() => {
+                  setShowNewCategory(true);
+                  setErrors((p) => ({ ...p, category: undefined }));
+                }}
+                className="text-[13px] text-[#3182F6] font-semibold"
+              >
+                + 새 카테고리 만들기
+              </button>
+            )}
           </div>
         ) : (
           <div className="space-y-2">
@@ -680,14 +750,15 @@ export default function RecipeForm({
             </p>
           </div>
           <button
+            type="button"
             onClick={() => setIsPublished((p) => !p)}
             aria-label={isPublished ? "비공개로 전환" : "공개로 전환"}
-            className={`w-12 h-6 rounded-full transition-colors relative ${
+            className={`w-12 h-6 rounded-full transition-colors relative overflow-hidden ${
               isPublished ? "bg-[#3182F6]" : "bg-[#E5E8EB]"
             }`}
           >
             <span
-              className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${
+              className={`absolute top-0.5 left-0 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${
                 isPublished ? "translate-x-6" : "translate-x-0.5"
               }`}
             />
@@ -782,6 +853,60 @@ export default function RecipeForm({
             </button>
           )}
         </div>
+      </div>
+
+      {/* 재료 */}
+      <div className="bg-white rounded-[20px] p-5 border border-slate-100 space-y-3">
+        <h2 className="text-[16px] font-bold text-[#191F28]">재료</h2>
+
+        {ingredients.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex gap-1.5 text-[11px] font-bold text-[#8B95A1] px-1">
+              <span className="flex-1 min-w-0">재료명</span>
+              <span className="w-14 text-center shrink-0">양</span>
+              <span className="w-12 text-center shrink-0">단위</span>
+              <span className="w-8 shrink-0" />
+            </div>
+            {ingredients.map((ing, idx) => (
+              <div key={idx} className="flex gap-1.5 items-center min-w-0">
+                <input
+                  value={ing.name}
+                  onChange={(e) => updateIngredient(idx, "name", e.target.value)}
+                  placeholder="우유, 설탕 ..."
+                  className="flex-1 min-w-0 bg-[#F2F4F6] rounded-xl px-3 py-2.5 text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] outline-none focus:ring-2 focus:ring-[#3182F6]/20"
+                />
+                <input
+                  value={ing.amount}
+                  onChange={(e) => updateIngredient(idx, "amount", e.target.value)}
+                  placeholder="200"
+                  className="w-14 shrink-0 bg-[#F2F4F6] rounded-xl px-2 py-2.5 text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] outline-none focus:ring-2 focus:ring-[#3182F6]/20 text-center"
+                />
+                <input
+                  value={ing.unit}
+                  onChange={(e) => updateIngredient(idx, "unit", e.target.value)}
+                  placeholder="ml"
+                  className="w-12 shrink-0 bg-[#F2F4F6] rounded-xl px-2 py-2.5 text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] outline-none focus:ring-2 focus:ring-[#3182F6]/20 text-center"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeIngredient(idx)}
+                  aria-label={`${idx + 1}번째 재료 삭제`}
+                  className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-red-50 transition-colors shrink-0"
+                >
+                  <Trash2 className="w-4 h-4 text-red-400" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button
+          onClick={addIngredient}
+          className="w-full py-3 border-2 border-dashed border-[#E5E8EB] rounded-xl flex items-center justify-center gap-2 text-[14px] text-[#4E5968] font-semibold hover:bg-[#F2F4F6] transition-colors"
+        >
+          <Plus className="w-4 h-4" />
+          재료 추가하기
+        </button>
       </div>
 
       {/* 단계 */}

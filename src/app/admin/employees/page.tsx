@@ -15,6 +15,7 @@ import {
   UploadCloud,
   FileCheck,
   Briefcase,
+  MapPin,
 } from "lucide-react";
 import { toast } from "sonner";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
@@ -41,12 +42,57 @@ interface Profile {
   account_number: string | null;
   bank_name: string | null;
   health_cert_date: string | null;
+  employment_type: string | null;
+  work_locations: string[] | null;
+  cafe_positions: string[] | null;
+  hourly_wage: number | null;
+  insurance_type: string | null;
 }
+
+const EMPLOYMENT_TYPE_OPTIONS = [
+  { value: "full_time", label: "정규직" },
+  { value: "part_time_fixed", label: "고정 알바" },
+  { value: "part_time_daily", label: "일일 알바" },
+];
+
+const WORK_LOCATION_OPTIONS = [
+  { value: "factory", label: "공장" },
+  { value: "cafe", label: "카페" },
+  { value: "catering", label: "케이터링" },
+];
+
+const CAFE_POSITION_OPTIONS = [
+  { value: "hall", label: "홀" },
+  { value: "kitchen", label: "주방" },
+  { value: "showroom", label: "쇼룸" },
+];
 
 // 파일 업로드용 키 타입
 type DocKey =
   | "employment_contract_url"
   | "health_cert_url";
+
+interface WorkDefault {
+  id: string;
+  profile_id: string;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  work_location: string;
+  cafe_positions: string[];
+  is_active: boolean;
+}
+
+const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
+
+function generateTimeOptions(startH: number, endH: number) {
+  const opts: string[] = [];
+  for (let h = startH; h <= endH; h++) {
+    opts.push(`${String(h).padStart(2, "0")}:00`);
+    if (h < endH) opts.push(`${String(h).padStart(2, "0")}:30`);
+  }
+  return opts;
+}
 
 export default function AdminEmployeesPage() {
   const [employees, setEmployees] = useState<Profile[]>([]);
@@ -60,6 +106,12 @@ export default function AdminEmployeesPage() {
 
   // 항목이 많으므로 객체 하나로 묶어서 폼 상태 관리
   const [editForm, setEditForm] = useState<Partial<Profile>>({});
+
+  // work_defaults 상태
+  const [workDefaults, setWorkDefaults] = useState<WorkDefault[]>([]);
+  const [workDefaultsLoading, setWorkDefaultsLoading] = useState(false);
+  const [editingDefault, setEditingDefault] = useState<Partial<WorkDefault> & { day_of_week: number } | null>(null);
+  const [savingDefault, setSavingDefault] = useState(false);
 
   useEffect(() => {
     fetchEmployees();
@@ -108,9 +160,61 @@ export default function AdminEmployeesPage() {
     }
   };
 
-  const openEditModal = (employee: Profile) => {
+  const openEditModal = async (employee: Profile) => {
     setEditingEmployee(employee);
     setEditForm({ ...employee });
+    await fetchWorkDefaults(employee.id);
+  };
+
+  const fetchWorkDefaults = async (profileId: string) => {
+    setWorkDefaultsLoading(true);
+    const { data } = await supabase
+      .from("work_defaults")
+      .select("*")
+      .eq("profile_id", profileId)
+      .order("day_of_week");
+    if (data) setWorkDefaults(data as WorkDefault[]);
+    setWorkDefaultsLoading(false);
+  };
+
+  const handleSaveWorkDefault = async () => {
+    if (!editingDefault || !editingEmployee) return;
+    setSavingDefault(true);
+    const { day_of_week, start_time, end_time, work_location, cafe_positions, id } = editingDefault;
+    if (!start_time || !end_time || !work_location) {
+      toast.error("시작 시간, 종료 시간, 근무 장소를 모두 입력해주세요.");
+      setSavingDefault(false);
+      return;
+    }
+    if (id) {
+      // UPDATE
+      const { error } = await supabase.from("work_defaults").update({
+        start_time, end_time, work_location, cafe_positions: cafe_positions || [],
+      }).eq("id", id);
+      if (error) { toast.error("저장에 실패했어요", { description: error.message }); }
+      else { toast.success("기본 근무 패턴을 수정했어요"); }
+    } else {
+      // INSERT
+      const { error } = await supabase.from("work_defaults").insert({
+        profile_id: editingEmployee.id, day_of_week, start_time, end_time,
+        work_location, cafe_positions: cafe_positions || [],
+      });
+      if (error) { toast.error("저장에 실패했어요", { description: error.message }); }
+      else { toast.success("기본 근무 패턴을 추가했어요"); }
+    }
+    setSavingDefault(false);
+    setEditingDefault(null);
+    fetchWorkDefaults(editingEmployee.id);
+  };
+
+  const handleDeleteWorkDefault = async (id: string) => {
+    if (!editingEmployee) return;
+    const { error } = await supabase.from("work_defaults").delete().eq("id", id);
+    if (error) { toast.error("삭제에 실패했어요"); }
+    else {
+      toast.success("기본 근무 패턴을 삭제했어요");
+      fetchWorkDefaults(editingEmployee.id);
+    }
   };
 
   const handleFormChange = (field: keyof Profile, value: any) => {
@@ -581,6 +685,147 @@ export default function AdminEmployeesPage() {
                     </div>
                   </div>
                 </div>
+
+                {/* 고용 형태 */}
+                <div>
+                  <label className="block text-[12px] font-medium text-[#8B95A1] mb-2">
+                    고용 형태
+                  </label>
+                  <div className="flex gap-2 flex-wrap">
+                    {EMPLOYMENT_TYPE_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => handleFormChange("employment_type", opt.value)}
+                        className={`px-4 py-2 rounded-xl text-[13px] font-bold transition-all ${
+                          editForm.employment_type === opt.value
+                            ? "bg-[#3182F6] text-white"
+                            : "bg-[#F2F4F6] text-[#4E5968]"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 근무 가능 장소 */}
+                <div>
+                  <label className="block text-[12px] font-medium text-[#8B95A1] mb-2">
+                    <MapPin className="w-3 h-3 inline mr-1" />근무 가능 장소
+                  </label>
+                  <div className="flex gap-2 flex-wrap">
+                    {WORK_LOCATION_OPTIONS.map((opt) => {
+                      const selected = (editForm.work_locations || []).includes(opt.value);
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => {
+                            const cur = editForm.work_locations || [];
+                            const next = selected
+                              ? cur.filter((v) => v !== opt.value)
+                              : [...cur, opt.value];
+                            handleFormChange("work_locations", next);
+                            if (!next.includes("cafe")) {
+                              handleFormChange("cafe_positions", []);
+                            }
+                          }}
+                          className={`px-4 py-2 rounded-xl text-[13px] font-bold transition-all ${
+                            selected
+                              ? "bg-[#3182F6] text-white"
+                              : "bg-[#F2F4F6] text-[#4E5968]"
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 카페 포지션 (카페 선택 시만 표시) */}
+                {(editForm.work_locations || []).includes("cafe") && (
+                  <div>
+                    <label className="block text-[12px] font-medium text-[#8B95A1] mb-2">
+                      카페 담당 포지션
+                    </label>
+                    <div className="flex gap-2 flex-wrap">
+                      {CAFE_POSITION_OPTIONS.map((opt) => {
+                        const selected = (editForm.cafe_positions || []).includes(opt.value);
+                        return (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => {
+                              const cur = editForm.cafe_positions || [];
+                              const next = selected
+                                ? cur.filter((v) => v !== opt.value)
+                                : [...cur, opt.value];
+                              handleFormChange("cafe_positions", next);
+                            }}
+                            className={`px-4 py-2 rounded-xl text-[13px] font-bold transition-all ${
+                              selected
+                                ? "bg-[#E8F3FF] text-[#3182F6] border border-[#3182F6]"
+                                : "bg-[#F2F4F6] text-[#4E5968]"
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* 시급 및 보험 유형 (알바만 표시) */}
+                {(editForm.employment_type === "part_time_fixed" || editForm.employment_type === "part_time_daily") && (
+                  <>
+                    <div>
+                      <label className="block text-[12px] font-medium text-[#8B95A1] mb-1">
+                        시급 (원)
+                      </label>
+                      <input
+                        type="number"
+                        value={editForm.hourly_wage ?? ""}
+                        onChange={(e) =>
+                          handleFormChange("hourly_wage", e.target.value ? parseInt(e.target.value) : null)
+                        }
+                        placeholder="예: 9860"
+                        className="w-full px-4 py-2.5 bg-[#F9FAFB] border border-slate-200 rounded-xl text-[14px] text-[#191F28] focus:outline-none focus:border-[#3182F6] transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[12px] font-medium text-[#8B95A1] mb-2">
+                        보험 유형
+                      </label>
+                      <div className="flex gap-3">
+                        {[
+                          { value: "national", label: "2대보험" },
+                          { value: "3.3", label: "3.3% 원천징수" },
+                        ].map((opt) => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => handleFormChange("insurance_type", opt.value)}
+                            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold transition-all border ${
+                              editForm.insurance_type === opt.value
+                                ? "bg-[#E8F3FF] text-[#3182F6] border-[#3182F6]"
+                                : "bg-[#F2F4F6] text-[#4E5968] border-transparent"
+                            }`}
+                          >
+                            <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${editForm.insurance_type === opt.value ? "border-[#3182F6]" : "border-[#8B95A1]"}`}>
+                              {editForm.insurance_type === opt.value && (
+                                <span className="w-2 h-2 bg-[#3182F6] rounded-full" />
+                              )}
+                            </span>
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
               </section>
 
               {/* 3. 급여 및 보건 */}
@@ -718,6 +963,53 @@ export default function AdminEmployeesPage() {
                   ))}
                 </div>
               </section>
+
+              {/* 5. 기본 근무 패턴 */}
+              <section className="space-y-3">
+                <h3 className="text-[15px] font-bold text-[#191F28] flex items-center gap-2">
+                  <Briefcase className="w-4 h-4 text-[#3182F6]" /> 기본 근무 패턴
+                </h3>
+                {workDefaultsLoading ? (
+                  <div className="flex justify-center py-4">
+                    <div className="w-6 h-6 border-3 border-[#3182F6] border-t-transparent rounded-full animate-spin" />
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {DAY_LABELS.map((label, dow) => {
+                      const existing = workDefaults.filter((d) => d.day_of_week === dow);
+                      return (
+                        <div key={dow} className="flex items-start gap-3">
+                          <span className="w-6 text-[13px] font-bold text-[#8B95A1] pt-2 shrink-0">{label}</span>
+                          <div className="flex-1 space-y-1">
+                            {existing.map((wd) => (
+                              <div key={wd.id} className="flex items-center gap-2 bg-[#F2F4F6] rounded-xl px-3 py-2">
+                                <span className="text-[12px] font-bold text-[#3182F6] bg-[#E8F3FF] px-2 py-0.5 rounded-md">
+                                  {wd.work_location === "cafe" ? "카페" : wd.work_location === "factory" ? "공장" : "케이터링"}
+                                </span>
+                                <span className="text-[12px] text-[#4E5968] font-medium flex-1">
+                                  {wd.start_time.slice(0, 5)} ~ {wd.end_time.slice(0, 5)}
+                                </span>
+                                <button
+                                  onClick={() => setEditingDefault({ ...wd, day_of_week: dow })}
+                                  className="text-[11px] text-[#3182F6] font-bold px-2 py-1 hover:bg-[#E8F3FF] rounded-lg"
+                                >수정</button>
+                                <button
+                                  onClick={() => handleDeleteWorkDefault(wd.id)}
+                                  className="text-[11px] text-[#D9480F] font-bold px-2 py-1 hover:bg-[#FFF4E6] rounded-lg"
+                                >삭제</button>
+                              </div>
+                            ))}
+                            <button
+                              onClick={() => setEditingDefault({ day_of_week: dow, start_time: "09:00", end_time: "18:00", work_location: "cafe", cafe_positions: [] })}
+                              className="text-[12px] text-[#8B95A1] hover:text-[#3182F6] font-bold px-3 py-1.5 hover:bg-[#F2F4F6] rounded-xl transition-all"
+                            >+ 추가</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
             </div>
 
             <button
@@ -726,6 +1018,89 @@ export default function AdminEmployeesPage() {
             >
               정보 저장하기
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* 기본 근무 패턴 편집 바텀시트 */}
+      {editingDefault && (
+        <div className="fixed inset-0 z-[200] flex items-end justify-center">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setEditingDefault(null)} />
+          <div className="relative w-full max-w-md bg-white rounded-t-[28px] px-5 pt-8 pb-10 shadow-2xl animate-in slide-in-from-bottom-4 duration-250">
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 w-9 h-1 bg-[#D1D6DB] rounded-full" />
+            <h3 className="text-[18px] font-bold text-[#191F28] mb-6">
+              {DAY_LABELS[editingDefault.day_of_week]}요일 근무 패턴 {editingDefault.id ? "수정" : "추가"}
+            </h3>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[12px] font-medium text-[#8B95A1] mb-1">시작 시간</label>
+                  <select
+                    value={editingDefault.start_time || "09:00"}
+                    onChange={(e) => setEditingDefault((prev) => prev ? { ...prev, start_time: e.target.value } : null)}
+                    className="w-full px-3 py-2.5 bg-[#F9FAFB] border border-slate-200 rounded-xl text-[14px] text-[#191F28] focus:outline-none focus:border-[#3182F6]"
+                  >
+                    {generateTimeOptions(7, 21).map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[12px] font-medium text-[#8B95A1] mb-1">종료 시간</label>
+                  <select
+                    value={editingDefault.end_time || "18:00"}
+                    onChange={(e) => setEditingDefault((prev) => prev ? { ...prev, end_time: e.target.value } : null)}
+                    className="w-full px-3 py-2.5 bg-[#F9FAFB] border border-slate-200 rounded-xl text-[14px] text-[#191F28] focus:outline-none focus:border-[#3182F6]"
+                  >
+                    {generateTimeOptions(7, 22).map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-[12px] font-medium text-[#8B95A1] mb-2">근무 장소</label>
+                <div className="flex gap-2">
+                  {WORK_LOCATION_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setEditingDefault((prev) => prev ? { ...prev, work_location: opt.value, cafe_positions: opt.value !== "cafe" ? [] : prev.cafe_positions } : null)}
+                      className={`flex-1 py-2 rounded-xl text-[13px] font-bold transition-all ${editingDefault.work_location === opt.value ? "bg-[#3182F6] text-white" : "bg-[#F2F4F6] text-[#4E5968]"}`}
+                    >{opt.label}</button>
+                  ))}
+                </div>
+              </div>
+              {editingDefault.work_location === "cafe" && (
+                <div>
+                  <label className="block text-[12px] font-medium text-[#8B95A1] mb-2">카페 포지션</label>
+                  <div className="flex gap-2">
+                    {CAFE_POSITION_OPTIONS.map((opt) => {
+                      const sel = (editingDefault.cafe_positions || []).includes(opt.value);
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => {
+                            const cur = editingDefault.cafe_positions || [];
+                            setEditingDefault((prev) => prev ? { ...prev, cafe_positions: sel ? cur.filter((v) => v !== opt.value) : [...cur, opt.value] } : null);
+                          }}
+                          className={`flex-1 py-2 rounded-xl text-[13px] font-bold transition-all ${sel ? "bg-[#E8F3FF] text-[#3182F6] border border-[#3182F6]" : "bg-[#F2F4F6] text-[#4E5968]"}`}
+                        >{opt.label}</button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="flex flex-col gap-2.5 mt-6">
+              <button
+                onClick={handleSaveWorkDefault}
+                disabled={savingDefault}
+                className="w-full h-14 bg-[#3182F6] text-white rounded-2xl font-bold text-[16px] disabled:opacity-50"
+              >
+                {savingDefault ? "저장 중..." : "저장하기"}
+              </button>
+              <button onClick={() => setEditingDefault(null)} className="w-full h-14 bg-[#F2F4F6] text-[#4E5968] rounded-2xl font-bold text-[16px]">
+                취소
+              </button>
+            </div>
           </div>
         </div>
       )}

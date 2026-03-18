@@ -1,7 +1,7 @@
 # DB 스키마 (최신 상태)
 
 > **프로젝트**: ymvdjxzkjodasctktunh
-> **최종 갱신**: 2026-03-16 (DB-001 ~ DB-004 반영)
+> **최종 갱신**: 2026-03-17 (Epic D 스케줄 5테이블 + profiles 5컬럼 추가)
 > **DB 시간대**: `Asia/Seoul` (KST, UTC+9) — 모든 롤에 적용됨
 > **timestamptz 저장**: UTC로 저장, 날짜 함수(`DATE_TRUNC`, `CURRENT_DATE` 등)는 KST 기준 동작
 > **연결 방식**: Supabase Management API
@@ -17,8 +17,15 @@
 | `stores` | 매장 정보 |
 | `notifications` | 알림 |
 | `recipe_categories` | 레시피 카테고리 |
-| `recipe_items` | 레시피 항목 (썸네일, 영상, 공개여부) |
+| `recipe_items` | 레시피 항목 (썸네일, 영상, 공개여부, 작성자) |
+| `recipe_ingredients` | 레시피 재료 목록 |
 | `recipe_steps` | 레시피 단계별 설명 |
+| `recipe_comments` | 레시피 댓글/대댓글 (소프트 삭제) |
+| `work_defaults` | 직원 요일별 기본 근무 패턴 |
+| `weekly_schedules` | 주차별 스케줄 컨테이너 (draft/confirmed) |
+| `schedule_slots` | 개별 근무 슬롯 (날짜·시간·장소·포지션) |
+| `substitute_requests` | 대타 요청 (pending→approved/rejected→filled) |
+| `substitute_responses` | 대타 수락/거절 응답 |
 
 ---
 
@@ -47,6 +54,11 @@
 | `health_cert_verified` | boolean | YES | `false` | 보건증 실물 확인 여부 |
 | `account_number` | text | YES | - | 계좌번호 |
 | `bank_name` | text | YES | - | 은행명 |
+| `employment_type` | text | YES | `'part_time_fixed'` | `'full_time'` / `'part_time_fixed'` / `'part_time_daily'` |
+| `work_locations` | text[] | YES | `'{}'` | `'cafe'` / `'factory'` / `'catering'` 복수 선택 |
+| `cafe_positions` | text[] | YES | `'{}'` | `'hall'` / `'kitchen'` / `'showroom'` 복수 선택 |
+| `hourly_wage` | integer | YES | - | 시급 (원, 알바만) |
+| `insurance_type` | text | YES | - | `'national'` (2대보험) / `'3.3'` (원천징수) |
 | `created_at` | timestamptz | YES | `now()` | 생성일 |
 | `updated_at` | timestamptz | YES | `now()` | 수정일 |
 
@@ -309,8 +321,49 @@ DELETE FROM auth.users WHERE id = target_user_id
 | `order_index` | integer | NO | `0` | 정렬 순서 |
 | `created_at` | timestamptz | YES | `now()` | 생성일 |
 | `updated_at` | timestamptz | YES | `now()` | 수정일 |
+| `created_by` | uuid | YES | - | FK → profiles.id (SET NULL), 작성자 |
 
-**RLS**: 직원은 `is_published=true`만 SELECT, 어드민 ALL
+**RLS**: 직원은 `is_published=true` 또는 본인 글만 SELECT, 어드민 ALL / full_time 본인 글 INSERT·UPDATE·DELETE
+
+---
+
+## recipe_ingredients
+
+레시피 재료 목록.
+
+| 컬럼 | 타입 | NULL | 기본값 | 설명 |
+|------|------|------|--------|------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `recipe_id` | uuid | NO | - | FK → recipe_items.id (CASCADE) |
+| `name` | text | NO | - | 재료명 |
+| `amount` | text | NO | - | 양 (분수 표현 가능, e.g. "1/2") |
+| `unit` | text | YES | - | 단위 (g, ml, 개, T ...) |
+| `order_index` | integer | NO | `0` | 정렬 순서 |
+| `created_at` | timestamptz | YES | `now()` | 생성일 |
+
+**RLS**: 직원은 published 레시피 재료만 SELECT, 어드민 ALL / full_time INSERT·UPDATE·DELETE
+
+---
+
+## recipe_comments
+
+레시피 댓글 및 대댓글. 소프트 삭제 지원.
+
+| 컬럼 | 타입 | NULL | 기본값 | 설명 |
+|------|------|------|--------|------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `recipe_id` | uuid | NO | - | FK → recipe_items.id (CASCADE) |
+| `profile_id` | uuid | NO | - | FK → profiles.id (CASCADE), 작성자 |
+| `parent_id` | uuid | YES | - | FK → recipe_comments.id (CASCADE), NULL이면 최상위 |
+| `content` | text | NO | - | 댓글 내용 |
+| `mentioned_profile_id` | uuid | YES | - | FK → profiles.id (SET NULL), @태그 대상 |
+| `is_deleted` | boolean | NO | `false` | 소프트 삭제 여부 |
+| `created_at` | timestamptz | YES | `now()` | 생성일 |
+| `updated_at` | timestamptz | YES | `now()` | 수정일 (트리거) |
+
+**RLS**: 직원은 published 레시피 댓글 SELECT / 인증 직원 INSERT (`profile_id = auth.uid()`) / 본인 UPDATE / 어드민 ALL
+
+**알림 타입**: `recipe_comment` (새 댓글), `recipe_reply` (대댓글), `recipe_mention` (@멘션)
 
 ---
 
@@ -330,6 +383,132 @@ DELETE FROM auth.users WHERE id = target_user_id
 
 **제약**: UNIQUE(recipe_id, step_number)
 **RLS**: 부모 recipe가 published이면 직원 SELECT, 어드민 ALL
+
+---
+
+## work_defaults
+
+직원 요일별 기본 근무 패턴. 주간 스케줄 자동 채우기의 기준.
+
+| 컬럼 | 타입 | NULL | 기본값 | 설명 |
+|------|------|------|--------|------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `profile_id` | uuid | NO | - | FK → profiles.id CASCADE |
+| `day_of_week` | int | NO | - | 0=일, 1=월 … 6=토 |
+| `start_time` | time | NO | - | 시작 시간 |
+| `end_time` | time | NO | - | 종료 시간 |
+| `work_location` | text | NO | - | `'cafe'` / `'factory'` / `'catering'` |
+| `cafe_positions` | text[] | YES | `'{}'` | `'hall'` / `'kitchen'` / `'showroom'` |
+| `is_active` | boolean | YES | `true` | 활성 여부 |
+| `created_at` | timestamptz | YES | `now()` | 생성일 |
+
+**제약**: UNIQUE(profile_id, day_of_week, work_location)
+**RLS**: 어드민 ALL / 본인 SELECT
+
+---
+
+## weekly_schedules
+
+주차별 스케줄 컨테이너. `confirmed` 상태가 되어야 직원에게 노출.
+
+| 컬럼 | 타입 | NULL | 기본값 | 설명 |
+|------|------|------|--------|------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `week_start` | date | NO | - | UNIQUE, 항상 일요일 날짜 |
+| `status` | text | YES | `'draft'` | `'draft'` / `'confirmed'` |
+| `published_at` | timestamptz | YES | - | 확정 시각 |
+| `created_by` | uuid | YES | - | FK → profiles.id |
+| `created_at` | timestamptz | YES | `now()` | 생성일 |
+| `updated_at` | timestamptz | YES | `now()` | 수정일 |
+
+**RLS**: 어드민 ALL / 직원은 `status='confirmed'`만 SELECT
+
+---
+
+## schedule_slots
+
+개별 근무 슬롯. weekly_schedules에 속함.
+
+| 컬럼 | 타입 | NULL | 기본값 | 설명 |
+|------|------|------|--------|------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `weekly_schedule_id` | uuid | NO | - | FK → weekly_schedules.id CASCADE |
+| `profile_id` | uuid | NO | - | FK → profiles.id CASCADE |
+| `slot_date` | date | NO | - | 근무 날짜 |
+| `start_time` | time | NO | - | 시작 시간 |
+| `end_time` | time | NO | - | 종료 시간 |
+| `work_location` | text | NO | - | `'cafe'` / `'factory'` / `'catering'` |
+| `cafe_positions` | text[] | YES | `'{}'` | `'hall'` / `'kitchen'` / `'showroom'` |
+| `status` | text | YES | `'active'` | `'active'` / `'cancelled'` / `'substituted'` |
+| `notes` | text | YES | - | 메모 |
+| `created_at` | timestamptz | YES | `now()` | 생성일 |
+| `updated_at` | timestamptz | YES | `now()` | 수정일 |
+
+**RLS**: 어드민 ALL / 직원은 본인 + confirmed 주차만 SELECT
+**유효성**: 같은 profile_id·slot_date 시간 겹침 클라이언트 차단
+
+---
+
+## substitute_requests
+
+대타 요청. 직원 요청 → 어드민 승인/반려 → 알림 대상 지원/수락.
+
+| 컬럼 | 타입 | NULL | 기본값 | 설명 |
+|------|------|------|--------|------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `slot_id` | uuid | NO | - | FK → schedule_slots.id CASCADE |
+| `requester_id` | uuid | NO | - | FK → profiles.id |
+| `reason` | text | YES | - | 요청 사유 |
+| `status` | text | YES | `'pending'` | `'pending'` / `'approved'` / `'rejected'` / `'filled'` |
+| `reject_reason` | text | YES | - | 반려 사유 |
+| `rejected_by` | uuid | YES | - | FK → profiles.id |
+| `rejected_at` | timestamptz | YES | - | 반려 시각 |
+| `approved_by` | uuid | YES | - | FK → profiles.id |
+| `approved_at` | timestamptz | YES | - | 승인 시각 |
+| `eligible_profile_ids` | uuid[] | YES | `'{}'` | 어드민이 선택한 알림 대상 |
+| `accepted_by` | uuid | YES | - | FK → profiles.id |
+| `accepted_at` | timestamptz | YES | - | 대타 확정 시각 |
+| `created_at` | timestamptz | YES | `now()` | 생성일 |
+| `updated_at` | timestamptz | YES | `now()` | 수정일 |
+
+**RLS**: 어드민 ALL / 요청자 SELECT+INSERT / eligible 직원 approved 건 SELECT
+
+---
+
+## substitute_responses
+
+대타 지원 응답. eligible 직원이 수락/거절한 기록.
+
+| 컬럼 | 타입 | NULL | 기본값 | 설명 |
+|------|------|------|--------|------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `request_id` | uuid | NO | - | FK → substitute_requests.id CASCADE |
+| `profile_id` | uuid | NO | - | FK → profiles.id |
+| `response` | text | NO | - | `'accepted'` / `'declined'` |
+| `created_at` | timestamptz | YES | `now()` | 생성일 |
+
+**제약**: UNIQUE(request_id, profile_id)
+**RLS**: 어드민 ALL / 본인 응답 관리 / 요청 관련자 SELECT
+
+---
+
+## 알림 type 목록 (전체)
+
+| type | 발생 시점 |
+|------|-----------|
+| `attendance_in` | 직원 출근 |
+| `attendance_out` | 직원 퇴근 |
+| `attendance_remote_out` | 원격퇴근 |
+| `attendance_business_trip_in` | 출장출근 |
+| `attendance_business_trip_out` | 출장퇴근 |
+| `onboarding` | 신규 직원 온보딩 완료 |
+| `info_update` | 직원 정보 수정 |
+| `substitute_requested` | 대타 요청 생성 (→ 어드민) |
+| `substitute_approved` | 대타 승인 (→ eligible 직원) |
+| `substitute_rejected` | 대타 반려 (→ 요청자) |
+| `substitute_filled` | 대타 확정 (→ 요청자 + 어드민) |
+| `schedule_published` | 스케줄 확정 (→ 해당 직원) |
+| `schedule_updated` | 확정 스케줄 슬롯 수정/삭제 시 (→ 해당 직원) |
 
 ---
 

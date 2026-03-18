@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase";
 import { getDistance } from "@/lib/utils/distance";
 import { toast } from "sonner";
@@ -8,7 +8,9 @@ import { Button } from "@/components/ui/button";
 import { sendNotification } from "@/lib/notifications";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
 import LocationPermissionGuide from "@/components/LocationPermissionGuide";
+import ChecklistSheet from "@/components/ChecklistSheet";
 import type { GeoState } from "@/lib/hooks/useGeolocation";
+import type { ChecklistTemplate } from "@/types/checklist";
 
 interface AttendanceCardProps {
   stores: any[];
@@ -38,6 +40,13 @@ export default function AttendanceCard({
   const [loading, setLoading] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
 
+  // 체크리스트 상태
+  const [showChecklist, setShowChecklist] = useState(false);
+  const [checklistItems, setChecklistItems] = useState<ChecklistTemplate[]>([]);
+  const [checklistTrigger, setChecklistTrigger] = useState<"check_in" | "check_out">("check_in");
+  const [pendingLogId, setPendingLogId] = useState<string | null>(null);
+  const [pendingCheckoutCheckedIds, setPendingCheckoutCheckedIds] = useState<string[]>([]);
+
   // 원격퇴근 폼 상태
   const [showRemoteOutForm, setShowRemoteOutForm] = useState(false);
   const [remoteReason, setRemoteReason] = useState("");
@@ -54,7 +63,76 @@ export default function AttendanceCard({
   // 위치 재시도 후 재개할 출퇴근 타입
   const [pendingType, setPendingType] = useState<"IN" | "OUT" | null>(null);
 
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
+
+  // 직원 프로필 (체크리스트 필터링용)
+  const [userProfile, setUserProfile] = useState<{
+    work_locations: string[] | null;
+    cafe_positions: string[] | null;
+  } | null>(null);
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from("profiles")
+        .select("work_locations, cafe_positions")
+        .eq("id", user.id)
+        .single();
+      if (data) setUserProfile(data);
+    };
+    loadProfile();
+  }, [supabase]);
+
+  // ─── 체크리스트 헬퍼 ───────────────────────────────────────────────────────
+  const fetchChecklistItems = async (trigger: "check_in" | "check_out") => {
+    const { data } = await supabase
+      .from("checklist_templates")
+      .select("*")
+      .eq("trigger", trigger)
+      .eq("is_active", true)
+      .order("order_index");
+
+    const all = (data as ChecklistTemplate[]) ?? [];
+
+    // work_location / cafe_position 필터링
+    return all.filter((item) => {
+      if (item.work_location) {
+        const myLocations = userProfile?.work_locations ?? [];
+        if (!myLocations.includes(item.work_location)) return false;
+      }
+      if (item.cafe_position) {
+        const myPositions = userProfile?.cafe_positions ?? [];
+        if (!myPositions.includes(item.cafe_position)) return false;
+      }
+      return true;
+    });
+  };
+
+  const saveChecklistSubmission = async (
+    trigger: "check_in" | "check_out",
+    checkedIds: string[],
+    logId: string | null,
+    totalItems: number
+  ) => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+    const { error } = await supabase.from("checklist_submissions").insert({
+      profile_id: user.id,
+      trigger,
+      attendance_log_id: logId,
+      checked_item_ids: checkedIds,
+      all_checked: checkedIds.length === totalItems,
+    });
+    if (error) {
+      toast.error("체크리스트 저장에 실패했어요", {
+        description: "출퇴근은 정상 처리됐어요. 관리자에게 문의해 주세요.",
+      });
+    }
+  };
 
   // ─── 핵심 저장 로직 ────────────────────────────────────────────────────────
   const processAttendance = async ({
@@ -175,6 +253,26 @@ export default function AttendanceCard({
       toast.success("출장퇴근 처리됐어요");
     }
 
+    // ── 출근 후 check_in 체크리스트 ──────────────────────────
+    if (type === "IN") {
+      const items = await fetchChecklistItems("check_in");
+      if (items.length > 0) {
+        setPendingLogId(logData.id);
+        setChecklistItems(items);
+        setChecklistTrigger("check_in");
+        setShowChecklist(true);
+        // onSuccess는 체크리스트 닫힐 때 호출
+        setLoading(false);
+        return;
+      }
+    }
+
+    // ── check_out 체크리스트 submission 저장 ─────────────────
+    if (type === "OUT" && pendingCheckoutCheckedIds.length > 0) {
+      await saveChecklistSubmission("check_out", pendingCheckoutCheckedIds, logData.id, checklistItems.length);
+      setPendingCheckoutCheckedIds([]);
+    }
+
     onSuccess();
     setLoading(false);
   };
@@ -218,8 +316,76 @@ export default function AttendanceCard({
     });
   };
 
+  // ─── 체크리스트 완료 핸들러 ────────────────────────────────────────────────
+  const handleChecklistComplete = async (checkedIds: string[]) => {
+    setShowChecklist(false);
+    if (checklistTrigger === "check_in") {
+      // 출근 체크리스트: submission 저장 후 onSuccess
+      await saveChecklistSubmission("check_in", checkedIds, pendingLogId, checklistItems.length);
+      setPendingLogId(null);
+      onSuccess();
+    } else {
+      // 퇴근 체크리스트: 완료 후 GPS → 퇴근 처리
+      setPendingCheckoutCheckedIds(checkedIds);
+      await runCheckoutFlow();
+    }
+  };
+
+  const handleChecklistClose = async () => {
+    // check_in만 가능: 건너뜀 → onSuccess 바로 호출
+    setShowChecklist(false);
+    setPendingLogId(null);
+    onSuccess();
+  };
+
+  // 퇴근 GPS+기록 실행 (체크리스트 완료 후 or 체크리스트 없을 때)
+  const runCheckoutFlow = async () => {
+    setIsRetrying(true);
+    setPendingType("OUT");
+    const result = await onFetchForAttendance();
+    setIsRetrying(false);
+
+    if (result.status === "ready") {
+      setPendingType(null);
+      await proceedWithCoordinates("OUT", result.lat!, result.lng!);
+      return;
+    }
+    if (result.status === "denied") {
+      setShowPermissionGuide(true);
+      return;
+    }
+    const retryResult = await onRetryLocation();
+    if (retryResult.status === "ready") {
+      setPendingType(null);
+      await proceedWithCoordinates("OUT", retryResult.lat!, retryResult.lng!);
+      return;
+    }
+    if (retryResult.status === "denied") {
+      setShowPermissionGuide(true);
+      return;
+    }
+    setPendingType(null);
+    toast.error("위치를 찾을 수 없어요", {
+      description: "Wi-Fi를 켜거나 실외에서 다시 시도해주세요",
+    });
+  };
+
   // ─── 출퇴근 버튼 탭 ────────────────────────────────────────────────────────
   const handleAttendance = async (type: "IN" | "OUT") => {
+    // 퇴근: 체크리스트 먼저 확인
+    if (type === "OUT") {
+      const items = await fetchChecklistItems("check_out");
+      if (items.length > 0) {
+        setChecklistItems(items);
+        setChecklistTrigger("check_out");
+        setShowChecklist(true);
+        return;
+      }
+      // 체크리스트 없으면 바로 퇴근 흐름
+      await runCheckoutFlow();
+      return;
+    }
+
     setIsRetrying(true);
     setPendingType(type);
 
@@ -398,6 +564,15 @@ export default function AttendanceCard({
           </Button>
         </div>
       </section>
+
+      {/* ── 체크리스트 바텀시트 ──────────────────────────────────── */}
+      <ChecklistSheet
+        isOpen={showChecklist}
+        trigger={checklistTrigger}
+        items={checklistItems}
+        onComplete={handleChecklistComplete}
+        onClose={checklistTrigger === "check_in" ? handleChecklistClose : undefined}
+      />
 
       {/* ── 위치 권한 안내 ───────────────────────────────────── */}
       <LocationPermissionGuide

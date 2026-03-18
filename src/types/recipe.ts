@@ -15,9 +15,20 @@ export interface RecipeItem {
   video_url: string | null;
   is_published: boolean;
   order_index: number;
+  created_by: string | null;
   created_at: string;
   updated_at: string;
   recipe_categories?: RecipeCategory;
+  profiles?: { name: string | null };
+}
+
+export interface RecipeIngredient {
+  id: string;
+  recipe_id: string;
+  name: string;
+  amount: string;
+  unit: string | null;
+  order_index: number;
 }
 
 export interface RecipeStep {

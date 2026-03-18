@@ -6,6 +6,7 @@ import { ChevronLeft, CheckCircle2, UploadCloud } from "lucide-react";
 import { format } from "date-fns";
 import { DatePicker } from "@/components/ui/date-picker";
 import { sendNotification } from "@/lib/notifications";
+import { toast } from "sonner";
 
 interface OnboardingProps {
   onComplete: () => void;
@@ -19,7 +20,7 @@ export default function OnboardingFunnel({ onComplete }: OnboardingProps) {
   // 폼 상태
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [joinDate, setJoinDate] = useState<Date | undefined>(undefined);
+  const [healthCertDate, setHealthCertDate] = useState<Date | undefined>(undefined);
 
   // 파일 업로드 상태
   const [healthCert, setHealthCert] = useState<File | null>(null);
@@ -85,7 +86,7 @@ export default function OnboardingFunnel({ onComplete }: OnboardingProps) {
           .update({
             name: name.trim(),
             phone,
-            join_date: joinDate ? format(joinDate, "yyyy-MM-dd") : null,
+            health_cert_date: healthCertDate ? format(healthCertDate, "yyyy-MM-dd") : null,
             health_cert_url: healthUrl,
           })
           .eq("id", user.id);
@@ -99,7 +100,9 @@ export default function OnboardingFunnel({ onComplete }: OnboardingProps) {
         });
       } catch (error) {
         console.error("업로드 중 에러 발생:", error);
-        alert("서류 업로드 중 문제가 발생했습니다. 나중에 다시 시도해주세요.");
+        toast.error("서류 업로드에 실패했어요", {
+          description: "잠시 후 다시 시도하거나, [내 정보]에서 다시 등록해 주세요.",
+        });
       }
     }
 
@@ -185,14 +188,14 @@ export default function OnboardingFunnel({ onComplete }: OnboardingProps) {
         {step === 3 && (
           <div className="animate-in slide-in-from-right-4 duration-300">
             <h1 className="text-2xl font-bold text-[#191F28] mb-2">
-              입사일이 언제인가요?
+              보건증 만료일이 언제인가요?
             </h1>
             <p className="text-[#8B95A1] text-sm mb-10">
-              정확히 모른다면 건너뛸 수 있어요.
+              모른다면 건너뛰고 나중에 등록해도 괜찮아요.
             </p>
             <DatePicker
-              value={joinDate}
-              onChange={setJoinDate}
+              value={healthCertDate}
+              onChange={setHealthCertDate}
               placeholder="YYYY. MM. DD"
               className="text-2xl font-bold text-[#191F28] h-auto px-0 py-1 pb-3 border-0 border-b-2 border-[#F2F4F6] rounded-none focus-visible:ring-0 focus:border-[#3182F6] shadow-none data-[state=open]:border-[#3182F6] bg-transparent hover:bg-transparent data-[state=open]:bg-transparent transition-all"
             />
@@ -301,7 +304,7 @@ export default function OnboardingFunnel({ onComplete }: OnboardingProps) {
             onClick={handleNext}
             className="w-full py-4 rounded-2xl font-bold text-lg text-white bg-[#3182F6] transition-colors active:scale-[0.98]"
           >
-            {joinDate ? "다음" : "건너뛰기"}
+            {healthCertDate ? "다음" : "건너뛰기"}
           </button>
         )}
 

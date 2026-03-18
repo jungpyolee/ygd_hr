@@ -5,12 +5,13 @@ import { createClient } from "@/lib/supabase";
 import { useRouter, useParams } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import RecipeForm from "@/components/recipe/RecipeForm";
-import type { RecipeCategory, RecipeItem, RecipeStep } from "@/types/recipe";
+import type { RecipeCategory, RecipeIngredient, RecipeItem, RecipeStep } from "@/types/recipe";
 
 export default function AdminRecipeEditPage() {
   const [categories, setCategories] = useState<RecipeCategory[]>([]);
   const [recipe, setRecipe] = useState<RecipeItem | null>(null);
   const [steps, setSteps] = useState<RecipeStep[]>([]);
+  const [ingredients, setIngredients] = useState<RecipeIngredient[]>([]);
   const [loading, setLoading] = useState(true);
   const supabase = createClient();
   const router = useRouter();
@@ -19,7 +20,7 @@ export default function AdminRecipeEditPage() {
 
   useEffect(() => {
     const fetchData = async () => {
-      const [{ data: cats }, { data: recipeData }, { data: stepsData }] =
+      const [{ data: cats }, { data: recipeData }, { data: stepsData }, { data: ingredientsData }] =
         await Promise.all([
           supabase
             .from("recipe_categories")
@@ -31,6 +32,11 @@ export default function AdminRecipeEditPage() {
             .select("*")
             .eq("recipe_id", id)
             .order("step_number", { ascending: true }),
+          supabase
+            .from("recipe_ingredients")
+            .select("*")
+            .eq("recipe_id", id)
+            .order("order_index", { ascending: true }),
         ]);
 
       if (!recipeData) {
@@ -40,6 +46,7 @@ export default function AdminRecipeEditPage() {
       setCategories(cats ?? []);
       setRecipe(recipeData);
       setSteps(stepsData ?? []);
+      setIngredients((ingredientsData as RecipeIngredient[]) ?? []);
       setLoading(false);
     };
 
@@ -73,6 +80,7 @@ export default function AdminRecipeEditPage() {
         categories={categories}
         initialRecipe={recipe}
         initialSteps={steps}
+        initialIngredients={ingredients}
       />
     </div>
   );
