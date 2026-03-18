@@ -187,6 +187,11 @@ export default function HomePage() {
       case "schedule_updated":
         router.push("/schedule");
         break;
+      case "recipe_comment":
+      case "recipe_reply":
+      case "recipe_mention":
+        if (noti.source_id) router.push(`/recipes/${noti.source_id}`);
+        break;
       default:
         break;
     }

@@ -8,6 +8,7 @@ import Image from "next/image";
 import { toast } from "sonner";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
 import type { RecipeIngredient, RecipeItem, RecipeStep } from "@/types/recipe";
+import RecipeComments from "@/components/recipe/RecipeComments";
 
 export default function RecipeDetailPage() {
   const [recipe, setRecipe] = useState<RecipeItem | null>(null);
@@ -253,6 +254,9 @@ export default function RecipeDetailPage() {
             ))}
           </div>
         )}
+
+        {/* 댓글 */}
+        <RecipeComments recipeId={id} recipeCreatedBy={recipe.created_by} />
       </main>
 
       <ConfirmDialog

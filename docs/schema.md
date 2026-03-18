@@ -17,8 +17,10 @@
 | `stores` | 매장 정보 |
 | `notifications` | 알림 |
 | `recipe_categories` | 레시피 카테고리 |
-| `recipe_items` | 레시피 항목 (썸네일, 영상, 공개여부) |
+| `recipe_items` | 레시피 항목 (썸네일, 영상, 공개여부, 작성자) |
+| `recipe_ingredients` | 레시피 재료 목록 |
 | `recipe_steps` | 레시피 단계별 설명 |
+| `recipe_comments` | 레시피 댓글/대댓글 (소프트 삭제) |
 | `work_defaults` | 직원 요일별 기본 근무 패턴 |
 | `weekly_schedules` | 주차별 스케줄 컨테이너 (draft/confirmed) |
 | `schedule_slots` | 개별 근무 슬롯 (날짜·시간·장소·포지션) |
@@ -319,8 +321,49 @@ DELETE FROM auth.users WHERE id = target_user_id
 | `order_index` | integer | NO | `0` | 정렬 순서 |
 | `created_at` | timestamptz | YES | `now()` | 생성일 |
 | `updated_at` | timestamptz | YES | `now()` | 수정일 |
+| `created_by` | uuid | YES | - | FK → profiles.id (SET NULL), 작성자 |
 
-**RLS**: 직원은 `is_published=true`만 SELECT, 어드민 ALL
+**RLS**: 직원은 `is_published=true` 또는 본인 글만 SELECT, 어드민 ALL / full_time 본인 글 INSERT·UPDATE·DELETE
+
+---
+
+## recipe_ingredients
+
+레시피 재료 목록.
+
+| 컬럼 | 타입 | NULL | 기본값 | 설명 |
+|------|------|------|--------|------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `recipe_id` | uuid | NO | - | FK → recipe_items.id (CASCADE) |
+| `name` | text | NO | - | 재료명 |
+| `amount` | text | NO | - | 양 (분수 표현 가능, e.g. "1/2") |
+| `unit` | text | YES | - | 단위 (g, ml, 개, T ...) |
+| `order_index` | integer | NO | `0` | 정렬 순서 |
+| `created_at` | timestamptz | YES | `now()` | 생성일 |
+
+**RLS**: 직원은 published 레시피 재료만 SELECT, 어드민 ALL / full_time INSERT·UPDATE·DELETE
+
+---
+
+## recipe_comments
+
+레시피 댓글 및 대댓글. 소프트 삭제 지원.
+
+| 컬럼 | 타입 | NULL | 기본값 | 설명 |
+|------|------|------|--------|------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `recipe_id` | uuid | NO | - | FK → recipe_items.id (CASCADE) |
+| `profile_id` | uuid | NO | - | FK → profiles.id (CASCADE), 작성자 |
+| `parent_id` | uuid | YES | - | FK → recipe_comments.id (CASCADE), NULL이면 최상위 |
+| `content` | text | NO | - | 댓글 내용 |
+| `mentioned_profile_id` | uuid | YES | - | FK → profiles.id (SET NULL), @태그 대상 |
+| `is_deleted` | boolean | NO | `false` | 소프트 삭제 여부 |
+| `created_at` | timestamptz | YES | `now()` | 생성일 |
+| `updated_at` | timestamptz | YES | `now()` | 수정일 (트리거) |
+
+**RLS**: 직원은 published 레시피 댓글 SELECT / 인증 직원 INSERT (`profile_id = auth.uid()`) / 본인 UPDATE / 어드민 ALL
+
+**알림 타입**: `recipe_comment` (새 댓글), `recipe_reply` (대댓글), `recipe_mention` (@멘션)
 
 ---
 
