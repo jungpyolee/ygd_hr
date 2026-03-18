@@ -3,10 +3,10 @@
 | 항목 | 내용 |
 |------|------|
 | 유형 | 기능 추가 |
-| 상태 | 🔄 미시작 |
+| 상태 | ✅ 완료 |
 | 파일 | `src/app/recipes/[id]/page.tsx`, `src/components/recipe/RecipeComments.tsx` (신규) |
 | 발견일 | 2026-03-18 |
-| 완료일 | - |
+| 완료일 | 2026-03-18 |
 
 ## 배경
 
@@ -152,13 +152,13 @@ RecipeComments (레시피 ID prop)
 
 ## 결과
 
-- [ ] DB 마이그레이션 실행 (`recipe_comments`)
-- [ ] RLS 4종 생성
-- [ ] updated_at 트리거 생성
-- [ ] `RecipeComments.tsx` 컴포넌트 신규 생성
-- [ ] 대댓글 @태그 자동 삽입 및 표시
-- [ ] Soft delete 처리
-- [ ] 알림 3종 발송 (recipe_comment, recipe_reply, recipe_mention)
-- [ ] 알림 딥링크 → `/recipes/{id}` 이동
-- [ ] schema.md 갱신 (테이블, 알림 type)
-- [ ] 빌드 통과
+- [x] DB 마이그레이션 실행 (`recipe_comments`)
+- [x] RLS 4종 생성
+- [x] updated_at 트리거 생성
+- [x] `RecipeComments.tsx` 컴포넌트 신규 생성
+- [x] 대댓글 @태그 자동 삽입 및 표시
+- [x] Soft delete 처리
+- [x] 알림 3종 발송 (recipe_comment, recipe_reply, recipe_mention)
+- [x] 알림 딥링크 → `/recipes/{id}` 이동
+- [x] schema.md 갱신 (테이블, 알림 type)
+- [x] 빌드 통과
