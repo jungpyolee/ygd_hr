@@ -20,36 +20,19 @@ export default function ChecklistSheet({
 }: ChecklistSheetProps) {
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
-  const [completing, setCompleting] = useState(false);
 
   // 열릴 때마다 상태 초기화
   useEffect(() => {
     if (isOpen) {
       setCheckedIds(new Set());
       setHiddenIds(new Set());
-      setCompleting(false);
     }
   }, [isOpen]);
-
-  // 모두 체크되면 자동 완료
-  useEffect(() => {
-    if (!isOpen || completing) return;
-    if (items.length > 0 && checkedIds.size === items.length) {
-      setCompleting(true);
-      const timer = setTimeout(() => {
-        onComplete(Array.from(checkedIds));
-        setCheckedIds(new Set());
-        setHiddenIds(new Set());
-        setCompleting(false);
-      }, 600);
-      return () => clearTimeout(timer);
-    }
-  }, [checkedIds, items.length, isOpen, completing, onComplete]);
 
   if (!isOpen) return null;
 
   const toggle = (id: string) => {
-    if (checkedIds.has(id)) return; // 이미 체크된 건 취소 불가
+    if (checkedIds.has(id)) return;
 
     setCheckedIds((prev) => {
       const next = new Set(prev);
@@ -57,14 +40,21 @@ export default function ChecklistSheet({
       return next;
     });
 
-    // 짧은 딜레이 후 사라지는 애니메이션
+    // 350ms 후 항목 사라지는 애니메이션
     setTimeout(() => {
       setHiddenIds((prev) => new Set(prev).add(id));
     }, 350);
   };
 
+  const handleComplete = () => {
+    const ids = Array.from(checkedIds);
+    setCheckedIds(new Set());
+    setHiddenIds(new Set());
+    onComplete(ids);
+  };
+
   const remaining = items.filter((item) => !checkedIds.has(item.id)).length;
-  const allChecked = remaining === 0 && items.length > 0;
+  const allChecked = items.length > 0 && remaining === 0;
 
   return (
     <div className="fixed inset-0 z-[400] flex items-center justify-center p-5">
@@ -84,7 +74,7 @@ export default function ChecklistSheet({
         </div>
 
         {/* 항목 목록 */}
-        <div className="flex-1 overflow-y-auto space-y-2 mb-2">
+        <div className="flex-1 overflow-y-auto space-y-2 mb-4">
           {items.map((item) => {
             const checked = checkedIds.has(item.id);
             const hidden = hiddenIds.has(item.id);
@@ -121,14 +111,20 @@ export default function ChecklistSheet({
           })}
         </div>
 
-        {/* 완료 중 표시 */}
-        {allChecked && (
-          <div className="w-full h-14 rounded-2xl bg-[#3182F6] flex items-center justify-center mt-2">
-            <span className="text-white font-bold text-[16px]">
-              {trigger === "check_in" ? "확인 완료 ✓" : "퇴근할게요 ✓"}
-            </span>
-          </div>
-        )}
+        {/* 완료 버튼 */}
+        <button
+          onClick={handleComplete}
+          disabled={!allChecked}
+          className={`w-full h-14 rounded-2xl font-bold text-[16px] transition-all ${
+            allChecked
+              ? "bg-[#3182F6] text-white active:scale-[0.98]"
+              : "bg-[#F2F4F6] text-[#B0B8C1] cursor-not-allowed"
+          }`}
+        >
+          {allChecked
+            ? trigger === "check_in" ? "확인 완료" : "퇴근할게요"
+            : `${remaining}개 남았어요`}
+        </button>
       </div>
     </div>
   );
