@@ -316,6 +316,19 @@ function SlotBottomSheet({
   );
 }
 
+// --------------- Daily Attendance Types ---------------
+interface DailyAttLog {
+  profile_id: string;
+  clock_in: string | null;
+  clock_out: string | null;
+}
+
+interface AttLogRow {
+  profile_id: string;
+  type: "IN" | "OUT";
+  created_at: string;
+}
+
 // --------------- Main Page ---------------
 export default function AdminSchedulesPage() {
   const supabase = useMemo(() => createClient(), []);
@@ -331,6 +344,7 @@ export default function AdminSchedulesPage() {
   const [copying, setCopying] = useState(false);
   const [fillingDefaults, setFillingDefaults] = useState(false);
   const [pendingSubCount, setPendingSubCount] = useState(0);
+  const [dailyAttLogs, setDailyAttLogs] = useState<DailyAttLog[]>([]);
 
   // Bottom sheet state
   const [editSlot, setEditSlot] = useState<{ slot: Partial<ScheduleSlot> | null; defaultDate?: string; defaultProfileId?: string } | null>(null);
@@ -390,6 +404,38 @@ export default function AdminSchedulesPage() {
     };
     fetchDailySlots();
   }, [dailyDate, tab]);
+
+  const fetchDailyAttendance = useCallback(async (date: Date) => {
+    const dateStr = format(date, "yyyy-MM-dd");
+    const start = new Date(dateStr + "T00:00:00+09:00").toISOString();
+    const end = new Date(dateStr + "T23:59:59+09:00").toISOString();
+
+    const { data } = await supabase
+      .from("attendance_logs")
+      .select("profile_id, type, created_at")
+      .gte("created_at", start)
+      .lte("created_at", end)
+      .order("created_at", { ascending: true });
+
+    if (data) {
+      const map = new Map<string, DailyAttLog>();
+      (data as AttLogRow[]).forEach((log) => {
+        if (!map.has(log.profile_id)) {
+          map.set(log.profile_id, { profile_id: log.profile_id, clock_in: null, clock_out: null });
+        }
+        const entry = map.get(log.profile_id)!;
+        if (log.type === "IN" && !entry.clock_in) entry.clock_in = log.created_at;
+        if (log.type === "OUT") entry.clock_out = log.created_at;
+      });
+      setDailyAttLogs(Array.from(map.values()));
+    }
+  }, [supabase]);
+
+  // Fetch daily attendance logs for the attendance layer
+  useEffect(() => {
+    if (tab !== "daily") return;
+    fetchDailyAttendance(dailyDate);
+  }, [tab, dailyDate, fetchDailyAttendance]);
 
   const getOrCreateWeeklySchedule = async (): Promise<string | null> => {
     if (weeklySchedule) return weeklySchedule.id;
@@ -792,7 +838,7 @@ export default function AdminSchedulesPage() {
             {profiles.map((profile) => {
               const empSlots = daySlots.filter((s) => s.profile_id === profile.id);
               return (
-                <div key={profile.id} className="flex items-center border-t border-slate-100 min-h-[52px] relative">
+                <div key={profile.id} className="flex items-center border-t border-slate-100 relative" style={{ height: "72px" }}>
                   <div className="w-[80px] shrink-0 px-2 flex items-center gap-2">
                     <div
                       className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
@@ -802,7 +848,7 @@ export default function AdminSchedulesPage() {
                     </div>
                     <span className="text-[12px] font-bold text-[#191F28] truncate">{profile.name}</span>
                   </div>
-                  <div className="flex-1 relative h-[52px]">
+                  <div className="flex-1 relative h-[72px]">
                     <div className="absolute inset-0 flex">
                       {hours.map((h) => (
                         <div
@@ -826,11 +872,13 @@ export default function AdminSchedulesPage() {
                         <button
                           key={slot.id}
                           onClick={() => setEditSlot({ slot })}
-                          className="absolute top-2 bottom-2 rounded-lg text-white text-[11px] font-bold px-2 flex items-center overflow-hidden hover:opacity-80 transition-all"
+                          className="absolute rounded-lg text-white text-[11px] font-bold px-2 flex items-center overflow-hidden hover:opacity-80 transition-all"
                           style={{
+                            top: "6px", height: "26px",
                             left: `${leftPct}%`,
                             width: `${widthPct}%`,
                             backgroundColor: LOCATION_COLORS[slot.work_location],
+                            minWidth: "4px",
                           }}
                         >
                           <span className="truncate">
@@ -839,6 +887,47 @@ export default function AdminSchedulesPage() {
                         </button>
                       );
                     })}
+                  {/* 근태 레이어 (하단 22px) */}
+                  {(() => {
+                    const attLog = dailyAttLogs.find((a) => a.profile_id === profile.id);
+                    if (empSlots.length === 0) return null;
+                    const firstSlot = empSlots[0];
+                    const isPast = dailyDate < new Date(new Date().setHours(0, 0, 0, 0));
+
+                    if (!attLog?.clock_in && isPast) {
+                      return (
+                        <div
+                          className="absolute flex items-center px-2 rounded-md text-[10px] font-bold text-[#E03131]"
+                          style={{ bottom: "6px", height: "22px", left: "4px", right: "4px", backgroundColor: "#FFF5F5", border: "1px solid #FFCDD2" }}
+                        >
+                          미출근
+                        </div>
+                      );
+                    }
+                    if (!attLog?.clock_in) return null;
+
+                    const clockInDate = new Date(attLog.clock_in);
+                    const clockOutDate = attLog.clock_out ? new Date(attLog.clock_out) : new Date();
+                    const totalHours = hourEnd - hourStart;
+                    const inH = clockInDate.getHours() + clockInDate.getMinutes() / 60;
+                    const outH = clockOutDate.getHours() + clockOutDate.getMinutes() / 60;
+                    const attLeftPct = Math.max(0, ((inH - hourStart) / totalHours) * 100);
+                    const attWidthPct = Math.max(0.5, Math.min(100 - attLeftPct, ((outH - inH) / totalHours) * 100));
+
+                    const [sh, sm] = firstSlot.start_time.split(":").map(Number);
+                    const schedStart = new Date(`${dateStr}T${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}:00`);
+                    const lateMin = Math.floor((clockInDate.getTime() - schedStart.getTime()) / 60000);
+                    const isLate = lateMin > 10;
+
+                    return (
+                      <div
+                        className="absolute flex items-center px-1.5 rounded-md text-[10px] font-bold text-white overflow-hidden"
+                        style={{ bottom: "6px", height: "22px", left: `${attLeftPct}%`, width: `${attWidthPct}%`, backgroundColor: isLate ? "#F59E0B" : "#00B761", minWidth: "4px" }}
+                      >
+                        {attWidthPct > 5 && <span className="truncate">{isLate ? `+${lateMin}분` : ""}</span>}
+                      </div>
+                    );
+                  })()}
                   </div>
                 </div>
               );
