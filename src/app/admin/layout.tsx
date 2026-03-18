@@ -95,29 +95,33 @@ export default function AdminLayout({
   useEffect(() => {
     if (!isAdmin) return;
 
-    const channel = supabase
+    const notiChannel = supabase
       .channel("admin-notifications")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "notifications",
-          // 필터 조건이 가끔 안 먹히는 경우를 대비해 핸들러 내부에서도 체크
-        },
-        (payload) => {
-          if (
-            payload.new.target_role === "admin" ||
-            payload.new.target_role === "all"
-          ) {
-            fetchNotis();
-          }
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications" }, (payload) => {
+        if (payload.new.target_role === "admin" || payload.new.target_role === "all") {
+          fetchNotis();
         }
-      )
+        // 대체근무 확정 알림 시 pending 카운트도 갱신
+        if (payload.new.type === "substitute_filled") {
+          fetchPendingSubCount();
+        }
+      })
+      .subscribe();
+
+    // substitute_requests 상태 변경(승인/반려) 시 pending 카운트 갱신
+    const subChannel = supabase
+      .channel("substitute-requests-changes")
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "substitute_requests" }, () => {
+        fetchPendingSubCount();
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "substitute_requests" }, () => {
+        fetchPendingSubCount();
+      })
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(notiChannel);
+      supabase.removeChannel(subChannel);
     };
   }, [isAdmin]);
 

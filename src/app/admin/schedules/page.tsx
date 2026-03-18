@@ -736,7 +736,7 @@ export default function AdminSchedulesPage() {
         <table className="w-full min-w-[700px]">
           <thead>
             <tr className="bg-[#F9FAFB] border-b border-slate-100">
-              <th className="w-[100px] px-4 py-3 text-left text-[12px] font-bold text-[#8B95A1]">직원</th>
+              <th className="w-[100px] px-4 py-3 text-left text-[12px] font-bold text-[#8B95A1] sticky left-0 z-20 bg-[#F9FAFB] border-r border-slate-100">직원</th>
               {weekDates.map((d) => (
                 <th key={d} className="px-2 py-3 text-center text-[12px] font-bold text-[#8B95A1]">
                   <div>{format(parseISO(d), "EEE", { locale: ko })}</div>
@@ -748,7 +748,7 @@ export default function AdminSchedulesPage() {
           <tbody>
             {profiles.map((profile) => (
               <tr key={profile.id} className="border-b border-slate-50 last:border-0">
-                <td className="px-4 py-3">
+                <td className="px-4 py-3 sticky left-0 z-10 bg-white border-r border-slate-50">
                   <div className="flex items-center gap-2">
                     <div
                       className="w-7 h-7 rounded-full flex items-center justify-center text-[12px] font-bold text-white shrink-0"
@@ -806,88 +806,68 @@ export default function AdminSchedulesPage() {
     const daySlots = dailySlotsData;
 
     return (
-      <div>
-        <div className="flex items-center justify-center gap-2 mb-4">
-          <button
-            onClick={() => setDailyDate((d) => { const nd = new Date(d); nd.setDate(nd.getDate() - 1); return nd; })}
-            className="p-2 rounded-full hover:bg-[#F2F4F6] text-[#8B95A1]"
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </button>
-          <span className="font-bold text-[#191F28] text-[15px]">
-            {format(dailyDate, "M월 d일 (EEE)", { locale: ko })}
-          </span>
-          <button
-            onClick={() => setDailyDate((d) => { const nd = new Date(d); nd.setDate(nd.getDate() + 1); return nd; })}
-            className="p-2 rounded-full hover:bg-[#F2F4F6] text-[#8B95A1]"
-          >
-            <ChevronRight className="w-5 h-5" />
-          </button>
-        </div>
-        <div className="overflow-x-auto">
-          <div className="min-w-[800px]">
-            <div className="flex">
-              <div className="w-[80px] shrink-0" />
-              {hours.map((h) => (
-                <div key={h} className="flex-1 text-center text-[11px] font-bold text-[#8B95A1] border-l border-slate-100 py-1">
-                  {h}시
-                </div>
-              ))}
-            </div>
+      <div className="overflow-x-auto rounded-[20px] border border-slate-100 bg-white shadow-sm">
+        <div className="min-w-[700px]">
+          {/* 헤더 행 */}
+          <div className="flex bg-[#F9FAFB] border-b border-slate-100">
+            <div className="w-[80px] shrink-0 sticky left-0 z-20 bg-[#F9FAFB] border-r border-slate-100" />
+            {hours.map((h) => (
+              <div key={h} className="flex-1 text-center text-[11px] font-bold text-[#8B95A1] border-l border-slate-100 py-2">
+                {h}시
+              </div>
+            ))}
+          </div>
 
-            {profiles.map((profile) => {
-              const empSlots = daySlots.filter((s) => s.profile_id === profile.id);
-              return (
-                <div key={profile.id} className="flex items-center border-t border-slate-100 relative" style={{ height: "72px" }}>
-                  <div className="w-[80px] shrink-0 px-2 flex items-center gap-2">
-                    <div
-                      className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
-                      style={{ backgroundColor: profile.color_hex || "#8B95A1" }}
-                    >
-                      {profile.name.charAt(0)}
-                    </div>
-                    <span className="text-[12px] font-bold text-[#191F28] truncate">{profile.name}</span>
+          {profiles.map((profile) => {
+            const empSlots = daySlots.filter((s) => s.profile_id === profile.id);
+            return (
+              <div key={profile.id} className="flex border-t border-slate-100 relative" style={{ height: "72px" }}>
+                {/* 직원명 — sticky */}
+                <div className="w-[80px] shrink-0 px-2 flex items-center gap-2 sticky left-0 z-10 bg-white border-r border-slate-50">
+                  <div
+                    className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
+                    style={{ backgroundColor: profile.color_hex || "#8B95A1" }}
+                  >
+                    {profile.name.charAt(0)}
                   </div>
-                  <div className="flex-1 relative h-[72px]">
-                    <div className="absolute inset-0 flex">
-                      {hours.map((h) => (
-                        <div
-                          key={h}
-                          className="flex-1 border-l border-slate-50 cursor-pointer hover:bg-[#F9FAFB] transition-colors"
-                          onClick={() => setEditSlot({
-                            slot: null,
-                            defaultDate: dateStr,
-                            defaultProfileId: profile.id,
-                          })}
-                        />
-                      ))}
-                    </div>
-                    {empSlots.map((slot) => {
-                      const totalHours = hourEnd - hourStart;
-                      const startH = parseInt(slot.start_time.split(":")[0]) + parseInt(slot.start_time.split(":")[1]) / 60;
-                      const endH = parseInt(slot.end_time.split(":")[0]) + parseInt(slot.end_time.split(":")[1]) / 60;
-                      const leftPct = ((startH - hourStart) / totalHours) * 100;
-                      const widthPct = ((endH - startH) / totalHours) * 100;
-                      return (
-                        <button
-                          key={slot.id}
-                          onClick={() => setEditSlot({ slot })}
-                          className="absolute rounded-lg text-white text-[11px] font-bold px-2 flex items-center overflow-hidden hover:opacity-80 transition-all"
-                          style={{
-                            top: "6px", height: "26px",
-                            left: `${leftPct}%`,
-                            width: `${widthPct}%`,
-                            backgroundColor: LOCATION_COLORS[slot.work_location],
-                            minWidth: "4px",
-                          }}
-                        >
-                          <span className="truncate">
-                            {slot.start_time.slice(0, 5)}~{slot.end_time.slice(0, 5)}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  {/* 근태 레이어 (하단 22px) */}
+                  <span className="text-[12px] font-bold text-[#191F28] truncate">{profile.name}</span>
+                </div>
+                <div className="flex-1 relative h-[72px]">
+                  <div className="absolute inset-0 flex">
+                    {hours.map((h) => (
+                      <div
+                        key={h}
+                        className="flex-1 border-l border-slate-50 cursor-pointer hover:bg-[#F9FAFB] transition-colors"
+                        onClick={() => setEditSlot({ slot: null, defaultDate: dateStr, defaultProfileId: profile.id })}
+                      />
+                    ))}
+                  </div>
+                  {empSlots.map((slot) => {
+                    const totalHours = hourEnd - hourStart;
+                    const startH = parseInt(slot.start_time.split(":")[0]) + parseInt(slot.start_time.split(":")[1]) / 60;
+                    const endH = parseInt(slot.end_time.split(":")[0]) + parseInt(slot.end_time.split(":")[1]) / 60;
+                    const leftPct = ((startH - hourStart) / totalHours) * 100;
+                    const widthPct = ((endH - startH) / totalHours) * 100;
+                    return (
+                      <button
+                        key={slot.id}
+                        onClick={() => setEditSlot({ slot })}
+                        className="absolute rounded-lg text-white text-[11px] font-bold px-2 flex items-center overflow-hidden hover:opacity-80 transition-all"
+                        style={{
+                          top: "6px", height: "26px",
+                          left: `${leftPct}%`,
+                          width: `${widthPct}%`,
+                          backgroundColor: LOCATION_COLORS[slot.work_location],
+                          minWidth: "4px",
+                        }}
+                      >
+                        <span className="truncate">
+                          {slot.start_time.slice(0, 5)}~{slot.end_time.slice(0, 5)}
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {/* 근태 레이어 */}
                   {(() => {
                     const attLog = dailyAttLogs.find((a) => a.profile_id === profile.id);
                     if (empSlots.length === 0) return null;
@@ -928,27 +908,27 @@ export default function AdminSchedulesPage() {
                       </div>
                     );
                   })()}
-                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* 인원 행 */}
+          <div className="flex border-t-2 border-slate-200 bg-[#F9FAFB]">
+            <div className="w-[80px] shrink-0 px-2 py-2 text-[11px] font-bold text-[#8B95A1] sticky left-0 z-10 bg-[#F9FAFB] border-r border-slate-100">인원</div>
+            {hours.map((h) => {
+              const count = dailySlotsData.filter((s) =>
+                timeToMinutes(s.start_time) < (h + 1) * 60 &&
+                timeToMinutes(s.end_time) > h * 60
+              ).length;
+              return (
+                <div key={h} className="flex-1 border-l border-slate-100 text-center py-2">
+                  <span className={`text-[12px] font-bold ${count > 0 ? "text-[#3182F6]" : "text-[#D1D6DB]"}`}>
+                    {count > 0 ? count : "-"}
+                  </span>
                 </div>
               );
             })}
-
-            <div className="flex border-t-2 border-slate-200 bg-[#F9FAFB]">
-              <div className="w-[80px] shrink-0 px-2 py-2 text-[11px] font-bold text-[#8B95A1]">인원</div>
-              {hours.map((h) => {
-                const count = dailySlotsData.filter((s) =>
-                  timeToMinutes(s.start_time) < (h + 1) * 60 &&
-                  timeToMinutes(s.end_time) > h * 60
-                ).length;
-                return (
-                  <div key={h} className="flex-1 border-l border-slate-100 text-center py-2">
-                    <span className={`text-[12px] font-bold ${count > 0 ? "text-[#3182F6]" : "text-[#D1D6DB]"}`}>
-                      {count > 0 ? count : "-"}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
           </div>
         </div>
       </div>
@@ -992,28 +972,35 @@ export default function AdminSchedulesPage() {
         </div>
       </div>
 
-      {/* Week Navigator — 뱃지를 absolute로 분리해서 화살표 중앙 고정 */}
-      {tab === "weekly" && (
-        <div className="relative flex items-center justify-center gap-2 mb-4">
-          <button
-            onClick={() => setWeekStart((w) => subWeeks(w, 1))}
-            aria-label="이전 주"
-            className="p-2 rounded-full hover:bg-[#F2F4F6] text-[#8B95A1] min-w-[44px] min-h-[44px] flex items-center justify-center"
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </button>
-          <span className="font-bold text-[#191F28] text-[15px] min-w-[220px] text-center">
-            {format(weekStart, "yyyy년 M월 d일", { locale: ko })} ~{" "}
-            {format(addDays(weekStart, 6), "M월 d일", { locale: ko })}
-          </span>
-          <button
-            onClick={() => setWeekStart((w) => addWeeks(w, 1))}
-            aria-label="다음 주"
-            className="p-2 rounded-full hover:bg-[#F2F4F6] text-[#8B95A1] min-w-[44px] min-h-[44px] flex items-center justify-center"
-          >
-            <ChevronRight className="w-5 h-5" />
-          </button>
-          {/* 뱃지: absolute 우측 고정 — 네비게이터 중앙 위치에 영향 없음 */}
+      {/* 날짜 네비게이터 — 주간/일간 공통 위치 */}
+      <div className="relative flex items-center justify-center gap-2 mb-4">
+        <button
+          onClick={() => tab === "weekly"
+            ? setWeekStart((w) => subWeeks(w, 1))
+            : setDailyDate((d) => { const nd = new Date(d); nd.setDate(nd.getDate() - 1); return nd; })
+          }
+          aria-label="이전"
+          className="p-2 rounded-full hover:bg-[#F2F4F6] text-[#8B95A1] min-w-[44px] min-h-[44px] flex items-center justify-center"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+        <span className="font-bold text-[#191F28] text-[15px] min-w-[200px] text-center">
+          {tab === "weekly"
+            ? `${format(weekStart, "yyyy년 M월 d일", { locale: ko })} ~ ${format(addDays(weekStart, 6), "M월 d일", { locale: ko })}`
+            : format(dailyDate, "M월 d일 (EEE)", { locale: ko })
+          }
+        </span>
+        <button
+          onClick={() => tab === "weekly"
+            ? setWeekStart((w) => addWeeks(w, 1))
+            : setDailyDate((d) => { const nd = new Date(d); nd.setDate(nd.getDate() + 1); return nd; })
+          }
+          aria-label="다음"
+          className="p-2 rounded-full hover:bg-[#F2F4F6] text-[#8B95A1] min-w-[44px] min-h-[44px] flex items-center justify-center"
+        >
+          <ChevronRight className="w-5 h-5" />
+        </button>
+        {tab === "weekly" && (
           <div className="absolute right-0">
             <span
               className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${
@@ -1027,8 +1014,8 @@ export default function AdminSchedulesPage() {
               {weeklySchedule?.status === "confirmed" ? "확정" : "초안"}
             </span>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Tab switcher + 이전 주 복사 (주간 탭일 때만) */}
       <div className="flex items-center gap-3 mb-4">
@@ -1049,17 +1036,19 @@ export default function AdminSchedulesPage() {
               onClick={handleCopyPrevWeek}
               disabled={copying}
               className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 text-[#4E5968] rounded-xl text-[13px] font-bold hover:bg-[#F2F4F6] transition-all disabled:opacity-50"
+              title="이전 주 복사"
             >
               <Copy className="w-3.5 h-3.5" />
-              {copying ? "복사하는 중이에요" : "이전 주 복사"}
+              <span className="hidden sm:inline">{copying ? "복사 중이에요" : "이전 주 복사"}</span>
             </button>
             <button
               onClick={handleFillDefaults}
               disabled={fillingDefaults}
               className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 text-[#4E5968] rounded-xl text-[13px] font-bold hover:bg-[#F2F4F6] transition-all disabled:opacity-50"
+              title="기본 패턴으로 채우기"
             >
               <LayoutTemplate className="w-3.5 h-3.5" />
-              {fillingDefaults ? "채우는 중이에요" : "기본 패턴으로 채우기"}
+              <span className="hidden sm:inline">{fillingDefaults ? "채우는 중이에요" : "기본 패턴 채우기"}</span>
             </button>
           </>
         )}
