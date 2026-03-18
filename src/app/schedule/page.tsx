@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase";
 import { toast } from "sonner";
 import { ChevronLeft, ChevronRight, Calendar, MapPin, Clock, ArrowRightLeft, X, Check } from "lucide-react";
@@ -64,7 +64,7 @@ function getWeekDates(weekStart: Date): Date[] {
 }
 
 export default function SchedulePage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [loading, setLoading] = useState(true);
   const [profileId, setProfileId] = useState<string | null>(null);
   const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date(), { weekStartsOn: 0 }));
@@ -94,35 +94,33 @@ export default function SchedulePage() {
   const fetchSlots = useCallback(async () => {
     if (!profileId) return;
     setLoading(true);
-    const weekStartStr = format(weekStart, "yyyy-MM-dd");
-    const weekEndStr = format(addDays(weekStart, 6), "yyyy-MM-dd");
+    try {
+      const weekStartStr = format(weekStart, "yyyy-MM-dd");
 
-    // Get confirmed weekly schedules in this week range
-    const { data: wsData } = await supabase
-      .from("weekly_schedules")
-      .select("id")
-      .eq("status", "confirmed")
-      .gte("week_start", weekStartStr)
-      .lte("week_start", weekEndStr);
+      const { data: wsData } = await supabase
+        .from("weekly_schedules")
+        .select("id")
+        .eq("status", "confirmed")
+        .eq("week_start", weekStartStr);
 
-    if (!wsData || wsData.length === 0) {
-      setSlots([]);
+      if (!wsData || wsData.length === 0) {
+        setSlots([]);
+        return;
+      }
+
+      const wsIds = wsData.map((ws: { id: string }) => ws.id);
+      const { data: slotData } = await supabase
+        .from("schedule_slots")
+        .select("*")
+        .eq("profile_id", profileId)
+        .in("weekly_schedule_id", wsIds)
+        .eq("status", "active");
+
+      setSlots((slotData as ScheduleSlot[]) ?? []);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const wsIds = wsData.map((ws: { id: string }) => ws.id);
-    const { data: slotData } = await supabase
-      .from("schedule_slots")
-      .select("*")
-      .eq("profile_id", profileId)
-      .in("weekly_schedule_id", wsIds)
-      .eq("status", "active");
-
-    if (slotData) setSlots(slotData as ScheduleSlot[]);
-    else setSlots([]);
-    setLoading(false);
-  }, [profileId, weekStart]);
+  }, [profileId, weekStart, supabase]);
 
   const fetchIncomingRequests = useCallback(async () => {
     if (!profileId) return;
@@ -190,67 +188,31 @@ export default function SchedulePage() {
     if (!profileId) return;
     setRespondingId(req.id);
 
-    // 1. INSERT substitute_responses (accepted)
-    const { error: respError } = await supabase.from("substitute_responses").insert({
-      request_id: req.id,
-      profile_id: profileId,
-      response: "accepted",
+    const { error } = await supabase.rpc("accept_substitute", {
+      p_request_id: req.id,
+      p_acceptor_id: profileId,
     });
-    if (respError) {
-      toast.error("수락에 실패했어요", { description: respError.message });
+
+    if (error) {
+      if (error.message.includes("ALREADY_FILLED_OR_NOT_ELIGIBLE")) {
+        toast.error("이미 다른 분이 수락했어요", { description: "대타가 확정됐어요." });
+      } else {
+        toast.error("수락에 실패했어요", { description: "잠시 후 다시 시도해주세요." });
+      }
       setRespondingId(null);
       return;
     }
 
-    // 2. UPDATE substitute_requests: status='filled', accepted_by
-    await supabase.from("substitute_requests").update({
-      status: "filled",
-      accepted_by: profileId,
-      accepted_at: new Date().toISOString(),
-    }).eq("id", req.id);
-
-    // 3. UPDATE original schedule_slot: status='substituted'
-    await supabase.from("schedule_slots").update({ status: "substituted" }).eq("id", req.slot_id);
-
-    // 4. Fetch original slot's weekly_schedule_id to create new slot for acceptor
-    const { data: origSlot } = await supabase
-      .from("schedule_slots")
-      .select("weekly_schedule_id")
-      .eq("id", req.slot_id)
-      .single();
-
-    if (origSlot) {
-      await supabase.from("schedule_slots").insert({
-        weekly_schedule_id: origSlot.weekly_schedule_id,
-        profile_id: profileId,
-        slot_date: req.slot_date,
-        start_time: req.start_time,
-        end_time: req.end_time,
-        work_location: req.work_location,
-        cafe_positions: req.cafe_positions,
-        status: "active",
-      });
-    }
-
-    // 5. Notify requester
-    const slotDateLabel = req.slot_date ? format(new Date(req.slot_date), "M월 d일", { locale: ko }) : "";
-    await supabase.from("notifications").insert([
-      {
-        profile_id: req.requester_id,
-        target_role: "employee",
-        type: "substitute_filled",
-        title: "대타가 구해졌어요",
-        content: `${slotDateLabel} ${LOCATION_LABELS[req.work_location] || req.work_location} 대타가 확정됐어요.`,
-        source_id: req.id,
-      },
-      {
-        target_role: "admin",
-        type: "substitute_filled",
-        title: "대타가 구해졌어요",
-        content: `${slotDateLabel} ${LOCATION_LABELS[req.work_location] || req.work_location} 대타가 확정됐어요.`,
-        source_id: req.id,
-      },
-    ]);
+    // 알림 발송 (실패해도 수락 자체는 성공)
+    const slotDateLabel = req.slot_date ? format(new Date(req.slot_date + "T00:00:00"), "M월 d일", { locale: ko }) : "";
+    await supabase.from("notifications").insert({
+      profile_id: req.requester_id,
+      target_role: "employee",
+      type: "substitute_filled",
+      title: "대타가 구해졌어요",
+      content: `${slotDateLabel} ${LOCATION_LABELS[req.work_location] || req.work_location} 대타가 확정됐어요.`,
+      source_id: req.id,
+    });
 
     toast.success("대타를 수락했어요", { description: `${slotDateLabel} 근무가 추가됐어요.` });
     setRespondingId(null);
@@ -341,7 +303,8 @@ export default function SchedulePage() {
         {/* Week navigator */}
         <div className="flex items-center justify-between py-2">
           <button
-            onClick={() => setWeekStart((w) => subWeeks(w, 1))}
+            aria-label="이전 주"
+            onClick={() => { const w = subWeeks(weekStart, 1); setWeekStart(w); setSelectedDay(startOfWeek(w, { weekStartsOn: 0 })); }}
             className="p-2 rounded-full hover:bg-white text-[#8B95A1] transition-all"
           >
             <ChevronLeft className="w-5 h-5" />
@@ -350,7 +313,8 @@ export default function SchedulePage() {
             {format(weekStart, "M월 d일", { locale: ko })} ~ {format(addDays(weekStart, 6), "M월 d일", { locale: ko })}
           </span>
           <button
-            onClick={() => setWeekStart((w) => addWeeks(w, 1))}
+            aria-label="다음 주"
+            onClick={() => { const w = addWeeks(weekStart, 1); setWeekStart(w); setSelectedDay(startOfWeek(w, { weekStartsOn: 0 })); }}
             className="p-2 rounded-full hover:bg-white text-[#8B95A1] transition-all"
           >
             <ChevronRight className="w-5 h-5" />
@@ -453,7 +417,7 @@ export default function SchedulePage() {
                       className="flex items-center gap-1.5 px-3 py-2 bg-[#F9FAFB] hover:bg-[#F2F4F6] border border-slate-200 text-[#4E5968] rounded-xl text-[12px] font-bold transition-all shrink-0 active:scale-[0.97]"
                     >
                       <ArrowRightLeft className="w-3.5 h-3.5" />
-                      대타
+                      대타 요청
                     </button>
                   </div>
                 </div>
@@ -542,13 +506,13 @@ export default function SchedulePage() {
             <div className="absolute top-3 left-1/2 -translate-x-1/2 w-9 h-1 bg-[#D1D6DB] rounded-full" />
             <div className="flex justify-between items-center mb-2">
               <h3 className="text-[18px] font-bold text-[#191F28]">대타 요청하기</h3>
-              <button onClick={() => setRequestTarget(null)} className="w-8 h-8 flex items-center justify-center rounded-full bg-[#F2F4F6]">
+              <button aria-label="닫기" onClick={() => { setRequestTarget(null); setRequestReason(""); }} className="w-8 h-8 flex items-center justify-center rounded-full bg-[#F2F4F6]">
                 <X className="w-5 h-5 text-[#8B95A1]" />
               </button>
             </div>
 
             <p className="text-[14px] text-[#4E5968] mb-4">
-              {format(new Date(requestTarget.slot_date), "M월 d일", { locale: ko })}{" "}
+              {format(new Date(requestTarget.slot_date + "T00:00:00"), "M월 d일", { locale: ko })}{" "}
               {LOCATION_LABELS[requestTarget.work_location]}{" "}
               {requestTarget.start_time.slice(0, 5)}~{requestTarget.end_time.slice(0, 5)} 근무예요.
             </p>
@@ -572,10 +536,10 @@ export default function SchedulePage() {
                 disabled={submitting}
                 className="w-full h-14 bg-[#3182F6] text-white rounded-2xl font-bold text-[16px] disabled:opacity-50 active:scale-[0.98] transition-all"
               >
-                {submitting ? "요청 중..." : "대타 요청하기"}
+                {submitting ? "요청하는 중이에요" : "대타 요청하기"}
               </button>
-              <button onClick={() => setRequestTarget(null)} className="w-full h-14 bg-[#F2F4F6] text-[#4E5968] rounded-2xl font-bold text-[16px]">
-                취소
+              <button onClick={() => { setRequestTarget(null); setRequestReason(""); }} className="w-full h-14 bg-[#F2F4F6] text-[#4E5968] rounded-2xl font-bold text-[16px]">
+                닫기
               </button>
             </div>
           </div>
