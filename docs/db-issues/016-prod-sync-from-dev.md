@@ -3,10 +3,10 @@
 | 항목 | 내용 |
 |------|------|
 | 유형 | 스키마 변경 + RLS 동기화 |
-| 상태 | 🔄 진행 중 |
+| 상태 | ✅ 완료 |
 | 마이그레이션 | migrations/016_prod_sync_from_dev.sql |
 | 발견일 | 2026-03-18 |
-| 완료일 | - |
+| 완료일 | 2026-03-18 |
 
 ---
 
@@ -89,13 +89,30 @@ ORDER BY tablename, policyname;
 
 - [x] Dev/Production DB 차이 분석 완료
 - [x] 마이그레이션 SQL 작성 완료
-- [x] dev → main PR 생성
-- [ ] PR 머지
-- [ ] Production 마이그레이션 실행
-- [ ] 검증
+- [x] dev → main PR 생성 (#1)
+- [x] PR 머지 (2026-03-18T08:41:27Z)
+- [x] Production 마이그레이션 실행
+- [x] 검증 완료
 
 ---
 
 ## 결과
 
-(완료 후 기록 예정)
+Production DB에 모든 변경사항 정상 반영 확인.
+
+### 신규 테이블 (4개 생성 확인)
+- `announcements` ✅
+- `announcement_reads` ✅
+- `checklist_templates` ✅
+- `checklist_submissions` ✅
+
+### RLS 정책 (검증 완료)
+- `recipe_comments`: `본인 댓글 삭제` DELETE 정책 추가 ✅
+- `recipe_ingredients`: `정규직 재료 수정` 제거 → `레시피 작성자 재료 관리` 추가 ✅
+- `recipe_steps`: `정규직 레시피 단계 수정` 제거 → `레시피 작성자 단계 관리` 추가 ✅
+- `schedule_slots`: `ss_emp_own` 제거 → `ss_emp_confirmed` 추가 ✅
+- `weekly_schedules`: `ws_emp_confirmed` chr() 인코딩 → 평문 'confirmed' ✅
+
+### 인덱스
+- `recipe_ingredients`: `(recipe_id, order_index)` 재생성 ✅
+- `recipe_comments`: `idx_recipe_comments_parent_id` 추가 ✅
