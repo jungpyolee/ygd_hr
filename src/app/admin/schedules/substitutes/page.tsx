@@ -38,6 +38,24 @@ interface Profile {
   work_locations: string[] | null;
 }
 
+interface SubstituteRequestRow {
+  id: string;
+  slot_id: string;
+  requester_id: string;
+  reason: string | null;
+  status: string;
+  reject_reason: string | null;
+  rejected_at: string | null;
+  approved_at: string | null;
+  eligible_profile_ids: string[] | null;
+  accepted_by: string | null;
+  accepted_at: string | null;
+  created_at: string;
+  schedule_slots?: { slot_date: string; start_time: string; end_time: string; work_location: string } | null;
+  requester?: { name: string; color_hex: string } | null;
+  accepted?: { name: string } | null;
+}
+
 const LOCATION_LABELS: Record<string, string> = {
   cafe: "카페",
   factory: "공장",
@@ -91,7 +109,7 @@ export default function AdminSubstitutesPage() {
       .order("created_at", { ascending: false });
 
     if (!error && data) {
-      const mapped = data.map((r: any) => ({
+      const mapped = (data as unknown as SubstituteRequestRow[]).map((r) => ({
         id: r.id,
         slot_id: r.slot_id,
         requester_id: r.requester_id,
@@ -181,8 +199,9 @@ export default function AdminSubstitutesPage() {
 
     if (error) { toast.error("승인에 실패했어요", { description: error.message }); }
     else {
-      // Notify eligible employees
-      const notifications = eligibleIds.map((pid) => ({
+      // Notify eligible employees (중복 ID 제거)
+      const uniqueEligibleIds = Array.from(new Set(eligibleIds));
+      const notifications = uniqueEligibleIds.map((pid) => ({
         profile_id: pid,
         target_role: "employee" as const,
         type: "substitute_approved",

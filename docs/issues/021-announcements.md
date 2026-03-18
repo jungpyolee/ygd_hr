@@ -1,12 +1,12 @@
-# [FEAT-020] 공지사항 게시판
+# [FEAT-021] 공지사항 게시판
 
 | 항목 | 내용 |
 |------|------|
 | 유형 | 기능 추가 |
-| 상태 | 🔄 미시작 |
-| 파일 | `src/app/announcements/page.tsx` (신규), `src/app/admin/announcements/page.tsx` (신규), `src/app/page.tsx` |
+| 상태 | ✅ 완료 |
+| 파일 | `src/app/announcements/`, `src/app/admin/announcements/`, `src/components/AnnouncementBanner.tsx`, `src/components/announcement/AnnouncementForm.tsx`, `src/types/announcement.ts`, `src/app/page.tsx`, `src/app/admin/layout.tsx` |
 | 발견일 | 2026-03-18 |
-| 완료일 | - |
+| 완료일 | 2026-03-18 |
 
 ## 배경
 
@@ -117,15 +117,24 @@ source_id: announcement.id
 | 삭제 확인 | "공지를 삭제할까요?" / "삭제하기" / "취소" |
 | 알림 제목 | "새 공지사항이 올라왔어요" |
 
+## 확정 요구사항
+
+- 공개/알림 대상 통합: `target_roles` (all / full_time / part_time)
+- `announcement_reads` 테이블로 읽음 처리 (UNIQUE per 직원+공지)
+- 홈 배너 항상 표시 (공지 없으면 "등록된 공지가 없어요.")
+- 고정 공지 (`is_pinned`) 상단 고정
+- 새 공지 등록 시 target_roles 대상 직원 전원에게 `notifications` insert
+- notifications는 아직 in-app만 (push 미지원)
+
 ## 결과
 
-- [ ] DB 마이그레이션 실행 (`announcements`)
-- [ ] RLS 2종 생성 (직원 SELECT, 어드민 ALL)
-- [ ] `/announcements` 직원 목록/상세 페이지
-- [ ] `/admin/announcements` CRUD 페이지
-- [ ] 직원 홈 공지 배너 추가
-- [ ] 새 공지 등록 시 전 직원 알림 발송
-- [ ] 어드민 레이아웃 사이드바에 "공지사항" 메뉴 추가
-- [ ] 알림 딥링크 `/announcements/{id}` 연결
-- [ ] schema.md 갱신
-- [ ] 빌드 통과
+- [x] DB 마이그레이션: `announcements` + `announcement_reads` 테이블
+- [x] RLS: 직원 target_roles 기반 SELECT, 어드민 ALL, 읽음 INSERT/SELECT
+- [x] `/announcements` 직원 목록 + `/announcements/[id]` 상세 (읽음 자동 처리)
+- [x] `/admin/announcements` 목록 + 고정 토글 + 삭제
+- [x] `/admin/announcements/new` 공지 작성 + 알림 발송
+- [x] `/admin/announcements/[id]/edit` 공지 수정
+- [x] `AnnouncementBanner.tsx` 홈 배너 컴포넌트 (미읽음 카운트 뱃지)
+- [x] 어드민 사이드바 "공지사항 관리" 메뉴 추가
+- [x] 알림 딥링크: 홈/어드민 모두 `/announcements/{id}` 연결
+- [x] 빌드 통과
