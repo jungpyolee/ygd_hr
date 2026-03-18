@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase";
-import { AlertCircle, LogOut, UserCircle, LayoutDashboard, BookOpen, CalendarDays, MapPin, Clock } from "lucide-react";
+import { AlertCircle, LogOut, UserCircle, LayoutDashboard, BookOpen, CalendarDays, MapPin, Clock, Bell, BellDot, CheckCircle, ArrowRightLeft, Info } from "lucide-react";
 import dynamic from "next/dynamic";
 import WeeklyWorkStats from "@/components/WeeklyWorkStats";
 import OnboardingFunnel from "@/components/OnboardingFunnel";
@@ -43,6 +43,11 @@ export default function HomePage() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
   const [todaySlots, setTodaySlots] = useState<TodaySlot[]>([]);
+  // 알림 관련 상태
+  const [notis, setNotis] = useState<any[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [showNoti, setShowNoti] = useState(false);
+  const notiRef = useRef<HTMLDivElement>(null);
   const supabase = createClient();
   const router = useRouter();
 
@@ -71,6 +76,15 @@ export default function HomePage() {
     } else {
       setNeedsOnboarding(false);
       setProfile(profileData);
+      fetchNotis(user.id);
+
+      // 실시간 알림 구독
+      supabase
+        .channel(`employee-notifications-${user.id}`)
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications" }, (payload) => {
+          if (payload.new.profile_id === user.id) fetchNotis(user.id);
+        })
+        .subscribe();
     }
 
     // 매장 & 최근 로그 가져오기 (목동 매장 제외)
@@ -133,6 +147,62 @@ export default function HomePage() {
     setLoading(false);
   };
 
+  const fetchNotis = async (userId: string) => {
+    const { data } = await supabase
+      .from("notifications")
+      .select("*")
+      .eq("profile_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(15);
+    if (data) {
+      setNotis(data);
+      setUnreadCount(data.filter((n: any) => !n.is_read).length);
+    }
+  };
+
+  const markAllRead = async (userId: string) => {
+    await supabase
+      .from("notifications")
+      .update({ is_read: true })
+      .eq("profile_id", userId)
+      .eq("is_read", false);
+    setUnreadCount(0);
+    fetchNotis(userId);
+  };
+
+  const handleNotiClick = async (noti: any, userId: string) => {
+    if (!noti.is_read) {
+      await supabase.from("notifications").update({ is_read: true }).eq("id", noti.id);
+      fetchNotis(userId);
+    }
+    setShowNoti(false);
+    switch (noti.type) {
+      case "substitute_approved":
+        router.push(`/schedule?request_id=${noti.source_id}`);
+        break;
+      case "substitute_rejected":
+      case "substitute_filled":
+        router.push("/schedule");
+        break;
+      case "schedule_updated":
+        router.push("/schedule");
+        break;
+      default:
+        break;
+    }
+  };
+
+  // 외부 클릭 시 알림창 닫기
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (notiRef.current && !notiRef.current.contains(e.target as Node)) {
+        setShowNoti(false);
+      }
+    };
+    if (showNoti) document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showNoti]);
+
   useEffect(() => {
     fetchAllData();
   }, []);
@@ -180,6 +250,71 @@ export default function HomePage() {
               <UserCircle className="w-6 h-6 text-[#8B95A1]" />
             )}
           </button>
+
+          {/* 알림 벨 */}
+          <div className="relative" ref={notiRef}>
+            <button
+              onClick={() => setShowNoti(!showNoti)}
+              className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center relative"
+            >
+              {unreadCount > 0 ? (
+                <BellDot className="w-5 h-5 text-[#3182F6]" />
+              ) : (
+                <Bell className="w-5 h-5 text-[#4E5968]" />
+              )}
+              {unreadCount > 0 && (
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white" />
+              )}
+            </button>
+
+            {showNoti && (
+              <div className="absolute right-0 mt-3 w-[300px] bg-white rounded-[24px] shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-200 z-[120]">
+                <div className="p-4 border-b border-slate-50 flex justify-between items-center">
+                  <h3 className="font-bold text-[#191F28] text-[15px]">알림</h3>
+                  {unreadCount > 0 && (
+                    <button
+                      onClick={() => profile && markAllRead(profile.id)}
+                      className="text-[12px] font-bold text-[#3182F6] flex items-center gap-1 hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors"
+                    >
+                      <CheckCircle className="w-3.5 h-3.5" /> 모두 읽음
+                    </button>
+                  )}
+                </div>
+                <div className="max-h-[360px] overflow-y-auto scrollbar-hide">
+                  {notis.length === 0 ? (
+                    <div className="p-10 text-center text-[#8B95A1] text-[14px]">새 알림이 없어요</div>
+                  ) : (
+                    notis.map((n) => (
+                      <button
+                        key={n.id}
+                        onClick={() => profile && handleNotiClick(n, profile.id)}
+                        className={`w-full text-left p-4 border-b border-slate-50 last:border-0 hover:bg-[#F9FAFB] transition-colors ${!n.is_read ? "bg-[#F2F8FF]/60" : ""}`}
+                      >
+                        <div className="flex gap-3 items-start">
+                          <div className="mt-0.5">
+                            {n.type === "substitute_approved" ? (
+                              <ArrowRightLeft className="w-4 h-4 text-purple-500" />
+                            ) : (
+                              <Info className="w-4 h-4 text-slate-400" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[13px] font-bold text-[#191F28] mb-0.5">{n.title}</p>
+                            <p className="text-[12px] text-[#4E5968] leading-snug line-clamp-2">{n.content}</p>
+                            <p className="text-[11px] text-[#8B95A1] mt-1">
+                              {new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit" }).format(new Date(n.created_at))}
+                            </p>
+                          </div>
+                          {!n.is_read && <div className="w-1.5 h-1.5 bg-[#3182F6] rounded-full mt-1.5 shrink-0" />}
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           {profile?.role === "admin" && (
             <button
               onClick={() => router.push("/admin")}
