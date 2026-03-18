@@ -206,6 +206,28 @@ function SchedulePageInner() {
     if (!profileId) return;
     setRespondingId(req.id);
 
+    // 겹치는 기존 슬롯 검사
+    const { data: existingSlots } = await supabase
+      .from("schedule_slots")
+      .select("start_time, end_time")
+      .eq("profile_id", profileId)
+      .eq("slot_date", req.slot_date)
+      .eq("status", "active");
+
+    const reqStart = req.start_time.slice(0, 5).split(":").reduce((h, m, i) => i === 0 ? +h * 60 : +h + +m, 0 as number);
+    const reqEnd = req.end_time.slice(0, 5).split(":").reduce((h, m, i) => i === 0 ? +h * 60 : +h + +m, 0 as number);
+    const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+    const hasOverlap = (existingSlots || []).some((s) =>
+      toMin(s.start_time) < reqEnd && toMin(s.end_time) > reqStart
+    );
+    if (hasOverlap) {
+      toast.error("기존 근무와 시간이 겹쳐요", {
+        description: "해당 날짜에 이미 겹치는 근무가 있어서 수락할 수 없어요.",
+      });
+      setRespondingId(null);
+      return;
+    }
+
     const { error } = await supabase.rpc("accept_substitute", {
       p_request_id: req.id,
       p_acceptor_id: profileId,
