@@ -3,10 +3,9 @@
 import { useEffect, useState, useCallback, useMemo, Suspense } from "react";
 import { createClient } from "@/lib/supabase";
 import { toast } from "sonner";
-import { ChevronLeft, ChevronRight, Calendar, MapPin, Clock, ArrowRightLeft, X, Check } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar, MapPin, Clock, ArrowRightLeft, X, Check, UserCheck } from "lucide-react";
 import { format, addWeeks, subWeeks, startOfWeek, addDays, isSameDay, isToday } from "date-fns";
 import { ko } from "date-fns/locale";
-import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 
 interface ScheduleSlot {
@@ -20,6 +19,18 @@ interface ScheduleSlot {
   cafe_positions: string[];
   status: string;
   notes: string | null;
+}
+
+interface MySubstituteRequest {
+  id: string;
+  reason: string | null;
+  status: string;
+  accepted_by: string | null;
+  acceptor_name: string | null;
+  slot_date: string;
+  start_time: string;
+  end_time: string;
+  work_location: string;
 }
 
 interface SubstituteRequest {
@@ -86,6 +97,9 @@ function SchedulePageInner() {
 
   // 대타 수락 확인 바텀시트
   const [activeRequest, setActiveRequest] = useState<SubstituteRequest | null>(null);
+
+  // 내가 요청한 대타 현황
+  const [myRequests, setMyRequests] = useState<MySubstituteRequest[]>([]);
 
   useEffect(() => {
     const init = async () => {
@@ -182,12 +196,40 @@ function SchedulePageInner() {
     setIncomingRequests(pendingRequests);
   }, [profileId, supabase]);
 
+  const fetchMyRequests = useCallback(async () => {
+    if (!profileId) return;
+    const { data } = await supabase
+      .from("substitute_requests")
+      .select(`
+        id, reason, status, accepted_by,
+        schedule_slots!substitute_requests_slot_id_fkey(slot_date, start_time, end_time, work_location),
+        profiles!substitute_requests_accepted_by_fkey(name)
+      `)
+      .eq("requester_id", profileId)
+      .order("created_at", { ascending: false });
+    if (!data) return;
+    setMyRequests(
+      data.map((r: any) => ({
+        id: r.id,
+        reason: r.reason,
+        status: r.status,
+        accepted_by: r.accepted_by,
+        acceptor_name: r.profiles?.name ?? null,
+        slot_date: r.schedule_slots?.slot_date ?? "",
+        start_time: r.schedule_slots?.start_time ?? "",
+        end_time: r.schedule_slots?.end_time ?? "",
+        work_location: r.schedule_slots?.work_location ?? "",
+      }))
+    );
+  }, [profileId, supabase]);
+
   useEffect(() => {
     if (profileId) {
       fetchSlots();
       fetchIncomingRequests();
+      fetchMyRequests();
     }
-  }, [fetchSlots, fetchIncomingRequests, profileId]);
+  }, [fetchSlots, fetchIncomingRequests, fetchMyRequests, profileId]);
 
   // URL request_id → 바텀시트 자동 오픈
   useEffect(() => {
@@ -322,23 +364,24 @@ function SchedulePageInner() {
       toast.success("대타 요청을 보냈어요", { description: "관리자 승인 후 알림을 드려요." });
       setRequestTarget(null);
       setRequestReason("");
+      fetchMyRequests();
     }
     setSubmitting(false);
   };
 
   return (
     <div className="flex min-h-screen flex-col bg-[#F2F4F6] font-pretendard">
-      {/* Navbar */}
-      <nav className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-[#F2F4F6]/80 backdrop-blur-md">
-        <span className="text-xl font-bold text-[#333D4B]">내 스케줄</span>
-        <Link
-          href="/"
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 rounded-full transition-all shadow-sm"
+      {/* 헤더 */}
+      <header className="sticky top-0 z-10 flex items-center gap-3 px-5 py-4 bg-white/80 backdrop-blur-md border-b border-[#E5E8EB]">
+        <button
+          onClick={() => router.back()}
+          aria-label="뒤로가기"
+          className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-[#F2F4F6] transition-colors"
         >
-          <ChevronLeft className="w-3.5 h-3.5 text-[#4E5968]" />
-          <span className="text-[13px] font-semibold text-[#4E5968]">홈</span>
-        </Link>
-      </nav>
+          <ChevronLeft className="w-5 h-5 text-[#191F28]" />
+        </button>
+        <h1 className="text-[17px] font-bold text-[#191F28]">내 스케줄</h1>
+      </header>
 
       <main className="flex-1 px-5 pb-10 space-y-4">
         {/* Week navigator */}
@@ -510,6 +553,69 @@ function SchedulePageInner() {
                       >
                         확인하기
                       </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* 내가 요청한 대타 현황 */}
+        {myRequests.length > 0 && (
+          <div className="mt-2">
+            <h2 className="text-[16px] font-bold text-[#191F28] mb-3">내가 요청한 대타</h2>
+            <div className="space-y-3">
+              {myRequests.map((req) => {
+                const slotDate = req.slot_date ? new Date(req.slot_date + "T00:00:00") : null;
+                const statusMap: Record<string, { label: string; bg: string; color: string }> = {
+                  pending: { label: "검토 중", bg: "#FFF7E6", color: "#F59E0B" },
+                  approved: { label: "구인 중", bg: "#E8F3FF", color: "#3182F6" },
+                  filled:   { label: "대타 확정", bg: "#E6FAF0", color: "#00B761" },
+                  rejected: { label: "요청 거절", bg: "#FFF0F0", color: "#E03131" },
+                };
+                const badge = statusMap[req.status] ?? { label: req.status, bg: "#F2F4F6", color: "#8B95A1" };
+
+                return (
+                  <div key={req.id} className="bg-white rounded-[20px] p-5 border border-slate-100">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
+                          <span
+                            className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[12px] font-bold shrink-0"
+                            style={{
+                              backgroundColor: LOCATION_BG[req.work_location] || "#F2F4F6",
+                              color: LOCATION_COLORS[req.work_location] || "#4E5968",
+                            }}
+                          >
+                            <MapPin className="w-3 h-3" />
+                            {LOCATION_LABELS[req.work_location] || req.work_location}
+                          </span>
+                          {slotDate && (
+                            <span className="text-[13px] font-bold text-[#4E5968]">
+                              {format(slotDate, "M월 d일 (EEE)", { locale: ko })}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[14px] font-bold text-[#191F28]">
+                          {req.start_time?.slice(0, 5)} ~ {req.end_time?.slice(0, 5)}
+                        </p>
+                        {req.status === "filled" && req.acceptor_name && (
+                          <p className="text-[13px] text-[#00B761] font-semibold mt-1.5 flex items-center gap-1">
+                            <UserCheck className="w-3.5 h-3.5" />
+                            {req.acceptor_name}님이 대신 근무해요
+                          </p>
+                        )}
+                        {req.reason && (
+                          <p className="text-[12px] text-[#8B95A1] mt-0.5">사유: {req.reason}</p>
+                        )}
+                      </div>
+                      <span
+                        className="shrink-0 px-2.5 py-1 rounded-full text-[12px] font-bold"
+                        style={{ backgroundColor: badge.bg, color: badge.color }}
+                      >
+                        {badge.label}
+                      </span>
                     </div>
                   </div>
                 );
