@@ -10,8 +10,8 @@
 |------|-----|
 | **GitHub** | `jungpyolee/ygd_hr` |
 | **Git 계정** | `jungpyolee` / `jungpyo5789@gmail.com` |
-| **Supabase 프로젝트** | `ymvdjxzkjodasctktunh` |
-| **Supabase URL** | `https://ymvdjxzkjodasctktunh.supabase.co` |
+| **Supabase Production** | `ymvdjxzkjodasctktunh` / `https://ymvdjxzkjodasctktunh.supabase.co` |
+| **Supabase Dev** | `aayedfstvegiswgjwcuw` / `https://aayedfstvegiswgjwcuw.supabase.co` |
 | **배포** | Vercel |
 | **DB 연결** | Supabase Management API (psql 불가 — IPv6 전용) |
 
