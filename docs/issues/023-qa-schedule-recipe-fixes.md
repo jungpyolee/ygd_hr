@@ -49,7 +49,7 @@
 
 #### 6. Null 안전성 강화 (`RecipeComments.tsx`)
 
-- `comment.profiles.name?.charat(0)` → `(comment.profiles?.name || "?")?.charat(0)`
+- `comment.profiles.name?.charAt(0)` → `(comment.profiles?.name || "?")?.charAt(0)`
 - 대댓글 렌더링의 `reply.profiles.name/color_hex` 모두 optional chaining 적용
 
 ### P2 — 개선

@@ -63,7 +63,7 @@ function CommentCard({
 }: CommentCardProps) {
   const replies = comments.filter((c) => c.parent_id === comment.id);
   const isShowingReplyInput = replyingTo?.id === comment.id;
-  const initial = (comment.profiles?.name || "?")?.charat(0);
+  const initial = (comment.profiles?.name || "?")?.charAt(0);
   const color = comment.profiles?.color_hex || "#8B95A1";
 
   return (
@@ -164,7 +164,7 @@ function CommentCard({
                   backgroundColor: reply.profiles?.color_hex || "#8B95A1",
                 }}
               >
-                {(reply.profiles?.name || "?")?.charat(0)}
+                {(reply.profiles?.name || "?")?.charAt(0)}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-0.5">
@@ -454,7 +454,7 @@ export default function RecipeComments({
               className="w-8 h-8 rounded-full flex items-center justify-center text-[12px] font-bold text-white shrink-0 mt-0.5"
               style={{ backgroundColor: "#8B95A1" }}
             >
-              {currentUser.name?.charat(0)}
+              {currentUser.name?.charAt(0)}
             </div>
             <textarea
               value={text}

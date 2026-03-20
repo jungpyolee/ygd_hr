@@ -470,7 +470,7 @@ const absentCount = selectedLogs.filter((l) => l.is_absent).length;
             className="w-12 h-12 rounded-full flex items-center justify-center text-[16px] font-bold text-white shadow-sm shrink-0"
             style={{ backgroundColor: log.color_hex }}
           >
-            {log.name?.charat(0)}
+            {log.name?.charAt(0)}
           </div>
           <div>
             <p className="text-[16px] font-bold text-[#191F28] mb-0.5">{log.name}</p>

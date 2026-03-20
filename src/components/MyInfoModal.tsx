@@ -191,7 +191,7 @@ export default function MyInfoModal({
               className="w-16 h-16 rounded-full flex items-center justify-center text-white font-bold text-xl shadow-inner"
               style={{ backgroundColor: profile?.color_hex }}
             >
-              {profile?.name?.charat(0)}
+              {profile?.name?.charAt(0)}
             </div>
             <div>
               <p className="font-bold text-[#191F28] text-lg">

@@ -428,7 +428,7 @@ export default function AdminEmployeesPage() {
                     className="w-14 h-14 rounded-full flex items-center justify-center text-[18px] font-bold text-white shadow-sm shrink-0"
                     style={{ backgroundColor: employee.color_hex || "#8B95A1" }}
                   >
-                    {employee.name?.charat(0)}
+                    {employee.name?.charAt(0)}
                   </div>
                   <div className="sm:w-[130px]">
                     <div className="flex items-center gap-2 mb-1">

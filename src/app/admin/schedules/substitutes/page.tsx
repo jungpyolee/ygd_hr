@@ -366,7 +366,7 @@ export default function AdminSubstitutesPage() {
                     className="w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-bold text-white"
                     style={{ backgroundColor: req.requester_color }}
                   >
-                    {req.requester_name?.charat(0)}
+                    {req.requester_name?.charAt(0)}
                   </div>
                   <span className="text-[15px] font-bold text-[#191F28]">
                     {req.requester_name}
@@ -544,7 +544,7 @@ export default function AdminSubstitutesPage() {
                         className="w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-bold text-white shrink-0"
                         style={{ backgroundColor: p.color_hex }}
                       >
-                        {p.name?.charat(0)}
+                        {p.name?.charAt(0)}
                       </div>
                       <span className="font-bold text-[14px] flex-1 text-left">
                         {p.name}

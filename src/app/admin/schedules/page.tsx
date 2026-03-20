@@ -1105,7 +1105,7 @@ export default function AdminSchedulesPage() {
                         backgroundColor: profile.color_hex || "#8B95A1",
                       }}
                     >
-                      {profile.name?.charat(0)}
+                      {profile.name?.charAt(0)}
                     </div>
                     <span className="text-[13px] font-bold text-[#191F28] truncate max-w-[60px]">
                       {profile.name}
@@ -1241,7 +1241,7 @@ export default function AdminSchedulesPage() {
                         backgroundColor: profile.color_hex || "#8B95A1",
                       }}
                     >
-                      {profile.name?.charat(0)}
+                      {profile.name?.charAt(0)}
                     </div>
                     <span className="text-[12px] font-bold text-[#191F28] truncate">
                       {profile.name}

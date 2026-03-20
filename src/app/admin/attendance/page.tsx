@@ -503,7 +503,7 @@ export default function AdminAttendanceCalendar() {
                       className="w-12 h-12 rounded-full flex items-center justify-center text-[16px] font-bold text-white shadow-sm shrink-0"
                       style={{ backgroundColor: log.color_hex }}
                     >
-                      {log.name?.charat(0)}
+                      {log.name?.charAt(0)}
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
@@ -561,7 +561,7 @@ export default function AdminAttendanceCalendar() {
                       className="w-12 h-12 rounded-full flex items-center justify-center text-[16px] font-bold text-white shadow-sm shrink-0"
                       style={{ backgroundColor: log.color_hex }}
                     >
-                      {log.name?.charat(0)}
+                      {log.name?.charAt(0)}
                     </div>
                     <div>
                       <div className="flex items-center gap-2 mb-0.5">
@@ -754,7 +754,7 @@ export default function AdminAttendanceCalendar() {
                 className="w-10 h-10 rounded-full flex items-center justify-center text-[14px] font-bold text-white shrink-0"
                 style={{ backgroundColor: manualOutTarget.log.color_hex }}
               >
-                {manualOutTarget.log.name?.charat(0)}
+                {manualOutTarget.log.name?.charAt(0)}
               </div>
               <div>
                 <p className="text-[15px] font-bold text-[#191F28]">
