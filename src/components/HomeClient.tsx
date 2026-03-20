@@ -24,6 +24,7 @@ import MyInfoModal from "@/components/MyInfoModal";
 import { useRouter } from "next/navigation";
 import { useGeolocation } from "@/lib/hooks/useGeolocation";
 import type { Announcement } from "@/types/announcement";
+import type { TodaySlot, RawLogData } from "@/app/page";
 
 const LOCATION_LABELS: Record<string, string> = {
   cafe: "카페",
@@ -50,22 +51,6 @@ const DynamicClock = dynamic(() => import("@/components/Clock"), {
   ssr: false,
 });
 const RADIUS_METER = 100;
-
-type TodaySlot = {
-  id: string;
-  slot_date: string;
-  start_time: string;
-  end_time: string;
-  work_location: string;
-  cafe_positions: string[];
-  notes: string | null;
-};
-type RawLogData = {
-  type: string;
-  created_at: string;
-  attendance_type: string;
-  stores: { name: string } | null;
-};
 
 interface HomeClientProps {
   profile: any | null;

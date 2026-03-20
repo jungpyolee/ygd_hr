@@ -132,7 +132,7 @@ function SchedulePageInner() {
 
       return (slotData as ScheduleSlot[]) ?? [];
     },
-    { dedupingInterval: 30_000, revalidateOnFocus: true }
+    { dedupingInterval: 30_000, revalidateOnFocus: true, revalidateOnMount: true }
   );
 
   // 3. 나에게 온 대타 요청

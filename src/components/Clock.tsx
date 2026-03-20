@@ -6,7 +6,7 @@ export default function Clock() {
   const [time, setTime] = useState(new Date());
 
   useEffect(() => {
-    const timer = setInterval(() => setTime(new Date()), 1000);
+    const timer = setInterval(() => setTime(new Date()), 60_000);
     return () => clearInterval(timer);
   }, []);
 
@@ -23,7 +23,6 @@ export default function Clock() {
         {time.toLocaleTimeString([], {
           hour: "2-digit",
           minute: "2-digit",
-          second: "2-digit",
         })}
       </p>
     </div>

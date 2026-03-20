@@ -71,7 +71,11 @@ npm run lint       # ESLint
      SELECT tablename, policyname, cmd FROM pg_policies WHERE schemaname='public' ORDER BY tablename, cmd, policyname;
   4. Realtime publication 테이블 확인
      SELECT tablename FROM pg_publication_tables WHERE pubname='supabase_realtime';
-  5. 데이터 무결성 확인 (필요 시)
+  5. 트리거 목록 일치 확인 ← 누락 방지 (auth 스키마 포함)
+     SELECT trigger_name, event_object_schema, event_object_table, action_statement
+     FROM information_schema.triggers
+     ORDER BY event_object_schema, event_object_table, trigger_name;
+  6. 데이터 무결성 확인 (필요 시)
 ```
 
 ### Production 마이그레이션 실행 명령어
