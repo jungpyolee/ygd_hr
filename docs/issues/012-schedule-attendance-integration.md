@@ -1,12 +1,12 @@
 # [FEAT-012] 결근자 노출 + 스케줄 일간 뷰 근태 레이어
 
-| 항목 | 내용 |
-|------|------|
-| 유형 | 기능 개선 |
-| 상태 | ✅ 완료 |
-| 파일 | `src/app/admin/attendance/page.tsx`, `src/app/admin/schedules/page.tsx` |
-| 발견일 | 2026-03-18 |
-| 완료일 | 2026-03-18 |
+| 항목   | 내용                                                                    |
+| ------ | ----------------------------------------------------------------------- |
+| 유형   | 기능 개선                                                               |
+| 상태   | ✅ 완료                                                                 |
+| 파일   | `src/app/admin/attendance/page.tsx`, `src/app/admin/schedules/page.tsx` |
+| 발견일 | 2026-03-18                                                              |
+| 완료일 | 2026-03-18                                                              |
 
 ---
 
@@ -16,13 +16,13 @@
 
 ### ✅ 충돌 없음 — 그대로 진행 가능
 
-| 항목 | 근거 |
-|------|------|
-| `substituted` 슬롯 처리 | base 맵 구성 시 `.eq("status", "active")` 사용 → 원본 슬롯 소유자(대타 구한 사람)는 결근 대상에서 정확히 제외됨. 대타자의 신규 슬롯은 `active`이므로 정상 포함. |
-| 일간 뷰 `dailySlotsData` state | 기존 useEffect가 이미 daily 탭 기준으로 슬롯 fetch. 012 추가 useEffect(`fetchDailyAttendance`)와 독립적으로 동작, 충돌 없음. |
-| `renderDailyView` 행 높이 변경 | Phase 4에서 daily 뷰 row 구조 변경 없음(min-h-[52px] 유지). 012 계획의 h-[72px] 변경 그대로 적용 가능. |
-| KST 날짜 경계 처리 | `fetchDailyAttendance`의 `+09:00` 명시 방식은 `attendance_logs.created_at` (timestamptz) 조회에 적합. P1-02에서 고친 `T00:00:00` 패턴과 용도가 다름(date-only string vs timestamp range). |
-| admin RLS bypass | `attendance_logs`의 Admin Bypass 정책으로 어드민은 전 직원 로그 조회 가능. `fetchDailyAttendance`가 admin 화면에서 실행되므로 권한 문제 없음. |
+| 항목                           | 근거                                                                                                                                                                                      |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `substituted` 슬롯 처리        | base 맵 구성 시 `.eq("status", "active")` 사용 → 원본 슬롯 소유자(대타 구한 사람)는 결근 대상에서 정확히 제외됨. 대타자의 신규 슬롯은 `active`이므로 정상 포함.                           |
+| 일간 뷰 `dailySlotsData` state | 기존 useEffect가 이미 daily 탭 기준으로 슬롯 fetch. 012 추가 useEffect(`fetchDailyAttendance`)와 독립적으로 동작, 충돌 없음.                                                              |
+| `renderDailyView` 행 높이 변경 | Phase 4에서 daily 뷰 row 구조 변경 없음(min-h-[52px] 유지). 012 계획의 h-[72px] 변경 그대로 적용 가능.                                                                                    |
+| KST 날짜 경계 처리             | `fetchDailyAttendance`의 `+09:00` 명시 방식은 `attendance_logs.created_at` (timestamptz) 조회에 적합. P1-02에서 고친 `T00:00:00` 패턴과 용도가 다름(date-only string vs timestamp range). |
+| admin RLS bypass               | `attendance_logs`의 Admin Bypass 정책으로 어드민은 전 직원 로그 조회 가능. `fetchDailyAttendance`가 admin 화면에서 실행되므로 권한 문제 없음.                                             |
 
 ### ⚠️ 수정 필요 — 계획 업데이트 항목
 
@@ -31,6 +31,7 @@
 현재 `attendance/page.tsx:62`에 `const supabase = createClient()` 가 컴포넌트 body에 선언되어 있음 → 렌더마다 새 클라이언트 생성.
 
 **적용 방법:**
+
 ```typescript
 // 기존 (line 3)
 import { useEffect, useState } from "react";
@@ -46,16 +47,22 @@ const supabase = useMemo(() => createClient(), []);
 ```
 
 `fetchLogsForCalendar`도 `useCallback`으로 감싸고 `[supabase]`를 deps에 추가:
+
 ```typescript
-const fetchLogsForCalendar = useCallback(async (date: Date, type: "week" | "month") => {
-  // ... 기존 로직
-}, [supabase]);
+const fetchLogsForCalendar = useCallback(
+  async (date: Date, type: "week" | "month") => {
+    // ... 기존 로직
+  },
+  [supabase],
+);
 ```
+
 → useEffect deps: `[baseDate, viewType, fetchLogsForCalendar]`
 
 #### 수정 2. fetchDailyAttendance — any 타입 제거 (P3-05 적용)
 
 Plan의 `data.forEach((log: any) => ...)` 대신 타입 정의:
+
 ```typescript
 interface AttLogRow {
   profile_id: string;
@@ -78,6 +85,7 @@ const fetchDailyAttendance = useCallback(async (date: Date) => {
   // ...
 }, [supabase]);
 ```
+
 → useEffect deps: `[tab, dailyDate, fetchDailyAttendance]`
 
 #### 수정 4. selectedLogs 헤더 카운트 뱃지 — 결근자 포함 반영
@@ -92,12 +100,14 @@ const absentCount = selectedLogs.filter((l) => l.is_absent).length;
 // 헤더
 <span className="text-[#3182F6] bg-[#E8F3FF] px-2.5 py-0.5 rounded-full text-[13px] font-semibold">
   출근 {presentCount}명
-</span>
-{absentCount > 0 && (
-  <span className="text-[#E03131] bg-[#FFEBEB] px-2.5 py-0.5 rounded-full text-[13px] font-semibold">
-    미출근 {absentCount}명
-  </span>
-)}
+</span>;
+{
+  absentCount > 0 && (
+    <span className="text-[#E03131] bg-[#FFEBEB] px-2.5 py-0.5 rounded-full text-[13px] font-semibold">
+      미출근 {absentCount}명
+    </span>
+  );
+}
 ```
 
 #### 수정 5. Empty state 문구
@@ -106,23 +116,27 @@ const absentCount = selectedLogs.filter((l) => l.is_absent).length;
 
 ```tsx
 // 기존
-"이 날은 출근 기록이 없어요."
+"이 날은 출근 기록이 없어요.";
 
 // 수정
-"이 날은 근무 예정이 없어요."
+"이 날은 근무 예정이 없어요.";
 ```
 
 #### 수정 6. schedule_slots JOIN 최적화 (선택)
 
 Plan의 step [1]+[2](schedule_slots 조회 후 profiles 별도 조회)를 단일 조회로 통합 가능:
+
 ```typescript
 const { data: slotsData } = await supabase
   .from("schedule_slots")
-  .select("profile_id, slot_date, start_time, end_time, work_location, profiles!profile_id(name, color_hex)")
+  .select(
+    "profile_id, slot_date, start_time, end_time, work_location, profiles!profile_id(name, color_hex)",
+  )
   .eq("status", "active")
   .gte("slot_date", startDateStr)
   .lte("slot_date", endDateStr);
 ```
+
 → profiles 별도 조회(`step [2]`) 불필요. 쿼리 1회 절약.
 
 ---
@@ -181,8 +195,8 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 ```typescript
 interface ProcessedLog {
   // 기존 필드 유지 ...
-  is_absent: boolean;                   // 스케줄 있으나 clock_in 없음
-  early_leave_minutes: number | null;   // 조기퇴근 감지 (보너스)
+  is_absent: boolean; // 스케줄 있으나 clock_in 없음
+  early_leave_minutes: number | null; // 조기퇴근 감지 (보너스)
 }
 ```
 
@@ -199,89 +213,49 @@ const supabase = useMemo(() => createClient(), []);
 #### ④ `fetchLogsForCalendar` 재구성 (useCallback 포함)
 
 ```typescript
-const fetchLogsForCalendar = useCallback(async (date: Date, type: "week" | "month") => {
-  setLoading(true);
+const fetchLogsForCalendar = useCallback(
+  async (date: Date, type: "week" | "month") => {
+    setLoading(true);
 
-  // 날짜 범위 계산 (기존 동일)
-  let startDate, endDate;
-  if (type === "week") {
-    startDate = startOfWeek(date, { weekStartsOn: 0 });
-    endDate = endOfWeek(date, { weekStartsOn: 0 });
-  } else {
-    const monthStart = startOfMonth(date);
-    startDate = startOfWeek(monthStart, { weekStartsOn: 0 });
-    endDate = endOfWeek(endOfMonth(monthStart), { weekStartsOn: 0 });
-  }
-
-  const startDateStr = format(startDate, "yyyy-MM-dd");
-  const endDateStr = format(endDate, "yyyy-MM-dd");
-
-  // [1] schedule_slots 먼저 조회 (status=active, substituted 제외)
-  // profiles JOIN으로 별도 조회 불필요
-  const { data: slotsData } = await supabase
-    .from("schedule_slots")
-    .select("profile_id, slot_date, start_time, end_time, work_location, profiles!profile_id(name, color_hex)")
-    .eq("status", "active")
-    .gte("slot_date", startDateStr)
-    .lte("slot_date", endDateStr);
-
-  // [2] base 맵 생성 (슬롯 기반, is_absent=true)
-  const grouped: Record<string, Map<string, ProcessedLog>> = {};
-
-  (slotsData || []).forEach((slot: any) => {
-    const slotDateStr = slot.slot_date;
-    if (!grouped[slotDateStr]) grouped[slotDateStr] = new Map();
-
-    const pId = slot.profile_id;
-    if (!grouped[slotDateStr].has(pId)) {
-      grouped[slotDateStr].set(pId, {
-        profile_id: pId,
-        name: slot.profiles?.name || "알 수 없음",
-        color_hex: slot.profiles?.color_hex || "#8B95A1",
-        store_name: "—",
-        clock_in: null,
-        clock_out: null,
-        distance_in: null,
-        distance_out: null,
-        attendance_type_in: "regular",
-        attendance_type_out: "regular",
-        reason_out: null,
-        scheduled_start: slot.start_time,
-        scheduled_end: slot.end_time,
-        scheduled_location: slot.work_location,
-        late_minutes: null,
-        is_absent: true,            // ← 기본값: 결근
-        early_leave_minutes: null,
-      });
+    // 날짜 범위 계산 (기존 동일)
+    let startDate, endDate;
+    if (type === "week") {
+      startDate = startOfWeek(date, { weekStartsOn: 0 });
+      endDate = endOfWeek(date, { weekStartsOn: 0 });
+    } else {
+      const monthStart = startOfMonth(date);
+      startDate = startOfWeek(monthStart, { weekStartsOn: 0 });
+      endDate = endOfWeek(endOfMonth(monthStart), { weekStartsOn: 0 });
     }
-  });
 
-  // [3] attendance_logs 조회 (기존과 동일 범위)
-  const startStr = startDate.toISOString();
-  const endStr = new Date(new Date(endDate).setHours(23, 59, 59, 999)).toISOString();
+    const startDateStr = format(startDate, "yyyy-MM-dd");
+    const endDateStr = format(endDate, "yyyy-MM-dd");
 
-  const { data, error } = await supabase
-    .from("attendance_logs")
-    .select(
-      `id, profile_id, type, created_at, distance_m, attendance_type, reason, profiles(name, color_hex), stores!store_id(name)`
-    )
-    .gte("created_at", startStr)
-    .lte("created_at", endStr)
-    .order("created_at", { ascending: true });
+    // [1] schedule_slots 먼저 조회 (status=active, substituted 제외)
+    // profiles JOIN으로 별도 조회 불필요
+    const { data: slotsData } = await supabase
+      .from("schedule_slots")
+      .select(
+        "profile_id, slot_date, start_time, end_time, work_location, profiles!profile_id(name, color_hex)",
+      )
+      .eq("status", "active")
+      .gte("slot_date", startDateStr)
+      .lte("slot_date", endDateStr);
 
-  if (!error && data) {
-    data.forEach((log: any) => {
-      const dateKey = format(new Date(log.created_at), "yyyy-MM-dd");
-      if (!grouped[dateKey]) grouped[dateKey] = new Map();
+    // [2] base 맵 생성 (슬롯 기반, is_absent=true)
+    const grouped: Record<string, Map<string, ProcessedLog>> = {};
 
-      const pId = log.profile_id;
-      if (!grouped[dateKey].has(pId)) {
-        // 출근 기록은 있지만 스케줄 슬롯이 없는 경우 (비정상 출근 등)
-        grouped[dateKey].set(pId, {
+    (slotsData || []).forEach((slot: any) => {
+      const slotDateStr = slot.slot_date;
+      if (!grouped[slotDateStr]) grouped[slotDateStr] = new Map();
+
+      const pId = slot.profile_id;
+      if (!grouped[slotDateStr].has(pId)) {
+        grouped[slotDateStr].set(pId, {
           profile_id: pId,
-          name: log.profiles?.name || "알 수 없음",
-          color_hex: log.profiles?.color_hex || "#8B95A1",
-          store_name: log.stores?.name || "알 수 없음",
+          name: slot.profiles?.name || "알 수 없음",
+          color_hex: slot.profiles?.color_hex || "#8B95A1",
+          store_name: "—",
           clock_in: null,
           clock_out: null,
           distance_in: null,
@@ -289,60 +263,115 @@ const fetchLogsForCalendar = useCallback(async (date: Date, type: "week" | "mont
           attendance_type_in: "regular",
           attendance_type_out: "regular",
           reason_out: null,
-          scheduled_start: null,
-          scheduled_end: null,
-          scheduled_location: null,
+          scheduled_start: slot.start_time,
+          scheduled_end: slot.end_time,
+          scheduled_location: slot.work_location,
           late_minutes: null,
-          is_absent: false,
+          is_absent: true, // ← 기본값: 결근
           early_leave_minutes: null,
         });
       }
-
-      const userLog = grouped[dateKey].get(pId)!;
-
-      // [4] base 맵에 출근 기록 덮어쓰기 → is_absent=false
-      if (log.type === "IN" && !userLog.clock_in) {
-        userLog.clock_in = log.created_at;
-        userLog.distance_in = log.distance_m ?? null;
-        userLog.attendance_type_in = log.attendance_type || "regular";
-        userLog.store_name = log.stores?.name || "알 수 없음";
-        userLog.is_absent = false;  // ← 출근 확인됨
-
-        // 지각 계산
-        if (userLog.scheduled_start) {
-          const [sh, sm] = userLog.scheduled_start.split(":").map(Number);
-          const clockInDate = new Date(log.created_at);
-          const schedStart = new Date(`${dateKey}T${String(sh).padStart(2,"0")}:${String(sm).padStart(2,"0")}:00`);
-          const diffMin = Math.floor((clockInDate.getTime() - schedStart.getTime()) / 60000);
-          userLog.late_minutes = diffMin > 10 ? diffMin : null;
-        }
-      }
-      if (log.type === "OUT") {
-        userLog.clock_out = log.created_at;
-        userLog.distance_out = log.distance_m ?? null;
-        userLog.attendance_type_out = log.attendance_type || "regular";
-        userLog.reason_out = log.reason ?? null;
-
-        // 조기퇴근 계산
-        if (userLog.scheduled_end && userLog.clock_out) {
-          const [eh, em] = userLog.scheduled_end.split(":").map(Number);
-          const clockOutDate = new Date(userLog.clock_out);
-          const schedEnd = new Date(`${dateKey}T${String(eh).padStart(2,"0")}:${String(em).padStart(2,"0")}:00`);
-          const diff = Math.floor((schedEnd.getTime() - clockOutDate.getTime()) / 60000);
-          userLog.early_leave_minutes = diff > 10 ? diff : null;
-        }
-      }
     });
-  }
 
-  // [5] Map → Array 변환
-  const finalData: Record<string, ProcessedLog[]> = {};
-  Object.keys(grouped).forEach((key) => {
-    finalData[key] = Array.from(grouped[key].values());
-  });
-  setLogsByDate(finalData);
-  setLoading(false);
-}, [supabase]);
+    // [3] attendance_logs 조회 (기존과 동일 범위)
+    const startStr = startDate.toISOString();
+    const endStr = new Date(
+      new Date(endDate).setHours(23, 59, 59, 999),
+    ).toISOString();
+
+    const { data, error } = await supabase
+      .from("attendance_logs")
+      .select(
+        `id, profile_id, type, created_at, distance_m, attendance_type, reason, profiles(name, color_hex), stores!store_id(name)`,
+      )
+      .gte("created_at", startStr)
+      .lte("created_at", endStr)
+      .order("created_at", { ascending: true });
+
+    if (!error && data) {
+      data.forEach((log: any) => {
+        const dateKey = format(new Date(log.created_at), "yyyy-MM-dd");
+        if (!grouped[dateKey]) grouped[dateKey] = new Map();
+
+        const pId = log.profile_id;
+        if (!grouped[dateKey].has(pId)) {
+          // 출근 기록은 있지만 스케줄 슬롯이 없는 경우 (비정상 출근 등)
+          grouped[dateKey].set(pId, {
+            profile_id: pId,
+            name: log.profiles?.name || "알 수 없음",
+            color_hex: log.profiles?.color_hex || "#8B95A1",
+            store_name: log.stores?.name || "알 수 없음",
+            clock_in: null,
+            clock_out: null,
+            distance_in: null,
+            distance_out: null,
+            attendance_type_in: "regular",
+            attendance_type_out: "regular",
+            reason_out: null,
+            scheduled_start: null,
+            scheduled_end: null,
+            scheduled_location: null,
+            late_minutes: null,
+            is_absent: false,
+            early_leave_minutes: null,
+          });
+        }
+
+        const userLog = grouped[dateKey].get(pId)!;
+
+        // [4] base 맵에 출근 기록 덮어쓰기 → is_absent=false
+        if (log.type === "IN" && !userLog.clock_in) {
+          userLog.clock_in = log.created_at;
+          userLog.distance_in = log.distance_m ?? null;
+          userLog.attendance_type_in = log.attendance_type || "regular";
+          userLog.store_name = log.stores?.name || "알 수 없음";
+          userLog.is_absent = false; // ← 출근 확인됨
+
+          // 지각 계산
+          if (userLog.scheduled_start) {
+            const [sh, sm] = userLog.scheduled_start.split(":").map(Number);
+            const clockInDate = new Date(log.created_at);
+            const schedStart = new Date(
+              `${dateKey}T${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}:00`,
+            );
+            const diffMin = Math.floor(
+              (clockInDate.getTime() - schedStart.getTime()) / 60000,
+            );
+            userLog.late_minutes = diffMin > 10 ? diffMin : null;
+          }
+        }
+        if (log.type === "OUT") {
+          userLog.clock_out = log.created_at;
+          userLog.distance_out = log.distance_m ?? null;
+          userLog.attendance_type_out = log.attendance_type || "regular";
+          userLog.reason_out = log.reason ?? null;
+
+          // 조기퇴근 계산
+          if (userLog.scheduled_end && userLog.clock_out) {
+            const [eh, em] = userLog.scheduled_end.split(":").map(Number);
+            const clockOutDate = new Date(userLog.clock_out);
+            const schedEnd = new Date(
+              `${dateKey}T${String(eh).padStart(2, "0")}:${String(em).padStart(2, "0")}:00`,
+            );
+            const diff = Math.floor(
+              (schedEnd.getTime() - clockOutDate.getTime()) / 60000,
+            );
+            userLog.early_leave_minutes = diff > 10 ? diff : null;
+          }
+        }
+      });
+    }
+
+    // [5] Map → Array 변환
+    const finalData: Record<string, ProcessedLog[]> = {};
+    Object.keys(grouped).forEach((key) => {
+      finalData[key] = Array.from(grouped[key].values());
+    });
+    setLogsByDate(finalData);
+    setLoading(false);
+  },
+  [supabase],
+);
 
 // useEffect 수정 (deps에 fetchLogsForCalendar 추가)
 useEffect(() => {
@@ -355,7 +384,7 @@ useEffect(() => {
 ```tsx
 // 선택된 날짜 기준
 const presentCount = selectedLogs.filter((l) => !l.is_absent).length;
-const absentCount  = selectedLogs.filter((l) => l.is_absent).length;
+const absentCount = selectedLogs.filter((l) => l.is_absent).length;
 
 // 헤더 h3
 <h3 className="text-[18px] font-bold text-[#191F28] mb-4 flex items-center gap-2 flex-wrap">
@@ -368,17 +397,17 @@ const absentCount  = selectedLogs.filter((l) => l.is_absent).length;
       미출근 {absentCount}명
     </span>
   )}
-</h3>
+</h3>;
 ```
 
 #### ⑥ Empty state 문구 수정
 
 ```tsx
 // 기존
-"이 날은 출근 기록이 없어요."
+"이 날은 출근 기록이 없어요.";
 
 // 수정 (스케줄 없는 날만 해당)
-"이 날은 근무 예정이 없어요."
+"이 날은 근무 예정이 없어요.";
 ```
 
 #### ⑦ 달력 셀 — 결근자 뱃지 추가
@@ -386,35 +415,38 @@ const absentCount  = selectedLogs.filter((l) => l.is_absent).length;
 현재: 출근자 이름 뱃지 (직원 색상 배경)
 
 변경:
+
 - **출근자**: 기존 그대로 (color_hex 배경, 직원 이름)
 - **결근자**: 흰 배경 + 빨간 테두리 + 직원 이름
 
 ```tsx
-{dayLogs.slice(0, 3).map((log) => {
-  if (log.is_absent) {
-    // 과거 날짜만 결근 뱃지 표시 (오늘/미래는 제외)
-    const isPast = isBefore(day, startOfDay(new Date()));
-    if (!isPast) return null;
+{
+  dayLogs.slice(0, 3).map((log) => {
+    if (log.is_absent) {
+      // 과거 날짜만 결근 뱃지 표시 (오늘/미래는 제외)
+      const isPast = isBefore(day, startOfDay(new Date()));
+      if (!isPast) return null;
+      return (
+        <div
+          key={log.profile_id}
+          className="w-full truncate text-center rounded-[4px] px-1 py-[3px] sm:py-1 text-[9px] sm:text-[11px] font-bold border border-[#FFCDD2] text-[#E03131] bg-white"
+        >
+          {log.name}
+        </div>
+      );
+    }
+    const textColor = getContrastYIQ(log.color_hex);
     return (
       <div
         key={log.profile_id}
-        className="w-full truncate text-center rounded-[4px] px-1 py-[3px] sm:py-1 text-[9px] sm:text-[11px] font-bold border border-[#FFCDD2] text-[#E03131] bg-white"
+        className="w-full truncate text-center rounded-[4px] px-1 py-[3px] sm:py-1 text-[9px] sm:text-[11px] font-bold shadow-sm"
+        style={{ backgroundColor: log.color_hex, color: textColor }}
       >
         {log.name}
       </div>
     );
-  }
-  const textColor = getContrastYIQ(log.color_hex);
-  return (
-    <div
-      key={log.profile_id}
-      className="w-full truncate text-center rounded-[4px] px-1 py-[3px] sm:py-1 text-[9px] sm:text-[11px] font-bold shadow-sm"
-      style={{ backgroundColor: log.color_hex, color: textColor }}
-    >
-      {log.name}
-    </div>
-  );
-})}
+  });
+}
 ```
 
 `isBefore`, `startOfDay`를 date-fns import에 추가.
@@ -438,7 +470,7 @@ const absentCount  = selectedLogs.filter((l) => l.is_absent).length;
             className="w-12 h-12 rounded-full flex items-center justify-center text-[16px] font-bold text-white shadow-sm shrink-0"
             style={{ backgroundColor: log.color_hex }}
           >
-            {log.name.charAt(0)}
+            {log.name?.charat(0)}
           </div>
           <div>
             <p className="text-[16px] font-bold text-[#191F28] mb-0.5">{log.name}</p>
@@ -469,6 +501,7 @@ const absentCount  = selectedLogs.filter((l) => l.is_absent).length;
 ### 현재 구조
 
 `renderDailyView()`:
+
 - 행 높이: `min-h-[52px]`
 - 슬롯 바: `absolute top-2 bottom-2` (행 전체 높이)
 - `dailySlotsData` state 사용
@@ -500,8 +533,8 @@ const absentCount  = selectedLogs.filter((l) => l.is_absent).length;
 ```typescript
 interface DailyAttLog {
   profile_id: string;
-  clock_in: string | null;   // ISO timestamp (UTC)
-  clock_out: string | null;  // ISO timestamp (UTC)
+  clock_in: string | null; // ISO timestamp (UTC)
+  clock_out: string | null; // ISO timestamp (UTC)
 }
 
 // attendance_logs 쿼리 행 타입
@@ -521,32 +554,40 @@ const [dailyAttLogs, setDailyAttLogs] = useState<DailyAttLog[]>([]);
 #### ③ fetchDailyAttendance — useCallback 래핑
 
 ```typescript
-const fetchDailyAttendance = useCallback(async (date: Date) => {
-  const dateStr = format(date, "yyyy-MM-dd");
-  // KST 00:00 ~ 23:59 범위 (attendance_logs.created_at은 timestamptz)
-  const start = new Date(dateStr + "T00:00:00+09:00").toISOString();
-  const end   = new Date(dateStr + "T23:59:59+09:00").toISOString();
+const fetchDailyAttendance = useCallback(
+  async (date: Date) => {
+    const dateStr = format(date, "yyyy-MM-dd");
+    // KST 00:00 ~ 23:59 범위 (attendance_logs.created_at은 timestamptz)
+    const start = new Date(dateStr + "T00:00:00+09:00").toISOString();
+    const end = new Date(dateStr + "T23:59:59+09:00").toISOString();
 
-  const { data } = await supabase
-    .from("attendance_logs")
-    .select("profile_id, type, created_at")
-    .gte("created_at", start)
-    .lte("created_at", end)
-    .order("created_at", { ascending: true });
+    const { data } = await supabase
+      .from("attendance_logs")
+      .select("profile_id, type, created_at")
+      .gte("created_at", start)
+      .lte("created_at", end)
+      .order("created_at", { ascending: true });
 
-  if (data) {
-    const map = new Map<string, DailyAttLog>();
-    (data as AttLogRow[]).forEach((log) => {
-      if (!map.has(log.profile_id)) {
-        map.set(log.profile_id, { profile_id: log.profile_id, clock_in: null, clock_out: null });
-      }
-      const entry = map.get(log.profile_id)!;
-      if (log.type === "IN" && !entry.clock_in) entry.clock_in = log.created_at;
-      if (log.type === "OUT") entry.clock_out = log.created_at;
-    });
-    setDailyAttLogs(Array.from(map.values()));
-  }
-}, [supabase]);
+    if (data) {
+      const map = new Map<string, DailyAttLog>();
+      (data as AttLogRow[]).forEach((log) => {
+        if (!map.has(log.profile_id)) {
+          map.set(log.profile_id, {
+            profile_id: log.profile_id,
+            clock_in: null,
+            clock_out: null,
+          });
+        }
+        const entry = map.get(log.profile_id)!;
+        if (log.type === "IN" && !entry.clock_in)
+          entry.clock_in = log.created_at;
+        if (log.type === "OUT") entry.clock_out = log.created_at;
+      });
+      setDailyAttLogs(Array.from(map.values()));
+    }
+  },
+  [supabase],
+);
 ```
 
 #### ④ useEffect — tab/dailyDate 변경 시 근태 fetch
@@ -569,6 +610,7 @@ useEffect(() => {
 ```
 
 슬롯 바 위치 변경 (상단 레이어):
+
 ```tsx
 // 기존
 className="absolute top-2 bottom-2 rounded-lg text-white text-[11px] ..."
@@ -590,66 +632,80 @@ style={{
 슬롯 렌더링 블록 이후 추가:
 
 ```tsx
-{(() => {
-  const attLog = dailyAttLogs.find((a) => a.profile_id === profile.id);
-  if (empSlots.length === 0) return null; // 슬롯 없으면 근태 레이어 없음
+{
+  (() => {
+    const attLog = dailyAttLogs.find((a) => a.profile_id === profile.id);
+    if (empSlots.length === 0) return null; // 슬롯 없으면 근태 레이어 없음
 
-  const firstSlot = empSlots[0];
-  const dateStr = format(dailyDate, "yyyy-MM-dd");
-  const isPast = dailyDate < new Date(new Date().setHours(0, 0, 0, 0));
+    const firstSlot = empSlots[0];
+    const dateStr = format(dailyDate, "yyyy-MM-dd");
+    const isPast = dailyDate < new Date(new Date().setHours(0, 0, 0, 0));
 
-  // 미출근 (과거 날짜, 출근 기록 없음)
-  if (!attLog?.clock_in && isPast) {
+    // 미출근 (과거 날짜, 출근 기록 없음)
+    if (!attLog?.clock_in && isPast) {
+      return (
+        <div
+          className="absolute flex items-center px-2 rounded-md text-[10px] font-bold text-[#E03131]"
+          style={{
+            bottom: "6px",
+            height: "22px",
+            left: "4px",
+            right: "4px",
+            backgroundColor: "#FFF5F5",
+            border: "1px solid #FFCDD2",
+          }}
+        >
+          미출근
+        </div>
+      );
+    }
+
+    if (!attLog?.clock_in) return null; // 오늘/미래 미출근 — 표시 안 함
+
+    // 출근 바 계산
+    const clockInDate = new Date(attLog.clock_in);
+    const clockOutDate = attLog.clock_out
+      ? new Date(attLog.clock_out)
+      : new Date();
+    const totalHours = hourEnd - hourStart;
+
+    const inH = clockInDate.getHours() + clockInDate.getMinutes() / 60;
+    const outH = clockOutDate.getHours() + clockOutDate.getMinutes() / 60;
+    const leftPct = Math.max(0, ((inH - hourStart) / totalHours) * 100);
+    const widthPct = Math.max(
+      0.5,
+      Math.min(100 - leftPct, ((outH - inH) / totalHours) * 100),
+    );
+
+    // 지각 여부
+    const [sh, sm] = firstSlot.start_time.split(":").map(Number);
+    const schedStart = new Date(
+      `${dateStr}T${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}:00`,
+    );
+    const lateMin = Math.floor(
+      (clockInDate.getTime() - schedStart.getTime()) / 60000,
+    );
+    const isLate = lateMin > 10;
+
     return (
       <div
-        className="absolute flex items-center px-2 rounded-md text-[10px] font-bold text-[#E03131]"
+        className="absolute flex items-center px-1.5 rounded-md text-[10px] font-bold text-white overflow-hidden"
         style={{
-          bottom: "6px", height: "22px",
-          left: "4px", right: "4px",
-          backgroundColor: "#FFF5F5",
-          border: "1px solid #FFCDD2",
+          bottom: "6px",
+          height: "22px",
+          left: `${leftPct}%`,
+          width: `${widthPct}%`,
+          backgroundColor: isLate ? "#F59E0B" : "#00B761",
+          minWidth: "4px",
         }}
       >
-        미출근
+        {widthPct > 5 && (
+          <span className="truncate">{isLate ? `+${lateMin}분` : ""}</span>
+        )}
       </div>
     );
-  }
-
-  if (!attLog?.clock_in) return null; // 오늘/미래 미출근 — 표시 안 함
-
-  // 출근 바 계산
-  const clockInDate = new Date(attLog.clock_in);
-  const clockOutDate = attLog.clock_out ? new Date(attLog.clock_out) : new Date();
-  const totalHours = hourEnd - hourStart;
-
-  const inH = clockInDate.getHours() + clockInDate.getMinutes() / 60;
-  const outH = clockOutDate.getHours() + clockOutDate.getMinutes() / 60;
-  const leftPct  = Math.max(0, ((inH - hourStart) / totalHours) * 100);
-  const widthPct = Math.max(0.5, Math.min(100 - leftPct, ((outH - inH) / totalHours) * 100));
-
-  // 지각 여부
-  const [sh, sm] = firstSlot.start_time.split(":").map(Number);
-  const schedStart = new Date(`${dateStr}T${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}:00`);
-  const lateMin = Math.floor((clockInDate.getTime() - schedStart.getTime()) / 60000);
-  const isLate = lateMin > 10;
-
-  return (
-    <div
-      className="absolute flex items-center px-1.5 rounded-md text-[10px] font-bold text-white overflow-hidden"
-      style={{
-        bottom: "6px", height: "22px",
-        left: `${leftPct}%`,
-        width: `${widthPct}%`,
-        backgroundColor: isLate ? "#F59E0B" : "#00B761",
-        minWidth: "4px",
-      }}
-    >
-      {widthPct > 5 && (
-        <span className="truncate">{isLate ? `+${lateMin}분` : ""}</span>
-      )}
-    </div>
-  );
-})()}
+  })();
+}
 ```
 
 ---
@@ -712,6 +768,6 @@ style={{
 Phase 4(P4-06) 구현에서 추가된 `schedule_updated` notification type이 `docs/schema.md` 알림 type 목록에 누락됨.
 구현 완료 후 schema.md 업데이트 시 아래 행 추가:
 
-| type | 발생 시점 |
-|------|-----------|
+| type               | 발생 시점                                   |
+| ------------------ | ------------------------------------------- |
 | `schedule_updated` | 확정 스케줄 슬롯 수정/삭제 시 (→ 해당 직원) |
