@@ -313,10 +313,8 @@ export default function HomePage() {
       .channel(`employee-notifications-${profile.id}`)
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "notifications" },
-        (payload) => {
-          if (payload.new?.profile_id === profile.id) fetchNotis(profile.id);
-        },
+        { event: "INSERT", schema: "public", table: "notifications", filter: `profile_id=eq.${profile.id}` },
+        () => fetchNotis(profile.id),
       )
       .subscribe((status) => {
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {

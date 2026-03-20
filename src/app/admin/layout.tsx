@@ -102,14 +102,14 @@ export default function AdminLayout({
 
     const notiChannel = supabase
       .channel("admin-notifications")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications" }, (payload) => {
-        if (payload.new.target_role === "admin" || payload.new.target_role === "all") {
-          fetchNotis();
-        }
-        // 대체근무 확정 알림 시 pending 카운트도 갱신
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: "target_role=eq.admin" }, (payload) => {
+        fetchNotis();
         if (payload.new.type === "substitute_filled") {
           fetchPendingSubCount();
         }
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: "target_role=eq.all" }, () => {
+        fetchNotis();
       })
       .subscribe();
 

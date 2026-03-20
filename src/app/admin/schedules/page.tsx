@@ -519,7 +519,7 @@ export default function AdminSchedulesPage() {
         dailyProfiles: (pData as Profile[]) ?? [],
       };
     },
-    { dedupingInterval: 10_000, revalidateOnFocus: false }
+    { dedupingInterval: 30_000, revalidateOnFocus: false }
   );
 
   // 일간 출근 현황
@@ -557,7 +557,7 @@ export default function AdminSchedulesPage() {
       });
       return Array.from(map.values());
     },
-    { dedupingInterval: 10_000, revalidateOnFocus: false }
+    { dedupingInterval: 30_000, revalidateOnFocus: false }
   );
 
   // 파생 값
