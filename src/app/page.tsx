@@ -95,32 +95,52 @@ export default function HomePage() {
       return;
     }
 
+    const todayStr = format(new Date(), "yyyy-MM-dd");
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+
+    // 독립적인 쿼리 병렬 실행
+    const [
+      { data: profileData },
+      { data: storeData },
+      { data: logData },
+      { data: wsData },
+      { data: notisData },
+    ] = await Promise.all([
+      supabase.from("profiles").select("*").eq("id", user.id).single(),
+      supabase.from("stores").select("*"),
+      supabase
+        .from("attendance_logs")
+        .select("type, created_at, attendance_type, stores!store_id(name)")
+        .eq("profile_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from("weekly_schedules")
+        .select("id")
+        .eq("status", "confirmed")
+        .gte("week_start", format(weekAgo, "yyyy-MM-dd")),
+      supabase
+        .from("notifications")
+        .select("*")
+        .eq("profile_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(15),
+    ]);
+
     // 프로필 확인 (온보딩 탔는지 체크)
-    const { data: profileData } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", user.id)
-      .single();
     if (!profileData?.name || !profileData?.phone) {
       setNeedsOnboarding(true);
     } else {
       setNeedsOnboarding(false);
       setProfile(profileData);
-      fetchNotis(user.id);
     }
 
-    // 매장 & 최근 로그 가져오기 (목동 매장 제외)
-    const { data: storeData } = await supabase.from("stores").select("*");
+    // 매장 (목동 제외)
     if (storeData) setStores(storeData.filter((s) => s.name !== "목동"));
 
-    const { data: logData } = await supabase
-      .from("attendance_logs")
-      .select("type, created_at, attendance_type, stores!store_id(name)")
-      .eq("profile_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
+    // 최근 출퇴근 로그
     if (logData) {
       const isTodayLog =
         new Date(logData.created_at).toDateString() ===
@@ -145,29 +165,23 @@ export default function HomePage() {
       });
     }
 
-    // Fetch today's confirmed schedule slots
-    if (user) {
-      const todayStr = format(new Date(), "yyyy-MM-dd");
-      // Get confirmed weekly schedules covering today
-      // 이번 주 ±1주 범위만 조회 (전체 이력 로딩 방지)
-      const weekAgo = new Date();
-      weekAgo.setDate(weekAgo.getDate() - 7);
-      const { data: wsData } = await supabase
-        .from("weekly_schedules")
-        .select("id")
-        .eq("status", "confirmed")
-        .gte("week_start", format(weekAgo, "yyyy-MM-dd"));
-      if (wsData && wsData.length > 0) {
-        const wsIds = wsData.map((ws: { id: string }) => ws.id);
-        const { data: slotsData } = await supabase
-          .from("schedule_slots")
-          .select("*")
-          .eq("profile_id", user.id)
-          .eq("slot_date", todayStr)
-          .eq("status", "active")
-          .in("weekly_schedule_id", wsIds);
-        setTodaySlots((slotsData as TodaySlot[]) || []);
-      }
+    // 알림
+    if (notisData) {
+      setNotis(notisData);
+      setUnreadCount(notisData.filter((n: any) => !n.is_read).length);
+    }
+
+    // 오늘 스케줄 슬롯 (weekly_schedules ID 필요 — 별도 처리)
+    if (wsData && wsData.length > 0) {
+      const wsIds = wsData.map((ws: { id: string }) => ws.id);
+      const { data: slotsData } = await supabase
+        .from("schedule_slots")
+        .select("*")
+        .eq("profile_id", user.id)
+        .eq("slot_date", todayStr)
+        .eq("status", "active")
+        .in("weekly_schedule_id", wsIds);
+      setTodaySlots((slotsData as TodaySlot[]) || []);
     }
 
     setLoading(false);
