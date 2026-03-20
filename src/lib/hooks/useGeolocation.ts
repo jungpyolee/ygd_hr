@@ -45,7 +45,9 @@ export function useGeolocation() {
             lng: coords.longitude,
           };
           setState(s);
-          inFlightRef.current = null;
+          // 이 promise가 여전히 현재 요청인 경우에만 ref 초기화
+          // (retry/handlePermChange가 새 요청을 시작한 경우 덮어쓰지 않음)
+          if (inFlightRef.current === p) inFlightRef.current = null;
           resolve(s);
         },
         ({ code }) => {
@@ -53,7 +55,7 @@ export function useGeolocation() {
           const status: GeoStatus = code === 1 ? "denied" : "timeout";
           const s: GeoState = { status };
           setState(s);
-          inFlightRef.current = null;
+          if (inFlightRef.current === p) inFlightRef.current = null;
           resolve(s);
         },
         GEO_OPTIONS

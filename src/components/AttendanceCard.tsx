@@ -5,18 +5,31 @@ import { createClient } from "@/lib/supabase";
 import { getDistance } from "@/lib/utils/distance";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { sendNotification } from "@/lib/notifications";
+import { Loader2 } from "lucide-react";
+import { sendNotification, type NotificationType } from "@/lib/notifications";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
 import LocationPermissionGuide from "@/components/LocationPermissionGuide";
 import ChecklistSheet from "@/components/ChecklistSheet";
+import StoreSelectorSheet from "@/components/StoreSelectorSheet";
 import type { GeoState } from "@/lib/hooks/useGeolocation";
-import type { ChecklistTemplate } from "@/types/checklist";
+import type { ChecklistTemplate, ChecklistDraft } from "@/types/checklist";
+
+interface TodaySlot {
+  id: string;
+  slot_date: string;
+  start_time: string;
+  end_time: string;
+  work_location: string;
+  cafe_positions: string[];
+  notes: string | null;
+}
 
 interface AttendanceCardProps {
   stores: any[];
   lastLog: any;
   locationState: GeoState;
   radius: number;
+  todaySlots: TodaySlot[];
   onSuccess: () => void;
   onRetryLocation: () => Promise<GeoState>;
   onFetchForAttendance: () => Promise<GeoState>;
@@ -33,6 +46,7 @@ export default function AttendanceCard({
   lastLog,
   locationState,
   radius,
+  todaySlots,
   onSuccess,
   onRetryLocation,
   onFetchForAttendance,
@@ -63,30 +77,63 @@ export default function AttendanceCard({
   // 위치 재시도 후 재개할 출퇴근 타입
   const [pendingType, setPendingType] = useState<"IN" | "OUT" | null>(null);
 
+  // 위치 실패 fallback — 매장 수동 선택
+  const [showStoreSelector, setShowStoreSelector] = useState(false);
+  const [storeSelectorType, setStoreSelectorType] = useState<"IN" | "OUT" | null>(null);
+
   const supabase = useMemo(() => createClient(), []);
 
-  // 직원 프로필 (체크리스트 필터링용)
-  const [userProfile, setUserProfile] = useState<{
-    work_locations: string[] | null;
-    cafe_positions: string[] | null;
+  // 유저 ID (draft 키 생성용)
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // 체크리스트 재개 상태
+  const [pendingResume, setPendingResume] = useState<{
+    trigger: "check_in" | "check_out";
+    checkedIds: string[];
+    logId?: string;
+    totalItems: number;
   } | null>(null);
+  const [checklistInitialIds, setChecklistInitialIds] = useState<string[]>([]);
 
   useEffect(() => {
-    const loadProfile = async () => {
+    const loadUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data } = await supabase
-        .from("profiles")
-        .select("work_locations, cafe_positions")
-        .eq("id", user.id)
-        .single();
-      if (data) setUserProfile(data);
+      if (user) setUserId(user.id);
     };
-    loadProfile();
+    loadUser();
   }, [supabase]);
+
+  // ─── localStorage draft 헬퍼 ──────────────────────────────────────────────
+  const getDraftKey = (uid: string, trigger: "check_in" | "check_out") =>
+    `checklist_draft_${uid}_${trigger}`;
+
+  const saveDraft = (uid: string, draft: ChecklistDraft) =>
+    localStorage.setItem(getDraftKey(uid, draft.trigger), JSON.stringify(draft));
+
+  const loadDraft = (uid: string, trigger: "check_in" | "check_out"): ChecklistDraft | null => {
+    try {
+      const raw = localStorage.getItem(getDraftKey(uid, trigger));
+      if (!raw) return null;
+      const draft: ChecklistDraft = JSON.parse(raw);
+      const today = new Date().toISOString().slice(0, 10);
+      if (draft.userId !== uid || draft.date !== today) {
+        localStorage.removeItem(getDraftKey(uid, trigger));
+        return null;
+      }
+      return draft;
+    } catch { return null; }
+  };
+
+  const clearDraft = (uid: string, trigger: "check_in" | "check_out") =>
+    localStorage.removeItem(getDraftKey(uid, trigger));
 
   // ─── 체크리스트 헬퍼 ───────────────────────────────────────────────────────
   const fetchChecklistItems = async (trigger: "check_in" | "check_out") => {
+    const todaySlot = todaySlots[0] ?? null;
+
+    // 오늘 배정된 스케줄 없으면 체크리스트 없음
+    if (!todaySlot) return [];
+
     const { data } = await supabase
       .from("checklist_templates")
       .select("*")
@@ -96,18 +143,63 @@ export default function AttendanceCard({
 
     const all = (data as ChecklistTemplate[]) ?? [];
 
-    // work_location / cafe_position 필터링
+    // 오늘 슬롯의 work_location / cafe_positions 기준으로 필터링
+    // cafe_positions가 빈 배열이면 cafe_position=null인 공통 항목만 표시
     return all.filter((item) => {
-      if (item.work_location) {
-        const myLocations = userProfile?.work_locations ?? [];
-        if (!myLocations.includes(item.work_location)) return false;
-      }
-      if (item.cafe_position) {
-        const myPositions = userProfile?.cafe_positions ?? [];
-        if (!myPositions.includes(item.cafe_position)) return false;
-      }
+      if (item.work_location && item.work_location !== todaySlot.work_location)
+        return false;
+      if (item.cafe_position && !todaySlot.cafe_positions.includes(item.cafe_position))
+        return false;
       return true;
     });
+  };
+
+  // ─── 체크리스트 재개 감지 ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (!userId) return;
+    checkPendingResume();
+  }, [userId, lastLog]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const checkPendingResume = async () => {
+    if (!userId) return;
+
+    // check_in draft: localStorage + DB 조합
+    const inDraft = loadDraft(userId, "check_in");
+    if (inDraft?.attendanceLogId) {
+      const { data: submission } = await supabase
+        .from("checklist_submissions")
+        .select("id")
+        .eq("attendance_log_id", inDraft.attendanceLogId)
+        .maybeSingle();
+      if (!submission) {
+        setPendingResume({ trigger: "check_in", checkedIds: inDraft.checkedIds, logId: inDraft.attendanceLogId, totalItems: inDraft.totalItems ?? 0 });
+        return;
+      }
+      clearDraft(userId, "check_in");
+    }
+
+    // check_out draft는 퇴근 버튼 탭 시 자동 복원 — 별도 배너 불필요
+  };
+
+  // ─── 체크리스트 재개 핸들러 ────────────────────────────────────────────────
+  const handleResumeChecklist = async () => {
+    if (!pendingResume || !userId) return;
+    const { trigger, checkedIds, logId } = pendingResume;
+    setPendingResume(null);
+
+    const items = await fetchChecklistItems(trigger);
+    if (items.length === 0) {
+      // 템플릿이 사라진 경우 draft 정리
+      clearDraft(userId, trigger);
+      if (trigger === "check_in") onSuccess();
+      return;
+    }
+
+    if (trigger === "check_in" && logId) setPendingLogId(logId);
+    setChecklistItems(items);
+    setChecklistTrigger(trigger);
+    setChecklistInitialIds(checkedIds);
+    setShowChecklist(true);
   };
 
   const saveChecklistSubmission = async (
@@ -204,11 +296,17 @@ export default function AttendanceCard({
     const employeeName = (logData.profiles as any)?.name || "누군가";
 
     // ── 알림 발송 ──────────────────────────────────────────────
-    let notifType: string;
+    let notifType: NotificationType;
     let notifTitle: string;
     let notifContent: string;
 
-    if (attendanceType === "regular") {
+    if (attendanceType === "fallback_in" || attendanceType === "fallback_out") {
+      notifType = attendanceType === "fallback_in" ? "attendance_fallback_in" : "attendance_fallback_out";
+      notifTitle = attendanceType === "fallback_in" ? "⚠️ 수동 출근 알림" : "⚠️ 수동 퇴근 알림";
+      notifContent = `${employeeName}님이 위치 확인 실패로 ${nearestStore?.name ?? "매장"}을(를) 직접 선택해 ${
+        attendanceType === "fallback_in" ? "출근했어요" : "퇴근했어요"
+      }`;
+    } else if (attendanceType === "regular") {
       notifType = type === "IN" ? "attendance_in" : "attendance_out";
       notifTitle = type === "IN" ? "☀️ 출근 알림" : "🌙 퇴근 알림";
       notifContent = `${employeeName}님이 ${nearestStore.name}${
@@ -230,16 +328,26 @@ export default function AttendanceCard({
       notifContent = `${employeeName}님이 출장 퇴근했어요`;
     }
 
-    await sendNotification({
+    const { error: notifError } = await sendNotification({
       target_role: "admin",
       type: notifType,
       title: notifTitle,
       content: notifContent,
       source_id: logData.id,
     });
+    if (notifError) {
+      console.error("[sendNotification] 관리자 알림 발송 실패:", notifError.message);
+    }
 
     // ── 토스트 ──────────────────────────────────────────────
-    if (attendanceType === "regular") {
+    if (attendanceType === "fallback_in" || attendanceType === "fallback_out") {
+      toast.success(
+        attendanceType === "fallback_in"
+          ? `${nearestStore?.name ?? "매장"}으로 출근했어요`
+          : `${nearestStore?.name ?? "매장"}에서 퇴근했어요`,
+        { description: "위치 확인 없이 처리됐어요" },
+      );
+    } else if (attendanceType === "regular") {
       toast.success(
         type === "IN"
           ? `${nearestStore.name}으로 출근했어요`
@@ -260,8 +368,19 @@ export default function AttendanceCard({
         setPendingLogId(logData.id);
         setChecklistItems(items);
         setChecklistTrigger("check_in");
+        setChecklistInitialIds([]);
         setShowChecklist(true);
-        // onSuccess는 체크리스트 닫힐 때 호출
+        // 이탈 재개를 위해 draft 저장
+        if (userId) {
+          saveDraft(userId, {
+            userId,
+            date: new Date().toISOString().slice(0, 10),
+            trigger: "check_in",
+            attendanceLogId: logData.id,
+            checkedIds: [],
+            totalItems: items.length,
+          });
+        }
         setLoading(false);
         return;
       }
@@ -272,6 +391,7 @@ export default function AttendanceCard({
       await saveChecklistSubmission("check_out", pendingCheckoutCheckedIds, logData.id, checklistItems.length);
       setPendingCheckoutCheckedIds([]);
     }
+    if (type === "OUT" && userId) clearDraft(userId, "check_out");
 
     onSuccess();
     setLoading(false);
@@ -319,10 +439,13 @@ export default function AttendanceCard({
   // ─── 체크리스트 완료 핸들러 ────────────────────────────────────────────────
   const handleChecklistComplete = async (checkedIds: string[]) => {
     setShowChecklist(false);
+    setChecklistInitialIds([]);
     if (checklistTrigger === "check_in") {
       // 출근 체크리스트: submission 저장 후 onSuccess
       await saveChecklistSubmission("check_in", checkedIds, pendingLogId, checklistItems.length);
+      if (userId) clearDraft(userId, "check_in");
       setPendingLogId(null);
+      setPendingResume(null);
       onSuccess();
     } else {
       // 퇴근 체크리스트: 완료 후 GPS → 퇴근 처리
@@ -331,43 +454,62 @@ export default function AttendanceCard({
     }
   };
 
-  const handleChecklistClose = async () => {
-    // check_in만 가능: 건너뜀 → onSuccess 바로 호출
+  const handleChecklistClose = () => {
+    // check_in: X 눌러서 이탈 → draft 유지, 이어서 배너 표시 (퇴근버튼 안 뜸)
     setShowChecklist(false);
-    setPendingLogId(null);
-    onSuccess();
+    setChecklistInitialIds([]);
+    // pendingResume가 없는 경우(첫 진입 후 X)에도 배너가 뜨도록 설정
+    if (!pendingResume && userId && pendingLogId) {
+      const draft = loadDraft(userId, "check_in");
+      setPendingResume({
+        trigger: "check_in",
+        checkedIds: draft?.checkedIds ?? [],
+        logId: pendingLogId,
+        totalItems: draft?.totalItems ?? checklistItems.length,
+      });
+    }
+    // onSuccess() 호출 안 함 → 퇴근하기 버튼 안 뜸
+  };
+
+  const handleCheckoutChecklistClose = () => {
+    // check_out: 닫기만 (draft 유지 → 퇴근하기 재탭 시 자동 복원)
+    setShowChecklist(false);
+    setChecklistInitialIds([]);
   };
 
   // 퇴근 GPS+기록 실행 (체크리스트 완료 후 or 체크리스트 없을 때)
   const runCheckoutFlow = async () => {
     setIsRetrying(true);
     setPendingType("OUT");
-    const result = await onFetchForAttendance();
-    setIsRetrying(false);
 
-    if (result.status === "ready") {
-      setPendingType(null);
-      await proceedWithCoordinates("OUT", result.lat!, result.lng!);
-      return;
+    try {
+      const result = await onFetchForAttendance();
+
+      if (result.status === "ready") {
+        setPendingType(null);
+        await proceedWithCoordinates("OUT", result.lat!, result.lng!);
+        return;
+      }
+      if (result.status === "denied") {
+        setShowPermissionGuide(true);
+        return;
+      }
+      const retryResult = await onRetryLocation();
+      if (retryResult.status === "ready") {
+        setPendingType(null);
+        await proceedWithCoordinates("OUT", retryResult.lat!, retryResult.lng!);
+        return;
+      }
+      if (retryResult.status === "denied") {
+        setShowPermissionGuide(true);
+        return;
+      }
+
+      // GPS 재시도까지 실패 → 매장 수동 선택 fallback
+      openStoreFallback("OUT");
+    } finally {
+      setIsRetrying(false);
     }
-    if (result.status === "denied") {
-      setShowPermissionGuide(true);
-      return;
-    }
-    const retryResult = await onRetryLocation();
-    if (retryResult.status === "ready") {
-      setPendingType(null);
-      await proceedWithCoordinates("OUT", retryResult.lat!, retryResult.lng!);
-      return;
-    }
-    if (retryResult.status === "denied") {
-      setShowPermissionGuide(true);
-      return;
-    }
-    setPendingType(null);
-    toast.error("위치를 찾을 수 없어요", {
-      description: "Wi-Fi를 켜거나 실외에서 다시 시도해주세요",
-    });
   };
 
   // ─── 출퇴근 버튼 탭 ────────────────────────────────────────────────────────
@@ -376,9 +518,24 @@ export default function AttendanceCard({
     if (type === "OUT") {
       const items = await fetchChecklistItems("check_out");
       if (items.length > 0) {
+        // 이탈 후 재개: 기존 draft 있으면 체크 상태 복원
+        const outDraft = userId ? loadDraft(userId, "check_out") : null;
+        const initialIds = outDraft?.checkedIds ?? [];
         setChecklistItems(items);
         setChecklistTrigger("check_out");
+        setChecklistInitialIds(initialIds);
         setShowChecklist(true);
+        // 신규 시작이면 draft 생성
+        if (!outDraft && userId) {
+          saveDraft(userId, {
+            userId,
+            date: new Date().toISOString().slice(0, 10),
+            trigger: "check_out",
+            attendanceLogId: null,
+            checkedIds: [],
+            totalItems: items.length,
+          });
+        }
         return;
       }
       // 체크리스트 없으면 바로 퇴근 흐름
@@ -389,39 +546,39 @@ export default function AttendanceCard({
     setIsRetrying(true);
     setPendingType(type);
 
-    // 출퇴근 기록은 항상 10초 캐시 기준으로 신선한 위치 사용
-    // (45초 캐시 위치를 그대로 쓰면 이동 후 진입 케이스에서 오판 가능)
-    const result = await onFetchForAttendance();
-    setIsRetrying(false);
+    try {
+      // 출퇴근 기록은 항상 10초 캐시 기준으로 신선한 위치 사용
+      const result = await onFetchForAttendance();
 
-    if (result.status === "ready") {
-      setPendingType(null);
-      await proceedWithCoordinates(type, result.lat!, result.lng!);
-      return;
+      if (result.status === "ready") {
+        setPendingType(null);
+        await proceedWithCoordinates(type, result.lat!, result.lng!);
+        return;
+      }
+
+      if (result.status === "denied") {
+        setShowPermissionGuide(true);
+        return;
+      }
+
+      // timeout / unavailable → 권한은 있으나 GPS 응답 없음, onRetryLocation으로 재시도
+      const retryResult = await onRetryLocation();
+      if (retryResult.status === "ready") {
+        setPendingType(null);
+        await proceedWithCoordinates(type, retryResult.lat!, retryResult.lng!);
+        return;
+      }
+
+      if (retryResult.status === "denied") {
+        setShowPermissionGuide(true);
+        return;
+      }
+
+      // GPS 재시도까지 실패 → 매장 수동 선택 fallback
+      openStoreFallback(type);
+    } finally {
+      setIsRetrying(false);
     }
-
-    if (result.status === "denied") {
-      setShowPermissionGuide(true);
-      return;
-    }
-
-    // timeout / unavailable → 권한은 있으나 GPS 응답 없음, onRetryLocation으로 재시도
-    const retryResult = await onRetryLocation();
-    if (retryResult.status === "ready") {
-      setPendingType(null);
-      await proceedWithCoordinates(type, retryResult.lat!, retryResult.lng!);
-      return;
-    }
-
-    if (retryResult.status === "denied") {
-      setShowPermissionGuide(true);
-      return;
-    }
-
-    setPendingType(null);
-    toast.error("위치를 찾을 수 없어요", {
-      description: "Wi-Fi를 켜거나 실외에서 다시 시도해주세요",
-    });
   };
 
   // ─── 권한 안내 확인 후 재시도 ──────────────────────────────────────────────
@@ -431,25 +588,43 @@ export default function AttendanceCard({
     if (!type) return;
 
     setIsRetrying(true);
-    const result = await onRetryLocation();
-    setIsRetrying(false);
 
-    if (result.status === "ready") {
-      setPendingType(null);
-      await proceedWithCoordinates(type, result.lat!, result.lng!);
-      return;
+    try {
+      const result = await onRetryLocation();
+
+      if (result.status === "ready") {
+        setPendingType(null);
+        await proceedWithCoordinates(type, result.lat!, result.lng!);
+        return;
+      }
+
+      // 권한 안내 후에도 여전히 실패 → 매장 수동 선택 fallback
+      openStoreFallback(type);
+    } finally {
+      setIsRetrying(false);
     }
+  };
 
+  // ─── 위치 실패 fallback ────────────────────────────────────────────────────
+  const openStoreFallback = (type: "IN" | "OUT") => {
     setPendingType(null);
-    if (result.status === "denied") {
-      toast.error("위치 권한이 아직 없어요", {
-        description: "설정에서 Chrome의 위치 권한을 허용해주세요",
-      });
-    } else {
-      toast.error("위치를 찾을 수 없어요", {
-        description: "Wi-Fi를 켜거나 실외에서 다시 시도해주세요",
-      });
-    }
+    setStoreSelectorType(type);
+    setShowStoreSelector(true);
+  };
+
+  const handleStoreFallbackSelect = async (store: { id: string; name: string; lat: number; lng: number }) => {
+    setShowStoreSelector(false);
+    const type = storeSelectorType!;
+    setStoreSelectorType(null);
+
+    await processAttendance({
+      type,
+      nearestStore: store,
+      lat: store.lat,
+      lng: store.lng,
+      attendanceType: type === "IN" ? "fallback_in" : "fallback_out",
+      distanceM: 0,
+    });
   };
 
   // ─── 출장출근 확인 ─────────────────────────────────────────────────────────
@@ -495,6 +670,11 @@ export default function AttendanceCard({
 
   const isButtonBusy = loading || isRetrying;
 
+  // 출근 기록은 됐지만 check_in 체크리스트 미완료 상태
+  // (lastLog 갱신 전에도 체크리스트 배너를 정확히 보여주기 위해)
+  const hasPendingCheckIn = !!pendingLogId || pendingResume?.trigger === "check_in";
+  const isCheckedIn = lastLog?.type === "IN" || hasPendingCheckIn;
+
   return (
     <>
       <section className="bg-white rounded-[28px] p-6 shadow-sm border border-slate-100">
@@ -523,6 +703,18 @@ export default function AttendanceCard({
                   ✈️ 출장중
                 </span>
               )}
+            {todaySlots[0]?.cafe_positions && todaySlots[0].cafe_positions.length > 0 && (
+              <div className="flex gap-1 mt-1">
+                {todaySlots[0].cafe_positions.map((pos) => (
+                  <span
+                    key={pos}
+                    className="inline-block text-[11px] font-bold bg-[#E8F3FF] text-[#3182F6] px-2 py-0.5 rounded-md"
+                  >
+                    {pos === "hall" ? "홀" : pos === "kitchen" ? "주방" : pos === "showroom" ? "쇼룸" : pos}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
           {lastLog && (
             <div className="text-right">
@@ -539,30 +731,72 @@ export default function AttendanceCard({
           )}
         </div>
 
-        <div className="grid grid-cols-1 gap-3">
+        {/* ── 위치 탐색 중 오버레이 ────────────────────────────── */}
+        {isRetrying && (
+          <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-[#F2F4F6] mb-3">
+            <Loader2 className="w-4 h-4 text-[#3182F6] animate-spin shrink-0" />
+            <div>
+              <p className="text-[13px] font-bold text-[#191F28]">위치를 찾고 있어요</p>
+              <p className="text-[11px] text-[#8B95A1]">GPS 신호를 확인하는 중이에요</p>
+            </div>
+          </div>
+        )}
+
+        {/* ── 상태 기반 단일 CTA ──────────────────────────────── */}
+        {!isCheckedIn ? (
+          /* 출근 전 → 출근하기 버튼만 */
           <Button
             onClick={() => handleAttendance("IN")}
-            disabled={isButtonBusy || lastLog?.type === "IN"}
-            className="h-16 rounded-2xl bg-[#3182F6] text-white font-bold text-lg hover:bg-[#1B64DA] disabled:bg-[#D1D6DB] transition-all"
+            disabled={isButtonBusy}
+            className="w-full h-16 rounded-2xl bg-[#3182F6] text-white font-bold text-lg hover:bg-[#1B64DA] disabled:bg-[#D1D6DB] transition-all"
           >
-            {isRetrying
-              ? "위치 찾는 중..."
-              : loading
-              ? "처리 중..."
-              : "출근하기"}
+            {isButtonBusy ? (
+              <span className="flex items-center gap-2">
+                <Loader2 className="w-5 h-5 animate-spin" /> 처리 중...
+              </span>
+            ) : "출근하기"}
           </Button>
+        ) : hasPendingCheckIn ? (
+          /* 출근 후 + check_in 체크리스트 미완료 → 이어서 하기 */
+          <button
+            onClick={handleResumeChecklist}
+            disabled={isButtonBusy}
+            className="w-full flex items-center justify-between px-5 py-4 rounded-2xl bg-[#FFF3BF] border border-[#FFE066] active:scale-[0.98] transition-transform disabled:opacity-50"
+          >
+            <div className="flex items-center gap-3 text-left">
+              <span className="text-[20px]">📋</span>
+              <div>
+                <p className="text-[15px] font-bold text-[#E67700]">
+                  출근 체크리스트를 완료해 주세요
+                </p>
+                <p className="text-[12px] text-[#F59E0B] mt-0.5">
+                  {(() => {
+                    const total = pendingResume?.totalItems ?? 0;
+                    const checked = pendingResume?.checkedIds.length ?? 0;
+                    const remaining = total - checked;
+                    return remaining > 0 ? `${remaining}개 항목이 남았어요` : "오픈 준비 항목을 확인해 주세요";
+                  })()}
+                </p>
+              </div>
+            </div>
+            <span className="text-[13px] font-bold text-[#E67700] shrink-0 ml-3">
+              이어서 하기 →
+            </span>
+          </button>
+        ) : (
+          /* 출근 후 + check_in 완료 → 퇴근하기 버튼만 */
           <Button
             onClick={() => handleAttendance("OUT")}
-            disabled={isButtonBusy || lastLog?.type !== "IN"}
-            className={`h-16 rounded-2xl font-bold text-lg transition-all ${
-              lastLog?.type === "IN" && !isButtonBusy
-                ? "bg-[#E8F3FF] text-[#3182F6] border-2 border-[#3182F6]/30"
-                : "bg-[#F2F4F6] text-[#4E5968] disabled:opacity-50"
-            }`}
+            disabled={isButtonBusy}
+            className="w-full h-16 rounded-2xl bg-[#E8F3FF] text-[#3182F6] border-2 border-[#3182F6]/30 font-bold text-lg hover:bg-[#D6EAFF] disabled:opacity-50 transition-all"
           >
-            {isRetrying ? "위치 찾는 중..." : loading ? "처리 중..." : "퇴근하기"}
+            {loading ? (
+              <span className="flex items-center gap-2">
+                <Loader2 className="w-5 h-5 animate-spin" /> 처리 중...
+              </span>
+            ) : "퇴근하기"}
           </Button>
-        </div>
+        )}
       </section>
 
       {/* ── 체크리스트 바텀시트 ──────────────────────────────────── */}
@@ -570,8 +804,14 @@ export default function AttendanceCard({
         isOpen={showChecklist}
         trigger={checklistTrigger}
         items={checklistItems}
+        initialCheckedIds={checklistInitialIds}
+        onCheck={(ids) => {
+          if (!userId) return;
+          const draft = loadDraft(userId, checklistTrigger);
+          if (draft) saveDraft(userId, { ...draft, checkedIds: ids });
+        }}
         onComplete={handleChecklistComplete}
-        onClose={checklistTrigger === "check_in" ? handleChecklistClose : undefined}
+        onClose={checklistTrigger === "check_in" ? handleChecklistClose : handleCheckoutChecklistClose}
       />
 
       {/* ── 위치 권한 안내 ───────────────────────────────────── */}
@@ -581,6 +821,18 @@ export default function AttendanceCard({
         onCancel={() => {
           setShowPermissionGuide(false);
           setPendingType(null);
+        }}
+      />
+
+      {/* ── 위치 실패 매장 수동 선택 ─────────────────────────────── */}
+      <StoreSelectorSheet
+        isOpen={showStoreSelector}
+        type={storeSelectorType ?? "IN"}
+        stores={stores}
+        onSelect={handleStoreFallbackSelect}
+        onCancel={() => {
+          setShowStoreSelector(false);
+          setStoreSelectorType(null);
         }}
       />
 

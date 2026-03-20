@@ -2,7 +2,17 @@
 
 import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase";
-import { UserCircle, BookOpen, MapPin, Clock, Bell, BellDot, CheckCircle, ArrowRightLeft, Info } from "lucide-react";
+import {
+  UserCircle,
+  BookOpen,
+  MapPin,
+  Clock,
+  Bell,
+  BellDot,
+  CheckCircle,
+  ArrowRightLeft,
+  Info,
+} from "lucide-react";
 import dynamic from "next/dynamic";
 import WeeklyScheduleCard from "@/components/WeeklyScheduleCard";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
@@ -25,10 +35,26 @@ interface TodaySlot {
   notes: string | null;
 }
 
-const LOCATION_LABELS: Record<string, string> = { cafe: "카페", factory: "공장", catering: "케이터링" };
-const LOCATION_COLORS: Record<string, string> = { cafe: "#3182F6", factory: "#00B761", catering: "#F59E0B" };
-const LOCATION_BG: Record<string, string> = { cafe: "#E8F3FF", factory: "#E6FAF0", catering: "#FFF7E6" };
-const CAFE_POSITION_LABELS: Record<string, string> = { hall: "홀", kitchen: "주방", showroom: "쇼룸" };
+const LOCATION_LABELS: Record<string, string> = {
+  cafe: "카페",
+  factory: "공장",
+  catering: "케이터링",
+};
+const LOCATION_COLORS: Record<string, string> = {
+  cafe: "#3182F6",
+  factory: "#00B761",
+  catering: "#F59E0B",
+};
+const LOCATION_BG: Record<string, string> = {
+  cafe: "#E8F3FF",
+  factory: "#E6FAF0",
+  catering: "#FFF7E6",
+};
+const CAFE_POSITION_LABELS: Record<string, string> = {
+  hall: "홀",
+  kitchen: "주방",
+  showroom: "쇼룸",
+};
 
 const DynamicClock = dynamic(() => import("@/components/Clock"), {
   ssr: false,
@@ -52,7 +78,11 @@ export default function HomePage() {
   const router = useRouter();
 
   // 위치 훅 — 5초 타임아웃, 45초 캐시(표시용), 권한 변경 감시 포함
-  const { locationState, retry: retryLocation, fetchForAttendance } = useGeolocation();
+  const {
+    locationState,
+    retry: retryLocation,
+    fetchForAttendance,
+  } = useGeolocation();
 
   // 2. 전체 데이터 Fetch (온보딩 여부 포함)
   const fetchAllData = async () => {
@@ -78,12 +108,20 @@ export default function HomePage() {
       setProfile(profileData);
       fetchNotis(user.id);
 
-      // 실시간 알림 구독
+      // 실시간 알림 구독 — 서버 측 filter로 본인 알림만 수신
       supabase
         .channel(`employee-notifications-${user.id}`)
-        .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications" }, (payload) => {
-          if (payload.new.profile_id === user.id) fetchNotis(user.id);
-        })
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "notifications",
+          },
+          (payload) => {
+            if (payload.new?.profile_id === user.id) fetchNotis(user.id);
+          },
+        )
         .subscribe();
     }
 
@@ -172,7 +210,10 @@ export default function HomePage() {
 
   const handleNotiClick = async (noti: any, userId: string) => {
     if (!noti.is_read) {
-      await supabase.from("notifications").update({ is_read: true }).eq("id", noti.id);
+      await supabase
+        .from("notifications")
+        .update({ is_read: true })
+        .eq("id", noti.id);
       fetchNotis(userId);
     }
     setShowNoti(false);
@@ -247,6 +288,12 @@ export default function HomePage() {
         <span className="text-xl font-bold text-[#333D4B]">연경당 HR</span>
         <div className="flex items-center gap-3">
           <button
+            onClick={() => router.push("/guide")}
+            className="h-8 px-3 rounded-full bg-white shadow-sm flex items-center justify-center text-[13px] font-bold text-[#4E5968] hover:text-[#3182F6] hover:bg-[#E8F3FF] transition-colors"
+          >
+            이용 가이드
+          </button>
+          <button
             onClick={() => setIsEditModalOpen(true)}
             className="w-10 h-10 rounded-full border border-white bg-white shadow-sm flex items-center justify-center overflow-hidden"
             style={{ backgroundColor: profile?.color_hex }}
@@ -291,12 +338,16 @@ export default function HomePage() {
                 </div>
                 <div className="max-h-[360px] overflow-y-auto scrollbar-hide">
                   {notis.length === 0 ? (
-                    <div className="p-10 text-center text-[#8B95A1] text-[14px]">새 알림이 없어요</div>
+                    <div className="p-10 text-center text-[#8B95A1] text-[14px]">
+                      새 알림이 없어요
+                    </div>
                   ) : (
                     notis.map((n) => (
                       <button
                         key={n.id}
-                        onClick={() => profile && handleNotiClick(n, profile.id)}
+                        onClick={() =>
+                          profile && handleNotiClick(n, profile.id)
+                        }
                         className={`w-full text-left p-4 border-b border-slate-50 last:border-0 hover:bg-[#F9FAFB] transition-colors ${!n.is_read ? "bg-[#F2F8FF]/60" : ""}`}
                       >
                         <div className="flex gap-3 items-start">
@@ -308,13 +359,22 @@ export default function HomePage() {
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-[13px] font-bold text-[#191F28] mb-0.5">{n.title}</p>
-                            <p className="text-[12px] text-[#4E5968] leading-snug line-clamp-2">{n.content}</p>
+                            <p className="text-[13px] font-bold text-[#191F28] mb-0.5">
+                              {n.title}
+                            </p>
+                            <p className="text-[12px] text-[#4E5968] leading-snug line-clamp-2">
+                              {n.content}
+                            </p>
                             <p className="text-[11px] text-[#8B95A1] mt-1">
-                              {new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit" }).format(new Date(n.created_at))}
+                              {new Intl.DateTimeFormat("ko-KR", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              }).format(new Date(n.created_at))}
                             </p>
                           </div>
-                          {!n.is_read && <div className="w-1.5 h-1.5 bg-[#3182F6] rounded-full mt-1.5 shrink-0" />}
+                          {!n.is_read && (
+                            <div className="w-1.5 h-1.5 bg-[#3182F6] rounded-full mt-1.5 shrink-0" />
+                          )}
                         </div>
                       </button>
                     ))
@@ -323,7 +383,6 @@ export default function HomePage() {
               </div>
             )}
           </div>
-
         </div>
       </nav>
 
@@ -344,6 +403,7 @@ export default function HomePage() {
           lastLog={lastLog}
           locationState={locationState}
           radius={RADIUS_METER}
+          todaySlots={todaySlots}
           onSuccess={fetchAllData}
           onRetryLocation={retryLocation}
           onFetchForAttendance={fetchForAttendance}
@@ -354,14 +414,17 @@ export default function HomePage() {
         {/* 오늘 스케줄 위젯 */}
         {todaySlots.length > 0 && (
           <section className="bg-white rounded-[28px] p-5 border border-slate-100 shadow-sm space-y-3">
-            <h3 className="text-[15px] font-bold text-[#191F28]">오늘 스케줄</h3>
+            <h3 className="text-[15px] font-bold text-[#191F28]">
+              오늘 스케줄
+            </h3>
             {todaySlots.map((slot) => (
               <div key={slot.id}>
                 <div className="flex items-center gap-2 mb-1">
                   <span
                     className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[12px] font-bold"
                     style={{
-                      backgroundColor: LOCATION_BG[slot.work_location] || "#F2F4F6",
+                      backgroundColor:
+                        LOCATION_BG[slot.work_location] || "#F2F4F6",
                       color: LOCATION_COLORS[slot.work_location] || "#4E5968",
                     }}
                   >
@@ -371,7 +434,10 @@ export default function HomePage() {
                   {slot.cafe_positions && slot.cafe_positions.length > 0 && (
                     <div className="flex gap-1">
                       {slot.cafe_positions.map((pos) => (
-                        <span key={pos} className="px-2 py-0.5 bg-[#F2F4F6] text-[#4E5968] rounded-md text-[11px] font-bold">
+                        <span
+                          key={pos}
+                          className="px-2 py-0.5 bg-[#F2F4F6] text-[#4E5968] rounded-md text-[11px] font-bold"
+                        >
                           {CAFE_POSITION_LABELS[pos] || pos}
                         </span>
                       ))}

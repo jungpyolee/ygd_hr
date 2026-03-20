@@ -29,7 +29,10 @@ import {
   LayoutGrid,
   CalendarDays,
   MapPin,
+  PenLine,
+  X,
 } from "lucide-react";
+import { toast } from "sonner";
 
 interface ProcessedLog {
   profile_id: string;
@@ -59,6 +62,9 @@ export default function AdminAttendanceCalendar() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [logsByDate, setLogsByDate] = useState<Record<string, ProcessedLog[]>>({});
   const [loading, setLoading] = useState(true);
+  const [manualOutTarget, setManualOutTarget] = useState<{ log: ProcessedLog; dateKey: string } | null>(null);
+  const [manualOutTime, setManualOutTime] = useState("");
+  const [manualOutSubmitting, setManualOutSubmitting] = useState(false);
 
   const supabase = useMemo(() => createClient(), []);
 
@@ -241,6 +247,38 @@ export default function AdminAttendanceCalendar() {
   const handleToday = () => {
     setBaseDate(new Date());
     setSelectedDate(new Date());
+  };
+
+  const openManualOut = (log: ProcessedLog, dateKey: string) => {
+    const defaultTime = log.scheduled_end ? log.scheduled_end.slice(0, 5) : "18:00";
+    setManualOutTime(defaultTime);
+    setManualOutTarget({ log, dateKey });
+  };
+
+  const handleManualOut = async () => {
+    if (!manualOutTarget || !manualOutTime) return;
+    setManualOutSubmitting(true);
+    const { log, dateKey } = manualOutTarget;
+    const clockOutDate = new Date(`${dateKey}T${manualOutTime}:00`);
+
+    const { error } = await supabase
+      .from("attendance_logs")
+      .insert({
+        profile_id: log.profile_id,
+        type: "OUT",
+        attendance_type: "fallback_out",
+        created_at: clockOutDate.toISOString(),
+        reason: "관리자 수동 처리",
+      });
+
+    if (error) {
+      toast.error("퇴근 처리에 실패했어요. 잠시 후 다시 시도해 주세요.");
+    } else {
+      toast.success(`${log.name}님 퇴근 처리가 완료됐어요.`);
+      setManualOutTarget(null);
+      fetchLogsForCalendar(baseDate, viewType);
+    }
+    setManualOutSubmitting(false);
   };
 
   const selectedDateKey = format(selectedDate, "yyyy-MM-dd");
@@ -462,6 +500,14 @@ export default function AdminAttendanceCalendar() {
                             <AlertCircle className="w-3 h-3" /> 미퇴근
                           </span>
                         )}
+                        {isAnomaly && (
+                          <button
+                            onClick={() => openManualOut(log, selectedDateKey)}
+                            className="flex items-center gap-1 bg-[#F3F0FF] text-[#7950F2] text-[11px] font-bold px-2 py-0.5 rounded-md hover:bg-[#E9DFFF] transition-colors"
+                          >
+                            <PenLine className="w-3 h-3" /> 퇴근 처리
+                          </button>
+                        )}
                       </div>
                       <p className="text-[13px] font-medium text-[#8B95A1]">{log.store_name}</p>
                     </div>
@@ -531,11 +577,17 @@ export default function AdminAttendanceCalendar() {
                         {log.attendance_type_in === "business_trip_in" && (
                           <span className="text-[11px] font-bold bg-[#FFF3BF] text-[#E67700] px-2 py-0.5 rounded-md">✈️ 출장출근</span>
                         )}
+                        {log.attendance_type_in === "fallback_in" && (
+                          <span className="text-[11px] font-bold bg-[#F3F0FF] text-[#7950F2] px-2 py-0.5 rounded-md">⚠️ 수동출근</span>
+                        )}
                         {log.attendance_type_out === "remote_out" && (
                           <span className="text-[11px] font-bold bg-[#FFE3E3] text-[#C92A2A] px-2 py-0.5 rounded-md">📍 원격퇴근</span>
                         )}
                         {log.attendance_type_out === "business_trip_out" && (
                           <span className="text-[11px] font-bold bg-[#FFF3BF] text-[#E67700] px-2 py-0.5 rounded-md">✈️ 출장퇴근</span>
+                        )}
+                        {log.attendance_type_out === "fallback_out" && (
+                          <span className="text-[11px] font-bold bg-[#F3F0FF] text-[#7950F2] px-2 py-0.5 rounded-md">⚠️ 수동퇴근</span>
                         )}
                       </div>
                     )}
@@ -552,6 +604,69 @@ export default function AdminAttendanceCalendar() {
           </div>
         )}
       </div>
+
+      {/* 수동 퇴근 처리 모달 */}
+      {manualOutTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setManualOutTarget(null)} />
+          <div className="relative bg-white rounded-[24px] shadow-xl w-full max-w-sm p-6 flex flex-col gap-5">
+            {/* 헤더 */}
+            <div className="flex items-center justify-between">
+              <h2 className="text-[18px] font-bold text-[#191F28]">퇴근 시간 수동 입력</h2>
+              <button onClick={() => setManualOutTarget(null)} className="p-1.5 text-[#8B95A1] hover:bg-[#F2F4F6] rounded-lg">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* 직원 정보 */}
+            <div className="flex items-center gap-3 bg-[#F9FAFB] rounded-[16px] p-3.5">
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center text-[14px] font-bold text-white shrink-0"
+                style={{ backgroundColor: manualOutTarget.log.color_hex }}
+              >
+                {manualOutTarget.log.name.charAt(0)}
+              </div>
+              <div>
+                <p className="text-[15px] font-bold text-[#191F28]">{manualOutTarget.log.name}</p>
+                <p className="text-[12px] text-[#8B95A1]">
+                  {format(selectedDate, "M월 d일 (EEE)", { locale: ko })}
+                  {manualOutTarget.log.scheduled_end && (
+                    <span className="ml-1.5">· 예정 퇴근 {manualOutTarget.log.scheduled_end.slice(0, 5)}</span>
+                  )}
+                </p>
+              </div>
+            </div>
+
+            {/* 시간 입력 */}
+            <div className="flex flex-col gap-2">
+              <label className="text-[13px] font-semibold text-[#4E5968]">퇴근 시간</label>
+              <input
+                type="time"
+                value={manualOutTime}
+                onChange={(e) => setManualOutTime(e.target.value)}
+                className="w-full border border-[#E5E8EB] rounded-[12px] px-4 py-3 text-[16px] font-bold text-[#191F28] focus:outline-none focus:border-[#3182F6] focus:ring-2 focus:ring-[#3182F6]/20"
+              />
+            </div>
+
+            {/* 버튼 */}
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => setManualOutTarget(null)}
+                className="flex-1 py-3 rounded-[12px] text-[15px] font-bold text-[#4E5968] bg-[#F2F4F6] hover:bg-[#E5E8EB] transition-colors"
+              >
+                취소하기
+              </button>
+              <button
+                onClick={handleManualOut}
+                disabled={!manualOutTime || manualOutSubmitting}
+                className="flex-1 py-3 rounded-[12px] text-[15px] font-bold text-white bg-[#3182F6] hover:bg-[#1B6EE6] disabled:opacity-50 transition-colors"
+              >
+                {manualOutSubmitting ? "처리 중..." : "처리하기"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
