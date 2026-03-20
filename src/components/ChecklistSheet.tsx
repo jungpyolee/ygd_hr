@@ -1,13 +1,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { CheckCircle2, Circle } from "lucide-react";
+import { CheckCircle2, Circle, X } from "lucide-react";
 import type { ChecklistTemplate } from "@/types/checklist";
 
 interface ChecklistSheetProps {
   isOpen: boolean;
   trigger: "check_in" | "check_out";
   items: ChecklistTemplate[];
+  initialCheckedIds?: string[];
+  onCheck?: (checkedIds: string[]) => void;
   onComplete: (checkedIds: string[]) => void;
   onClose?: () => void;
 }
@@ -16,18 +18,22 @@ export default function ChecklistSheet({
   isOpen,
   trigger,
   items,
+  initialCheckedIds,
+  onCheck,
   onComplete,
+  onClose,
 }: ChecklistSheetProps) {
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
 
-  // 열릴 때마다 상태 초기화
+  // 열릴 때마다 상태 초기화 (재개 시 initialCheckedIds 복원)
   useEffect(() => {
     if (isOpen) {
-      setCheckedIds(new Set());
-      setHiddenIds(new Set());
+      const initial = new Set(initialCheckedIds ?? []);
+      setCheckedIds(initial);
+      setHiddenIds(new Set(initial)); // 이미 체크된 항목은 사라진 상태로 시작
     }
-  }, [isOpen]);
+  }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!isOpen) return null;
 
@@ -37,6 +43,7 @@ export default function ChecklistSheet({
     setCheckedIds((prev) => {
       const next = new Set(prev);
       next.add(id);
+      onCheck?.(Array.from(next));
       return next;
     });
 
@@ -58,19 +65,32 @@ export default function ChecklistSheet({
 
   return (
     <div className="fixed inset-0 z-[400] flex items-center justify-center p-5">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+        onClick={onClose}
+      />
       <div className="relative w-full max-w-sm bg-white rounded-[28px] px-5 pt-7 pb-7 shadow-2xl animate-in fade-in zoom-in-95 duration-300 max-h-[80vh] flex flex-col">
 
         {/* 헤더 */}
-        <div className="mb-5">
-          <h3 className="text-[18px] font-bold text-[#191F28]">
-            {trigger === "check_in" ? "오픈 준비를 확인해요" : "마감 전 확인해요"}
-          </h3>
-          <p className="text-[13px] text-[#8B95A1] mt-1">
-            {allChecked
-              ? "모두 완료했어요 🎉"
-              : `${remaining}개 항목을 확인해주세요`}
-          </p>
+        <div className="flex items-start justify-between mb-5">
+          <div>
+            <h3 className="text-[18px] font-bold text-[#191F28]">
+              {trigger === "check_in" ? "오픈 준비를 확인해요" : "마감 전 확인해요"}
+            </h3>
+            <p className="text-[13px] text-[#8B95A1] mt-1">
+              {allChecked
+                ? "모두 완료했어요 🎉"
+                : `${remaining}개 항목을 확인해주세요`}
+            </p>
+          </div>
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center rounded-full bg-[#F2F4F6] text-[#8B95A1] hover:bg-[#E5E8EB] transition-colors shrink-0 ml-3"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
         {/* 항목 목록 */}

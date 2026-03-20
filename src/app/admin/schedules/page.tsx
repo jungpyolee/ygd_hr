@@ -585,7 +585,7 @@ export default function AdminSchedulesPage() {
       return;
     }
 
-    // 2. 같은 직원·날짜 겹치는 근무 검사 (DB 직접 조회 — 대타 슬롯 누락 방지)
+    // 2. 같은 직원·날짜 기존 슬롯 조회
     const { data: dbSameDay } = await supabase
       .from("schedule_slots")
       .select("id, start_time, end_time")
@@ -593,6 +593,16 @@ export default function AdminSchedulesPage() {
       .eq("slot_date", data.slot_date!)
       .eq("status", "active")
       .neq("id", data.id ?? "00000000-0000-0000-0000-000000000000");
+
+    // 신규 추가 시: 이미 슬롯이 있으면 차단 (하루 1슬롯 제한)
+    if (isNew && (dbSameDay || []).length > 0) {
+      toast.error("이미 해당 날짜에 근무가 있어요", {
+        description: "하루에 근무는 하나만 추가할 수 있어요.",
+      });
+      return;
+    }
+
+    // 수정 시: 시간 겹침 검사
     const hasOverlap = (dbSameDay || []).some((s) => {
       const sStart = timeToMinutes(s.start_time);
       const sEnd = timeToMinutes(s.end_time);
@@ -889,7 +899,11 @@ export default function AdminSchedulesPage() {
 
     const { error } = await supabase
       .from("weekly_schedules")
-      .update({ status: "confirmed", published_at: new Date().toISOString() })
+      .update({
+        status: "confirmed",
+        published_at: new Date().toISOString(),
+        confirmed_dates: weekDates,  // 주 확정 시 해당 주 전체 날짜 확정
+      })
       .eq("id", wsId)
       .eq("status", "draft");
 
@@ -1066,6 +1080,18 @@ export default function AdminSchedulesPage() {
                               }}
                             >
                               <div>{LOCATION_LABELS[slot.work_location]}</div>
+                              {slot.cafe_positions && slot.cafe_positions.length > 0 && (
+                                <div className="flex gap-0.5 flex-wrap mt-0.5">
+                                  {slot.cafe_positions.map((pos) => (
+                                    <span
+                                      key={pos}
+                                      className="px-1 py-0.5 bg-white/20 rounded text-[10px] font-bold leading-none"
+                                    >
+                                      {CAFE_POSITION_LABELS[pos] || pos}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
                               <div className="opacity-90">
                                 {slot.start_time.slice(0, 5)}~
                                 {slot.end_time.slice(0, 5)}
@@ -1073,18 +1099,20 @@ export default function AdminSchedulesPage() {
                             </button>
                           );
                         })}
-                        <button
-                          onClick={() =>
-                            setEditSlot({
-                              slot: null,
-                              defaultDate: d,
-                              defaultProfileId: profile.id,
-                            })
-                          }
-                          className="w-full flex items-center justify-center py-1 rounded-lg text-[#D1D6DB] hover:text-[#3182F6] hover:bg-[#E8F3FF] transition-all"
-                        >
-                          <Plus className="w-4 h-4" />
-                        </button>
+                        {daySlots.length === 0 && (
+                          <button
+                            onClick={() =>
+                              setEditSlot({
+                                slot: null,
+                                defaultDate: d,
+                                defaultProfileId: profile.id,
+                              })
+                            }
+                            className="w-full flex items-center justify-center py-1 rounded-lg text-[#D1D6DB] hover:text-[#3182F6] hover:bg-[#E8F3FF] transition-all"
+                          >
+                            <Plus className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   );
@@ -1203,6 +1231,9 @@ export default function AdminSchedulesPage() {
                         }}
                       >
                         <span className="truncate">
+                          {slot.cafe_positions && slot.cafe_positions.length > 0
+                            ? slot.cafe_positions.map((p) => CAFE_POSITION_LABELS[p] || p).join("·") + " "
+                            : ""}
                           {slot.start_time.slice(0, 5)}~
                           {slot.end_time.slice(0, 5)}
                         </span>
@@ -1443,7 +1474,7 @@ export default function AdminSchedulesPage() {
                     : "bg-[#FFF3BF] text-[#E67700]"
               }`}
             >
-              {weeklySchedule?.status === "confirmed" ? "확정ss" : "초안"}
+              {weeklySchedule?.status === "confirmed" ? "확정" : "초안"}
             </span>
           </div>
         )}

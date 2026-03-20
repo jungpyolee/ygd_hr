@@ -18,3 +18,12 @@ export interface ChecklistSubmission {
   all_checked: boolean;
   submitted_at: string;
 }
+
+export interface ChecklistDraft {
+  userId: string;
+  date: string;                   // "YYYY-MM-DD"
+  trigger: "check_in" | "check_out";
+  attendanceLogId: string | null; // check_in만 사용
+  checkedIds: string[];
+  totalItems: number;
+}

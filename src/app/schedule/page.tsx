@@ -31,6 +31,7 @@ interface MySubstituteRequest {
   start_time: string;
   end_time: string;
   work_location: string;
+  cafe_positions: string[];
 }
 
 interface SubstituteRequest {
@@ -202,7 +203,7 @@ function SchedulePageInner() {
       .from("substitute_requests")
       .select(`
         id, reason, status, accepted_by,
-        schedule_slots!substitute_requests_slot_id_fkey(slot_date, start_time, end_time, work_location),
+        schedule_slots!substitute_requests_slot_id_fkey(slot_date, start_time, end_time, work_location, cafe_positions),
         profiles!substitute_requests_accepted_by_fkey(name)
       `)
       .eq("requester_id", profileId)
@@ -219,6 +220,7 @@ function SchedulePageInner() {
         start_time: r.schedule_slots?.start_time ?? "",
         end_time: r.schedule_slots?.end_time ?? "",
         work_location: r.schedule_slots?.work_location ?? "",
+        cafe_positions: r.schedule_slots?.cafe_positions ?? [],
       }))
     );
   }, [profileId, supabase]);
@@ -536,6 +538,11 @@ function SchedulePageInner() {
                             <MapPin className="w-3 h-3" />
                             {LOCATION_LABELS[req.work_location] || req.work_location}
                           </span>
+                          {req.cafe_positions && req.cafe_positions.length > 0 && req.cafe_positions.map((pos) => (
+                            <span key={pos} className="px-2 py-0.5 bg-[#F2F4F6] text-[#4E5968] rounded-md text-[11px] font-bold shrink-0">
+                              {CAFE_POSITION_LABELS[pos] || pos}
+                            </span>
+                          ))}
                           {slotDate && (
                             <span className="text-[13px] font-bold text-[#4E5968]">
                               {format(slotDate, "M월 d일 EEEE", { locale: ko })}
@@ -591,6 +598,11 @@ function SchedulePageInner() {
                             <MapPin className="w-3 h-3" />
                             {LOCATION_LABELS[req.work_location] || req.work_location}
                           </span>
+                          {req.cafe_positions && req.cafe_positions.length > 0 && req.cafe_positions.map((pos) => (
+                            <span key={pos} className="px-2 py-0.5 bg-[#F2F4F6] text-[#4E5968] rounded-md text-[11px] font-bold shrink-0">
+                              {CAFE_POSITION_LABELS[pos] || pos}
+                            </span>
+                          ))}
                           {slotDate && (
                             <span className="text-[13px] font-bold text-[#4E5968]">
                               {format(slotDate, "M월 d일 (EEE)", { locale: ko })}
