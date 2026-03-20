@@ -39,6 +39,56 @@ npm run lint       # ESLint
 
 ---
 
+## 3-1. dev → main 배포 절차 (반드시 준수)
+
+> ⚠️ 이 절차를 건너뛰면 Production DB와 코드 간 불일치가 발생할 수 있다.
+
+```
+[STEP 1] 코드 준비
+  - dev 브랜치 변경사항 모두 커밋 + push
+  - npm run build 빌드 통과 확인
+
+[STEP 2] 신규 마이그레이션 파악
+  - docs/migrations/ 에서 마지막 prod 배포 이후 추가된 NNN_*.sql 파일 목록 확인
+  - 각 마이그레이션의 Production 적용 여부 확인
+    (Production DB에 해당 컬럼/테이블/정책 존재 여부 쿼리)
+
+[STEP 3] Production DB 마이그레이션 실행
+  - source .env.local 로 토큰 로드
+  - 신규 마이그레이션을 번호 순서대로 Production에 실행
+  - 각 실행 후 검증 쿼리로 적용 확인
+
+[STEP 4] dev → main 머지 & push
+  - git checkout main && git pull origin main
+  - git merge dev --no-edit
+  - git push origin main
+
+[STEP 5] Dev / Production 싱크 검증
+  1. 테이블 목록 일치 확인
+     SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename;
+  2. 핵심 테이블 컬럼 일치 확인
+  3. RLS 정책 전체 목록 일치 확인
+     SELECT tablename, policyname, cmd FROM pg_policies WHERE schemaname='public' ORDER BY tablename, cmd, policyname;
+  4. Realtime publication 테이블 확인
+     SELECT tablename FROM pg_publication_tables WHERE pubname='supabase_realtime';
+  5. 데이터 무결성 확인 (필요 시)
+```
+
+### Production 마이그레이션 실행 명령어
+
+```bash
+source .env.local
+
+curl -s -X POST "https://api.supabase.com/v1/projects/ymvdjxzkjodasctktunh/database/query" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "SQL HERE"}'
+```
+
+> Production 마이그레이션은 Claude Code가 직접 실행한다. `SUPABASE_ACCESS_TOKEN` 하나로 Dev/Prod 모두 접근 가능.
+
+---
+
 ## 4. DB 작업 방식
 
 psql 직접 연결 불가. **Supabase Management API**로 SQL 실행.
@@ -54,7 +104,7 @@ curl -s -X POST "https://api.supabase.com/v1/projects/aayedfstvegiswgjwcuw/datab
   -H "Content-Type: application/json" \
   -d '{"query": "SQL HERE"}'
 
-# 🚫 Production — 절대 직접 실행 금지 (배포 시 사용자가 직접 승인 후 실행)
+# ✅ Production (배포 시 — 섹션 3-1 절차에 따라 실행)
 # curl -s -X POST "https://api.supabase.com/v1/projects/ymvdjxzkjodasctktunh/database/query" \
 ```
 
@@ -67,7 +117,7 @@ curl -s -X POST "https://api.supabase.com/v1/projects/aayedfstvegiswgjwcuw/datab
 4. Dev에서 검증 SQL 실행
 5. docs/db-issues/NNN-제목.md 결과 기록
 6. docs/schema.md 갱신
-7. Production 반영은 배포 시 사용자가 직접 승인 후 실행
+7. Production 반영은 배포 시 섹션 3-1 절차에 따라 Claude Code가 직접 실행
 ```
 
 ### ⚠️ Storage 버킷 생성 시 필수 체크리스트
