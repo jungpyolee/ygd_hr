@@ -12,22 +12,38 @@ const LOCATION_COLORS: Record<string, string> = {
   catering: "#F59E0B",
 };
 
-interface ScheduleSlot {
+export interface ScheduleSlot {
   slot_date: string;
   start_time: string;
   end_time: string;
   work_location: string;
 }
 
-export default function WeeklyScheduleCard() {
+interface Props {
+  slots?: ScheduleSlot[];
+  loading?: boolean;
+}
+
+export default function WeeklyScheduleCard({ slots: propSlots, loading: propLoading }: Props = {}) {
   const supabase = useMemo(() => createClient(), []);
-  const [slots, setSlots] = useState<ScheduleSlot[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [slots, setSlots] = useState<ScheduleSlot[]>(propSlots ?? []);
+  const [loading, setLoading] = useState(propLoading ?? true);
 
   const weekDays = ["월", "화", "수", "목", "금", "토", "일"];
   const todayIndex = (new Date().getDay() + 6) % 7;
 
+  // propSlots가 바뀌면 동기화
   useEffect(() => {
+    if (propSlots !== undefined) {
+      setSlots(propSlots);
+      setLoading(false);
+    }
+  }, [propSlots]);
+
+  useEffect(() => {
+    // props로 데이터가 제공된 경우 내부 fetch 스킵
+    if (propSlots !== undefined) return;
+
     const fetchWeeklySchedule = async () => {
       const {
         data: { user },
@@ -39,33 +55,26 @@ export default function WeeklyScheduleCard() {
       const weekStartStr = format(weekStartSun, "yyyy-MM-dd");
       const weekEndStr = format(weekEndSun, "yyyy-MM-dd");
 
-      const { data: wsData } = await supabase
-        .from("weekly_schedules")
-        .select("id")
-        .eq("status", "confirmed")
-        .gte("week_start", weekStartStr)
-        .lte("week_start", weekEndStr);
+      const { data: slotsData } = await supabase
+        .from("schedule_slots")
+        .select("slot_date, start_time, end_time, work_location, weekly_schedules!inner(status)")
+        .eq("profile_id", user.id)
+        .eq("status", "active")
+        .eq("weekly_schedules.status", "confirmed")
+        .gte("slot_date", weekStartStr)
+        .lte("slot_date", weekEndStr)
+        .order("slot_date");
 
-      if (wsData && wsData.length > 0) {
-        const wsIds = wsData.map((ws: { id: string }) => ws.id);
-        const { data: slotsData } = await supabase
-          .from("schedule_slots")
-          .select("slot_date, start_time, end_time, work_location")
-          .eq("profile_id", user.id)
-          .eq("status", "active")
-          .in("weekly_schedule_id", wsIds)
-          .gte("slot_date", weekStartStr)
-          .lte("slot_date", weekEndStr)
-          .order("slot_date");
-
-        setSlots((slotsData as ScheduleSlot[]) || []);
-      }
-
+      setSlots(
+        ((slotsData ?? []) as Array<ScheduleSlot & { weekly_schedules: unknown }>).map(
+          ({ weekly_schedules: _ws, ...rest }) => rest as ScheduleSlot
+        )
+      );
       setLoading(false);
     };
 
     fetchWeeklySchedule();
-  }, [supabase]);
+  }, [supabase, propSlots]);
 
   const slotsByDay = useMemo(() => {
     const map: Record<number, ScheduleSlot[]> = {};

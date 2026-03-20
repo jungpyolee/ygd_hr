@@ -6,14 +6,32 @@ import { useRouter } from "next/navigation";
 import { Megaphone, Pin, ChevronRight } from "lucide-react";
 import type { Announcement } from "@/types/announcement";
 
-export default function AnnouncementBanner() {
+interface Props {
+  items?: Announcement[];
+  readIds?: Set<string>;
+  loading?: boolean;
+}
+
+export default function AnnouncementBanner({ items: propItems, readIds: propReadIds, loading: propLoading }: Props = {}) {
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
-  const [items, setItems] = useState<Announcement[]>([]);
-  const [readIds, setReadIds] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<Announcement[]>(propItems ?? []);
+  const [readIds, setReadIds] = useState<Set<string>>(propReadIds ?? new Set());
+  const [loading, setLoading] = useState(propLoading ?? true);
+
+  // propItems가 바뀌면 동기화
+  useEffect(() => {
+    if (propItems !== undefined) {
+      setItems(propItems);
+      setReadIds(propReadIds ?? new Set());
+      setLoading(false);
+    }
+  }, [propItems, propReadIds]);
 
   useEffect(() => {
+    // props로 데이터가 제공된 경우 내부 fetch 스킵
+    if (propItems !== undefined) return;
+
     const fetchData = async () => {
       const {
         data: { user },
@@ -39,7 +57,7 @@ export default function AnnouncementBanner() {
       setLoading(false);
     };
     fetchData();
-  }, []);
+  }, [supabase, propItems]);
 
   const unreadCount = items.filter((i) => !readIds.has(i.id)).length;
 

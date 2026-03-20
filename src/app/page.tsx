@@ -14,7 +14,7 @@ import {
   Info,
 } from "lucide-react";
 import dynamic from "next/dynamic";
-import WeeklyScheduleCard from "@/components/WeeklyScheduleCard";
+import WeeklyScheduleCard, { type ScheduleSlot } from "@/components/WeeklyScheduleCard";
 import AnnouncementBanner from "@/components/AnnouncementBanner";
 import OnboardingFunnel from "@/components/OnboardingFunnel";
 import AttendanceCard from "@/components/AttendanceCard";
@@ -23,7 +23,8 @@ import MyInfoModal from "@/components/MyInfoModal";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
 import { useRouter } from "next/navigation";
 import { useGeolocation } from "@/lib/hooks/useGeolocation";
-import { format } from "date-fns";
+import { format, startOfWeek, addDays } from "date-fns";
+import type { Announcement } from "@/types/announcement";
 
 interface TodaySlot {
   id: string;
@@ -69,6 +70,10 @@ export default function HomePage() {
   const [lastLog, setLastLog] = useState<any>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [todaySlots, setTodaySlots] = useState<TodaySlot[]>([]);
+  const [weeklySlots, setWeeklySlots] = useState<ScheduleSlot[]>([]);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [announcementReadIds, setAnnouncementReadIds] = useState<Set<string>>(new Set());
+  const [announcementsLoading, setAnnouncementsLoading] = useState(true);
   // 알림 관련 상태
   const [notis, setNotis] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -87,25 +92,33 @@ export default function HomePage() {
   // 2. 전체 데이터 Fetch (온보딩 여부 포함)
   const fetchAllData = async () => {
     setLoading(true);
+    setAnnouncementsLoading(true);
     const {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) {
       setLoading(false);
+      setAnnouncementsLoading(false);
       return;
     }
 
     const todayStr = format(new Date(), "yyyy-MM-dd");
-    const weekAgo = new Date();
-    weekAgo.setDate(weekAgo.getDate() - 7);
 
-    // 독립적인 쿼리 병렬 실행
+    const weekStartSun = startOfWeek(new Date(), { weekStartsOn: 0 });
+    const weekEndSun = addDays(weekStartSun, 6);
+    const weekStartStr = format(weekStartSun, "yyyy-MM-dd");
+    const weekEndStr = format(weekEndSun, "yyyy-MM-dd");
+
+    // 모든 쿼리 병렬 실행
     const [
       { data: profileData },
       { data: storeData },
       { data: logData },
-      { data: wsData },
+      { data: todaySlotsData },
+      { data: weeklySlotsData },
       { data: notisData },
+      { data: announcementsData },
+      { data: readsData },
     ] = await Promise.all([
       supabase.from("profiles").select("*").eq("id", user.id).single(),
       supabase.from("stores").select("*"),
@@ -116,17 +129,40 @@ export default function HomePage() {
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
+      // 오늘 슬롯 — weekly_schedules inner join으로 confirmed 필터
       supabase
-        .from("weekly_schedules")
-        .select("id")
-        .eq("status", "confirmed")
-        .gte("week_start", format(weekAgo, "yyyy-MM-dd")),
+        .from("schedule_slots")
+        .select("id, slot_date, start_time, end_time, work_location, cafe_positions, notes, weekly_schedules!inner(status)")
+        .eq("profile_id", user.id)
+        .eq("slot_date", todayStr)
+        .eq("status", "active")
+        .eq("weekly_schedules.status", "confirmed"),
+      // 이번 주 슬롯 (WeeklyScheduleCard용)
+      supabase
+        .from("schedule_slots")
+        .select("slot_date, start_time, end_time, work_location, weekly_schedules!inner(status)")
+        .eq("profile_id", user.id)
+        .eq("status", "active")
+        .eq("weekly_schedules.status", "confirmed")
+        .gte("slot_date", weekStartStr)
+        .lte("slot_date", weekEndStr)
+        .order("slot_date"),
       supabase
         .from("notifications")
         .select("*")
         .eq("profile_id", user.id)
         .order("created_at", { ascending: false })
         .limit(15),
+      supabase
+        .from("announcements")
+        .select("id, title, is_pinned, created_at, content")
+        .order("is_pinned", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(3),
+      supabase
+        .from("announcement_reads")
+        .select("announcement_id")
+        .eq("profile_id", user.id),
     ]);
 
     // 프로필 확인 (온보딩 탔는지 체크)
@@ -171,18 +207,26 @@ export default function HomePage() {
       setUnreadCount(notisData.filter((n: any) => !n.is_read).length);
     }
 
-    // 오늘 스케줄 슬롯 (weekly_schedules ID 필요 — 별도 처리)
-    if (wsData && wsData.length > 0) {
-      const wsIds = wsData.map((ws: { id: string }) => ws.id);
-      const { data: slotsData } = await supabase
-        .from("schedule_slots")
-        .select("*")
-        .eq("profile_id", user.id)
-        .eq("slot_date", todayStr)
-        .eq("status", "active")
-        .in("weekly_schedule_id", wsIds);
-      setTodaySlots((slotsData as TodaySlot[]) || []);
-    }
+    // 오늘 슬롯 — weekly_schedules 필드 제거 후 TodaySlot으로 캐스팅
+    setTodaySlots(
+      ((todaySlotsData ?? []) as Array<TodaySlot & { weekly_schedules: unknown }>).map(
+        ({ weekly_schedules: _ws, ...rest }) => rest as TodaySlot
+      )
+    );
+
+    // 주간 슬롯 — weekly_schedules 필드 제거 후 ScheduleSlot으로 캐스팅
+    setWeeklySlots(
+      ((weeklySlotsData ?? []) as Array<ScheduleSlot & { weekly_schedules: unknown }>).map(
+        ({ weekly_schedules: _ws, ...rest }) => rest as ScheduleSlot
+      )
+    );
+
+    // 공지사항
+    setAnnouncements((announcementsData as Announcement[]) ?? []);
+    setAnnouncementReadIds(
+      new Set((readsData ?? []).map((r: { announcement_id: string }) => r.announcement_id))
+    );
+    setAnnouncementsLoading(false);
 
     setLoading(false);
   };
@@ -431,7 +475,11 @@ export default function HomePage() {
           onFetchForAttendance={fetchForAttendance}
         />
 
-        <AnnouncementBanner />
+        <AnnouncementBanner
+          items={announcements}
+          readIds={announcementReadIds}
+          loading={announcementsLoading}
+        />
 
         {/* 오늘 스케줄 위젯 */}
         {todaySlots.length > 0 && (
@@ -480,7 +528,7 @@ export default function HomePage() {
           </section>
         )}
 
-        <WeeklyScheduleCard />
+        <WeeklyScheduleCard slots={weeklySlots} loading={loading} />
 
         {/* 레시피 바로가기 */}
         <button
