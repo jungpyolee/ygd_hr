@@ -3,7 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronDown, Search, X } from "lucide-react";
-import CatDodgeGame from "@/components/CatDodgeGame";
+import dynamic from "next/dynamic";
+
+const CatDodgeGame = dynamic(() => import("@/components/CatDodgeGame"), {
+  ssr: false,
+});
 
 /* ─────────────────────────────────────────────
    고양이 감정 단계 (클릭 0~9 → 10번째 😻 피날레)
@@ -88,6 +92,11 @@ function WalkingCat({ onGameStart }: { onGameStart: () => void }) {
     // 팝 애니메이션
     setPopping(true);
     setTimeout(() => setPopping(false), 350);
+
+    if (n === 9) {
+      // 9번째 클릭에서 미리 로드
+      import("@/components/CatDodgeGame");
+    }
 
     if (n >= 10) {
       phaseRef.current = "hearts";
