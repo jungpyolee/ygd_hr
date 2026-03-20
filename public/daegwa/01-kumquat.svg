@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60">
+  <defs>
+    <radialGradient id="kg" cx="38%" cy="32%" r="65%">
+      <stop offset="0%" stop-color="#FFD060"/>
+      <stop offset="55%" stop-color="#FFA500"/>
+      <stop offset="100%" stop-color="#C86400"/>
+    </radialGradient>
+    <radialGradient id="kg2" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FFB830" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#C86400" stop-opacity="0.4"/>
+    </radialGradient>
+  </defs>
+  <!-- 과일 몸통 -->
+  <ellipse cx="30" cy="34" rx="19" ry="20" fill="url(#kg)"/>
+  <ellipse cx="30" cy="34" rx="19" ry="20" fill="url(#kg2)"/>
+  <!-- 광택 -->
+  <ellipse cx="23" cy="27" rx="6" ry="8" fill="white" opacity="0.28" transform="rotate(-25 23 27)"/>
+  <ellipse cx="20" cy="25" rx="2.5" ry="3.5" fill="white" opacity="0.5" transform="rotate(-25 20 25)"/>
+  <!-- 세로 줄기 무늬 -->
+  <path d="M30 14 Q32 24 30 34 Q28 24 30 14" fill="none" stroke="#C86400" stroke-width="0.8" opacity="0.4"/>
+  <path d="M17 26 Q23 30 30 34 Q23 38 17 42" fill="none" stroke="#C86400" stroke-width="0.6" opacity="0.25"/>
+  <!-- 꼭지 -->
+  <rect x="28.5" y="10" width="3" height="5" rx="1.5" fill="#8B5E0A"/>
+  <!-- 잎 -->
+  <ellipse cx="25" cy="11" rx="6" ry="3.5" fill="#5CAD3C" transform="rotate(-35 25 11)"/>
+  <ellipse cx="35" cy="12" rx="5" ry="3" fill="#4A9430" transform="rotate(30 35 12)"/>
+  <!-- 잎 중심 줄기 -->
+  <line x1="22" y1="13" x2="29" y2="10" stroke="#3A7A22" stroke-width="0.8"/>
+  <line x1="37" y1="14" x2="31" y2="10" stroke="#3A7A22" stroke-width="0.8"/>
+</svg>

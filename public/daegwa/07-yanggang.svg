@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60">
+  <defs>
+    <linearGradient id="yg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#8B2A5A"/>
+      <stop offset="40%" stop-color="#6B1A3A"/>
+      <stop offset="100%" stop-color="#3A0A1A"/>
+    </linearGradient>
+    <linearGradient id="yg2" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#A04070" stop-opacity="0.4"/>
+      <stop offset="50%" stop-color="#C06080" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#A04070" stop-opacity="0.4"/>
+    </linearGradient>
+  </defs>
+  <!-- 양갱 직사각형 -->
+  <rect x="7" y="14" width="46" height="34" rx="5" fill="url(#yg)"/>
+  <!-- 윗면 (입체감) -->
+  <rect x="7" y="14" width="46" height="7" rx="5" fill="#9A3060" opacity="0.7"/>
+  <rect x="7" y="18" width="46" height="3" fill="#9A3060" opacity="0.4"/>
+  <!-- 매끄러운 표면 광택 -->
+  <rect x="7" y="14" width="46" height="34" rx="5" fill="url(#yg2)"/>
+  <!-- 메인 광택 하이라이트 -->
+  <ellipse cx="25" cy="20" rx="12" ry="4" fill="white" opacity="0.15" transform="rotate(-5 25 20)"/>
+  <ellipse cx="20" cy="19" rx="5" ry="2" fill="white" opacity="0.2"/>
+  <!-- 팥 알갱이들 (작은 점) -->
+  <circle cx="16" cy="30" r="1.5" fill="#4A0020" opacity="0.7"/>
+  <circle cx="22" cy="36" r="1.8" fill="#4A0020" opacity="0.7"/>
+  <circle cx="30" cy="28" r="1.5" fill="#4A0020" opacity="0.7"/>
+  <circle cx="38" cy="34" r="1.8" fill="#4A0020" opacity="0.7"/>
+  <circle cx="44" cy="28" r="1.5" fill="#4A0020" opacity="0.7"/>
+  <circle cx="26" cy="42" r="1.5" fill="#4A0020" opacity="0.6"/>
+  <circle cx="35" cy="42" r="1.2" fill="#4A0020" opacity="0.6"/>
+  <!-- 테두리 -->
+  <rect x="7" y="14" width="46" height="34" rx="5" fill="none" stroke="#6A1A3A" stroke-width="1"/>
+</svg>

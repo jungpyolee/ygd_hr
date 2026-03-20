@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60">
+  <defs>
+    <radialGradient id="cg" cx="42%" cy="38%" r="65%">
+      <stop offset="0%" stop-color="#C88A3A"/>
+      <stop offset="55%" stop-color="#9A5810"/>
+      <stop offset="100%" stop-color="#5A2E00"/>
+    </radialGradient>
+    <radialGradient id="cg2" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#5A2E00" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#2A0A00" stop-opacity="0.6"/>
+    </radialGradient>
+  </defs>
+  <!-- 밤 몸통 (약간 삼각형에 가까운 둥근 형태) -->
+  <path d="M30 9 Q50 16 51 36 Q50 50 30 54 Q10 50 9 36 Q10 16 30 9Z" fill="url(#cg)"/>
+  <path d="M30 9 Q50 16 51 36 Q50 50 30 54 Q10 50 9 36 Q10 16 30 9Z" fill="url(#cg2)"/>
+  <!-- 뾰족한 위 부분 (밤 특유의 형태) -->
+  <path d="M30 9 Q36 8 38 12 Q34 11 30 9Z" fill="#8B5015" opacity="0.6"/>
+  <path d="M30 9 Q24 8 22 12 Q26 11 30 9Z" fill="#8B5015" opacity="0.6"/>
+  <!-- 조림 윤기 (꿀 글레이즈) -->
+  <path d="M30 9 Q50 16 51 36 Q50 50 30 54 Q10 50 9 36 Q10 16 30 9Z" fill="none" stroke="#D49030" stroke-width="1" opacity="0.5"/>
+  <!-- 윤기 광택 -->
+  <ellipse cx="23" cy="22" rx="8" ry="6" fill="white" opacity="0.22" transform="rotate(-20 23 22)"/>
+  <ellipse cx="20" cy="20" rx="4" ry="3" fill="white" opacity="0.35" transform="rotate(-20 20 20)"/>
+  <!-- 조림 결 (세로줄) -->
+  <path d="M24 12 Q22 30 24 50" stroke="#7A4008" stroke-width="0.8" fill="none" opacity="0.3"/>
+  <path d="M36 12 Q38 30 36 50" stroke="#7A4008" stroke-width="0.8" fill="none" opacity="0.3"/>
+  <!-- 글레이즈 방울 -->
+  <path d="M38 46 Q40 51 38 55" stroke="#C07820" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.7"/>
+  <ellipse cx="38" cy="56" rx="2" ry="1.5" fill="#C07820" opacity="0.7"/>
+</svg>

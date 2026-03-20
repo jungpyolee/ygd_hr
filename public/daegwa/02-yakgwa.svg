@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60">
+  <defs>
+    <linearGradient id="yw" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E8A030"/>
+      <stop offset="50%" stop-color="#C4740A"/>
+      <stop offset="100%" stop-color="#8B4A00"/>
+    </linearGradient>
+    <linearGradient id="yw2" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#F0C060" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#8B4A00" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <!-- 약과 마름모 몸통 -->
+  <path d="M30 6 L52 30 L30 54 L8 30 Z" fill="url(#yw)"/>
+  <path d="M30 6 L52 30 L30 54 L8 30 Z" fill="url(#yw2)"/>
+  <!-- 격자 무늬 (전통 약과 문양) -->
+  <path d="M30 6 L52 30 M30 6 L8 30" stroke="#7A3A00" stroke-width="1.2" opacity="0.5"/>
+  <path d="M30 54 L52 30 M30 54 L8 30" stroke="#7A3A00" stroke-width="1.2" opacity="0.5"/>
+  <path d="M19 18 L41 18 M19 42 L41 42" stroke="#7A3A00" stroke-width="0.8" opacity="0.35"/>
+  <path d="M14 24 L46 24 M14 36 L46 36" stroke="#7A3A00" stroke-width="0.8" opacity="0.3"/>
+  <!-- 꿀 광택 -->
+  <ellipse cx="26" cy="22" rx="7" ry="5" fill="white" opacity="0.18" transform="rotate(-45 26 22)"/>
+  <!-- 중앙 꽃무늬 -->
+  <circle cx="30" cy="30" r="5" fill="#8B4A00" opacity="0.5"/>
+  <circle cx="30" cy="30" r="3" fill="#E8A030" opacity="0.6"/>
+  <!-- 꿀 드리핑 -->
+  <path d="M40 42 Q42 48 40 52" stroke="#D4860A" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.8"/>
+  <ellipse cx="40" cy="53" rx="2" ry="1.5" fill="#D4860A" opacity="0.8"/>
+</svg>

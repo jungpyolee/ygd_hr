@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60">
+  <defs>
+    <linearGradient id="og" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF8090"/>
+      <stop offset="50%" stop-color="#D4304A"/>
+      <stop offset="100%" stop-color="#8B1020"/>
+    </linearGradient>
+    <linearGradient id="og2" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FF9AB0" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#8B1020" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <!-- 오미자편 마름모 형태 (젤리) -->
+  <path d="M30 7 L53 30 L30 53 L7 30 Z" rx="4" fill="url(#og)"/>
+  <!-- 투명한 젤리 표면 효과 -->
+  <path d="M30 7 L53 30 L30 53 L7 30 Z" fill="url(#og2)"/>
+  <!-- 상단 광택 면 -->
+  <path d="M30 7 L53 30 L48 25 L30 12 L12 25 L7 30 Z" fill="#FF9AB0" opacity="0.3"/>
+  <!-- 메인 광택 -->
+  <ellipse cx="24" cy="22" rx="9" ry="6" fill="white" opacity="0.3" transform="rotate(-45 24 22)"/>
+  <ellipse cx="21" cy="20" rx="4" ry="2.5" fill="white" opacity="0.45" transform="rotate(-45 21 20)"/>
+  <!-- 오미자 씨 (작은 타원형) -->
+  <ellipse cx="30" cy="28" rx="2" ry="3" fill="#8B1020" opacity="0.5" transform="rotate(15 30 28)"/>
+  <ellipse cx="24" cy="33" rx="1.8" ry="2.8" fill="#8B1020" opacity="0.4" transform="rotate(-10 24 33)"/>
+  <ellipse cx="36" cy="33" rx="1.8" ry="2.8" fill="#8B1020" opacity="0.4" transform="rotate(20 36 33)"/>
+  <!-- 반투명 젤리 느낌의 테두리 -->
+  <path d="M30 7 L53 30 L30 53 L7 30 Z" fill="none" stroke="#C02040" stroke-width="1.5" opacity="0.5"/>
+</svg>
