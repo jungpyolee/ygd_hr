@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
   Users,
   UserCheck,
@@ -42,7 +42,7 @@ const LOCATION_COLORS: Record<string, string> = { cafe: "#3182F6", factory: "#00
 
 export default function AdminDashboardPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   const [stats, setStats] = useState({
     workingNow: 0,
@@ -75,9 +75,13 @@ export default function AdminDashboardPage() {
     const todayStr = format(new Date(), "yyyy-MM-dd");
 
     // 1. 모든 직원의 마지막 근태 기록 + 프로필 조인
+    // 최근 30일로 범위 제한 (유저별 최신 기록 파악용 — 전체 이력 로딩 방지)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const { data: latestLogs } = await supabase
       .from("attendance_logs")
       .select(`profile_id, type, created_at, profiles(name, phone, color_hex)`)
+      .gte("created_at", thirtyDaysAgo.toISOString())
       .order("created_at", { ascending: false });
 
     // 2. 전체 직원 서류 정보
@@ -146,10 +150,13 @@ export default function AdminDashboardPage() {
     const now = new Date();
 
     // Fetch confirmed weekly schedules for today
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
     const { data: wsData } = await supabase
       .from("weekly_schedules")
       .select("id")
-      .eq("status", "confirmed");
+      .eq("status", "confirmed")
+      .gte("week_start", format(weekAgo, "yyyy-MM-dd"));
 
     if (!wsData || wsData.length === 0) return;
     const wsIds = wsData.map((ws: { id: string }) => ws.id);

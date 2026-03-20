@@ -81,7 +81,7 @@ export default function OnboardingFunnel({ onComplete }: OnboardingProps) {
           healthUrl = await uploadToStorage(healthCert, "health", user.id);
 
         // DB에 유저 정보와 파일 경로 저장
-        await supabase
+        const { error: updateError } = await supabase
           .from("profiles")
           .update({
             name: name.trim(),
@@ -90,6 +90,8 @@ export default function OnboardingFunnel({ onComplete }: OnboardingProps) {
             health_cert_url: healthUrl,
           })
           .eq("id", user.id);
+
+        if (updateError) throw updateError;
 
         await sendNotification({
           target_role: "admin",
@@ -100,9 +102,11 @@ export default function OnboardingFunnel({ onComplete }: OnboardingProps) {
         });
       } catch (error) {
         console.error("업로드 중 에러 발생:", error);
-        toast.error("서류 업로드에 실패했어요", {
-          description: "잠시 후 다시 시도하거나, [내 정보]에서 다시 등록해 주세요.",
+        toast.error("저장에 실패했어요", {
+          description: "잠시 후 다시 시도해 주세요.",
         });
+        setLoading(false);
+        return;
       }
     }
 

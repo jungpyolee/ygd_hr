@@ -52,7 +52,7 @@ export function useGeolocation() {
         },
         ({ code }) => {
           // code 1: PERMISSION_DENIED, code 2: POSITION_UNAVAILABLE, code 3: TIMEOUT
-          const status: GeoStatus = code === 1 ? "denied" : "timeout";
+          const status: GeoStatus = code === 1 ? "denied" : code === 2 ? "unavailable" : "timeout";
           const s: GeoState = { status };
           setState(s);
           if (inFlightRef.current === p) inFlightRef.current = null;
@@ -120,7 +120,7 @@ export function useGeolocation() {
           resolve(s);
         },
         ({ code }) => {
-          const status: GeoStatus = code === 1 ? "denied" : "timeout";
+          const status: GeoStatus = code === 1 ? "denied" : code === 2 ? "unavailable" : "timeout";
           const s: GeoState = { status };
           setState(s);
           resolve(s);

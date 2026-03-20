@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase";
 import {
   UserCircle,
@@ -74,7 +74,7 @@ export default function HomePage() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNoti, setShowNoti] = useState(false);
   const notiRef = useRef<HTMLDivElement>(null);
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
 
   // 위치 훅 — 5초 타임아웃, 45초 캐시(표시용), 권한 변경 감시 포함
@@ -107,22 +107,6 @@ export default function HomePage() {
       setNeedsOnboarding(false);
       setProfile(profileData);
       fetchNotis(user.id);
-
-      // 실시간 알림 구독 — 서버 측 filter로 본인 알림만 수신
-      supabase
-        .channel(`employee-notifications-${user.id}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "notifications",
-          },
-          (payload) => {
-            if (payload.new?.profile_id === user.id) fetchNotis(user.id);
-          },
-        )
-        .subscribe();
     }
 
     // 매장 & 최근 로그 가져오기 (목동 매장 제외)
@@ -165,10 +149,14 @@ export default function HomePage() {
     if (user) {
       const todayStr = format(new Date(), "yyyy-MM-dd");
       // Get confirmed weekly schedules covering today
+      // 이번 주 ±1주 범위만 조회 (전체 이력 로딩 방지)
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
       const { data: wsData } = await supabase
         .from("weekly_schedules")
         .select("id")
-        .eq("status", "confirmed");
+        .eq("status", "confirmed")
+        .gte("week_start", format(weekAgo, "yyyy-MM-dd"));
       if (wsData && wsData.length > 0) {
         const wsIds = wsData.map((ws: { id: string }) => ws.id);
         const { data: slotsData } = await supabase
@@ -256,6 +244,26 @@ export default function HomePage() {
   useEffect(() => {
     fetchAllData();
   }, []);
+
+  // 실시간 알림 구독 — profile 로드 후 채널 등록, cleanup으로 누수 방지
+  useEffect(() => {
+    if (!profile?.id) return;
+    const channel = supabase
+      .channel(`employee-notifications-${profile.id}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "notifications" },
+        (payload) => {
+          if (payload.new?.profile_id === profile.id) fetchNotis(profile.id);
+        },
+      )
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.error("[Realtime] employee-notifications 구독 실패:", status);
+        }
+      });
+    return () => { supabase.removeChannel(channel); };
+  }, [profile?.id, supabase]);
 
   // 💡 온보딩이 필요하면 아까 만든 퍼널만 딱 띄워줍니다!
   if (needsOnboarding) {

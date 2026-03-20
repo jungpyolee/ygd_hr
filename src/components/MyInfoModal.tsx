@@ -59,11 +59,10 @@ export default function MyInfoModal({
         .update({ [column]: filePath })
         .eq("id", profile.id);
       setEditForm((prev: any) => ({ ...prev, [column]: filePath }));
-      toast.success("서류가 업로드되었습니다.");
+      toast.success("서류가 업로드되었어요.");
       onUpdate();
-    } catch (err) {
-      toast.error("서류 업로드에 실패했어요", { description: "잠시 후 다시 시도해주세요" });
-    } finally {
+
+      // 업로드 성공한 경우에만 알림 발송
       if (column === "health_cert_url") {
         await sendNotification({
           target_role: "admin",
@@ -73,6 +72,9 @@ export default function MyInfoModal({
           source_id: profile.id,
         });
       }
+    } catch (err) {
+      toast.error("서류 업로드에 실패했어요", { description: "잠시 후 다시 시도해주세요" });
+    } finally {
       setUploading(false);
     }
   };
@@ -141,10 +143,9 @@ export default function MyInfoModal({
       if (changedLabels.length === 1) {
         summary = changedLabels[0];
       } else {
-        const lastItem = changedLabels.pop(); // 마지막 항목 추출
-        summary = `${changedLabels.join(", ")}${getPostposition(
-          changedLabels[changedLabels.length - 1]
-        )} ${lastItem}`;
+        const lastItem = changedLabels[changedLabels.length - 1];
+        const rest = changedLabels.slice(0, -1);
+        summary = `${rest.join(", ")}${getPostposition(rest[rest.length - 1])} ${lastItem}`;
       }
 
       await sendNotification({

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import { toast } from "sonner";
@@ -49,7 +49,7 @@ export default function AdminLayout({
 
   const router = useRouter();
   const pathname = usePathname();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   // 🚀 외부 영역 클릭 시 알림창 닫기 로직
   useEffect(() => {
@@ -416,11 +416,6 @@ export default function AdminLayout({
                       </button>
                     ))
                   )}
-                </div>
-                <div className="p-3 bg-slate-50 text-center border-t border-slate-50">
-                  <button className="text-[12px] font-bold text-[#8B95A1]">
-                    이전 알림 더보기
-                  </button>
                 </div>
               </div>
             )}
