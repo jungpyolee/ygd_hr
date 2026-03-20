@@ -15,9 +15,7 @@ interface MyInfoModalProps {
   onUpdate: () => void;
 }
 
-type DocKey =
-  | "employment_contract_url"
-  | "health_cert_url";
+type DocKey = "employment_contract_url" | "health_cert_url";
 
 export default function MyInfoModal({
   profile,
@@ -40,7 +38,7 @@ export default function MyInfoModal({
 
   const handleFileUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
-    column: DocKey
+    column: DocKey,
   ) => {
     if (!profile || !e.target.files?.[0]) return;
     const file = e.target.files[0];
@@ -73,7 +71,9 @@ export default function MyInfoModal({
         });
       }
     } catch (err) {
-      toast.error("서류 업로드에 실패했어요", { description: "잠시 후 다시 시도해주세요" });
+      toast.error("서류 업로드에 실패했어요", {
+        description: "잠시 후 다시 시도해주세요",
+      });
     } finally {
       setUploading(false);
     }
@@ -103,7 +103,10 @@ export default function MyInfoModal({
       })
       .eq("id", profile.id);
 
-    if (error) return toast.error("저장에 실패했어요", { description: "잠시 후 다시 시도해주세요" });
+    if (error)
+      return toast.error("저장에 실패했어요", {
+        description: "잠시 후 다시 시도해주세요",
+      });
 
     // 🚀 토스 스타일 UX 라이팅 로직
     const fieldNames: Record<string, string> = {
@@ -188,7 +191,7 @@ export default function MyInfoModal({
               className="w-16 h-16 rounded-full flex items-center justify-center text-white font-bold text-xl shadow-inner"
               style={{ backgroundColor: profile?.color_hex }}
             >
-              {profile?.name.charAt(0)}
+              {profile?.name?.charat(0)}
             </div>
             <div>
               <p className="font-bold text-[#191F28] text-lg">
@@ -335,7 +338,10 @@ export default function MyInfoModal({
 
           {profile?.role === "admin" && (
             <button
-              onClick={() => { onClose(); window.location.href = "/admin"; }}
+              onClick={() => {
+                onClose();
+                window.location.href = "/admin";
+              }}
               className="w-full py-3.5 bg-[#F2F4F6] text-[#4E5968] rounded-2xl font-bold flex items-center justify-center gap-2 active:scale-95 transition-all mt-3"
             >
               <LayoutDashboard className="w-4 h-4" />

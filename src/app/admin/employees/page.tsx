@@ -69,9 +69,7 @@ const CAFE_POSITION_OPTIONS = [
 ];
 
 // 파일 업로드용 키 타입
-type DocKey =
-  | "employment_contract_url"
-  | "health_cert_url";
+type DocKey = "employment_contract_url" | "health_cert_url";
 
 interface WorkDefault {
   id: string;
@@ -99,8 +97,13 @@ export default function AdminEmployeesPage() {
   const [uploading, setUploading] = useState(false);
 
   const [editingEmployee, setEditingEmployee] = useState<Profile | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
-  const [fileDeleteConfirm, setFileDeleteConfirm] = useState<DocKey | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [fileDeleteConfirm, setFileDeleteConfirm] = useState<DocKey | null>(
+    null,
+  );
 
   // 항목이 많으므로 객체 하나로 묶어서 폼 상태 관리
   const [editForm, setEditForm] = useState<Partial<Profile>>({});
@@ -108,10 +111,16 @@ export default function AdminEmployeesPage() {
   // work_defaults 상태
   const [workDefaults, setWorkDefaults] = useState<WorkDefault[]>([]);
   const [workDefaultsLoading, setWorkDefaultsLoading] = useState(false);
-  const [editingDefault, setEditingDefault] = useState<Partial<WorkDefault> & { day_of_week: number } | null>(null);
+  const [editingDefault, setEditingDefault] = useState<
+    (Partial<WorkDefault> & { day_of_week: number }) | null
+  >(null);
   const [savingDefault, setSavingDefault] = useState(false);
 
-  const { data: employees = [], isLoading: loading, mutate: mutateEmployees } = useSWR(
+  const {
+    data: employees = [],
+    isLoading: loading,
+    mutate: mutateEmployees,
+  } = useSWR(
     "admin-employees-list",
     async () => {
       const supabase = createClient();
@@ -122,7 +131,7 @@ export default function AdminEmployeesPage() {
       if (error) return [];
       return (data as Profile[]) ?? [];
     },
-    { dedupingInterval: 60_000, revalidateOnFocus: false }
+    { dedupingInterval: 60_000, revalidateOnFocus: false },
   );
 
   const handleColorChange = async (id: string, newColor: string) => {
@@ -132,11 +141,15 @@ export default function AdminEmployeesPage() {
       .update({ color_hex: newColor })
       .eq("id", id);
     if (error) {
-      toast.error("색상 변경에 실패했어요", { description: "다시 시도해주세요" });
+      toast.error("색상 변경에 실패했어요", {
+        description: "다시 시도해주세요",
+      });
       mutateEmployees(); // 롤백
     } else {
       mutateEmployees((prev) =>
-        prev?.map((emp) => (emp.id === id ? { ...emp, color_hex: newColor } : emp))
+        prev?.map((emp) =>
+          emp.id === id ? { ...emp, color_hex: newColor } : emp,
+        ),
       );
     }
   };
@@ -183,7 +196,14 @@ export default function AdminEmployeesPage() {
     if (!editingDefault || !editingEmployee) return;
     const supabase = createClient();
     setSavingDefault(true);
-    const { day_of_week, start_time, end_time, work_location, cafe_positions, id } = editingDefault;
+    const {
+      day_of_week,
+      start_time,
+      end_time,
+      work_location,
+      cafe_positions,
+      id,
+    } = editingDefault;
     if (!start_time || !end_time || !work_location) {
       toast.error("시작 시간, 종료 시간, 근무 장소를 모두 입력해주세요.");
       setSavingDefault(false);
@@ -191,19 +211,35 @@ export default function AdminEmployeesPage() {
     }
     if (id) {
       // UPDATE
-      const { error } = await supabase.from("work_defaults").update({
-        start_time, end_time, work_location, cafe_positions: cafe_positions || [],
-      }).eq("id", id);
-      if (error) { toast.error("저장에 실패했어요", { description: error.message }); }
-      else { toast.success("기본 근무 패턴을 수정했어요"); }
+      const { error } = await supabase
+        .from("work_defaults")
+        .update({
+          start_time,
+          end_time,
+          work_location,
+          cafe_positions: cafe_positions || [],
+        })
+        .eq("id", id);
+      if (error) {
+        toast.error("저장에 실패했어요", { description: error.message });
+      } else {
+        toast.success("기본 근무 패턴을 수정했어요");
+      }
     } else {
       // INSERT
       const { error } = await supabase.from("work_defaults").insert({
-        profile_id: editingEmployee.id, day_of_week, start_time, end_time,
-        work_location, cafe_positions: cafe_positions || [],
+        profile_id: editingEmployee.id,
+        day_of_week,
+        start_time,
+        end_time,
+        work_location,
+        cafe_positions: cafe_positions || [],
       });
-      if (error) { toast.error("저장에 실패했어요", { description: error.message }); }
-      else { toast.success("기본 근무 패턴을 추가했어요"); }
+      if (error) {
+        toast.error("저장에 실패했어요", { description: error.message });
+      } else {
+        toast.success("기본 근무 패턴을 추가했어요");
+      }
     }
     setSavingDefault(false);
     setEditingDefault(null);
@@ -213,9 +249,13 @@ export default function AdminEmployeesPage() {
   const handleDeleteWorkDefault = async (id: string) => {
     if (!editingEmployee) return;
     const supabase = createClient();
-    const { error } = await supabase.from("work_defaults").delete().eq("id", id);
-    if (error) { toast.error("삭제에 실패했어요"); }
-    else {
+    const { error } = await supabase
+      .from("work_defaults")
+      .delete()
+      .eq("id", id);
+    if (error) {
+      toast.error("삭제에 실패했어요");
+    } else {
       toast.success("기본 근무 패턴을 삭제했어요");
       fetchWorkDefaults(editingEmployee.id);
     }
@@ -237,15 +277,18 @@ export default function AdminEmployeesPage() {
       .update(safeForm)
       .eq("id", editingEmployee.id);
 
-    if (error) return toast.error("수정에 실패했어요", { description: "다시 시도해주세요" });
+    if (error)
+      return toast.error("수정에 실패했어요", {
+        description: "다시 시도해주세요",
+      });
 
     // 즉시 캐시 반영
     mutateEmployees((prev) =>
       prev?.map((emp) =>
         emp.id === editingEmployee.id
           ? ({ ...emp, ...editForm } as Profile)
-          : emp
-      )
+          : emp,
+      ),
     );
     toast.success("정보를 수정했어요");
     setEditingEmployee(null);
@@ -254,7 +297,7 @@ export default function AdminEmployeesPage() {
   // 🚀 프라이빗 파일 업로드 핸들러 (hr-documents 버킷 사용, '경로'만 저장)
   const handleFileUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
-    column: DocKey
+    column: DocKey,
   ) => {
     if (!editingEmployee || !e.target.files || e.target.files.length === 0)
       return;
@@ -284,8 +327,8 @@ export default function AdminEmployeesPage() {
       setEditForm((prev) => ({ ...prev, [column]: filePath }));
       mutateEmployees((prev) =>
         prev?.map((emp) =>
-          emp.id === editingEmployee.id ? { ...emp, [column]: filePath } : emp
-        )
+          emp.id === editingEmployee.id ? { ...emp, [column]: filePath } : emp,
+        ),
       );
 
       toast.success("서류를 업로드했어요");
@@ -345,8 +388,8 @@ export default function AdminEmployeesPage() {
     setEditForm((prev) => ({ ...prev, [column]: null }));
     mutateEmployees((prev) =>
       prev?.map((emp) =>
-        emp.id === editingEmployee.id ? { ...emp, [column]: null } : emp
-      )
+        emp.id === editingEmployee.id ? { ...emp, [column]: null } : emp,
+      ),
     );
     toast.success("서류를 삭제했어요");
   };
@@ -385,7 +428,7 @@ export default function AdminEmployeesPage() {
                     className="w-14 h-14 rounded-full flex items-center justify-center text-[18px] font-bold text-white shadow-sm shrink-0"
                     style={{ backgroundColor: employee.color_hex || "#8B95A1" }}
                   >
-                    {employee.name.charAt(0)}
+                    {employee.name?.charat(0)}
                   </div>
                   <div className="sm:w-[130px]">
                     <div className="flex items-center gap-2 mb-1">
@@ -433,7 +476,9 @@ export default function AdminEmployeesPage() {
                       {employee.account_number && (
                         <button
                           onClick={() => {
-                            navigator.clipboard.writeText(employee.account_number!);
+                            navigator.clipboard.writeText(
+                              employee.account_number!,
+                            );
                             toast.success("계좌번호를 복사했어요");
                           }}
                           className="text-[11px] font-bold text-[#3182F6] bg-[#E8F3FF] hover:bg-[#D0E5FF] px-2 py-0.5 rounded-md transition-colors"
@@ -456,8 +501,8 @@ export default function AdminEmployeesPage() {
                           {isHealthCertExpired
                             ? "(만료)"
                             : employee.health_cert_verified
-                            ? "(확인완료)"
-                            : ""}
+                              ? "(확인완료)"
+                              : ""}
                         </p>
                       ) : (
                         <p className="text-[13px] font-medium text-[#D1D6DB]">
@@ -484,7 +529,7 @@ export default function AdminEmployeesPage() {
                         >
                           <FileCheck className="w-3.5 h-3.5" /> {doc.label}
                         </button>
-                      ) : null
+                      ) : null,
                     )}
                   </div>
                 </div>
@@ -704,7 +749,9 @@ export default function AdminEmployeesPage() {
                       <button
                         key={opt.value}
                         type="button"
-                        onClick={() => handleFormChange("employment_type", opt.value)}
+                        onClick={() =>
+                          handleFormChange("employment_type", opt.value)
+                        }
                         className={`px-4 py-2 rounded-xl text-[13px] font-bold transition-all ${
                           editForm.employment_type === opt.value
                             ? "bg-[#3182F6] text-white"
@@ -720,11 +767,14 @@ export default function AdminEmployeesPage() {
                 {/* 근무 가능 장소 */}
                 <div>
                   <label className="block text-[12px] font-medium text-[#8B95A1] mb-2">
-                    <MapPin className="w-3 h-3 inline mr-1" />근무 가능 장소
+                    <MapPin className="w-3 h-3 inline mr-1" />
+                    근무 가능 장소
                   </label>
                   <div className="flex gap-2 flex-wrap">
                     {WORK_LOCATION_OPTIONS.map((opt) => {
-                      const selected = (editForm.work_locations || []).includes(opt.value);
+                      const selected = (editForm.work_locations || []).includes(
+                        opt.value,
+                      );
                       return (
                         <button
                           key={opt.value}
@@ -760,7 +810,9 @@ export default function AdminEmployeesPage() {
                     </label>
                     <div className="flex gap-2 flex-wrap">
                       {CAFE_POSITION_OPTIONS.map((opt) => {
-                        const selected = (editForm.cafe_positions || []).includes(opt.value);
+                        const selected = (
+                          editForm.cafe_positions || []
+                        ).includes(opt.value);
                         return (
                           <button
                             key={opt.value}
@@ -787,7 +839,8 @@ export default function AdminEmployeesPage() {
                 )}
 
                 {/* 시급 및 보험 유형 (알바만 표시) */}
-                {(editForm.employment_type === "part_time_fixed" || editForm.employment_type === "part_time_daily") && (
+                {(editForm.employment_type === "part_time_fixed" ||
+                  editForm.employment_type === "part_time_daily") && (
                   <>
                     <div>
                       <label className="block text-[12px] font-medium text-[#8B95A1] mb-1">
@@ -797,7 +850,10 @@ export default function AdminEmployeesPage() {
                         type="number"
                         value={editForm.hourly_wage ?? ""}
                         onChange={(e) =>
-                          handleFormChange("hourly_wage", e.target.value ? parseInt(e.target.value) : null)
+                          handleFormChange(
+                            "hourly_wage",
+                            e.target.value ? parseInt(e.target.value) : null,
+                          )
                         }
                         placeholder="예: 9860"
                         className="w-full px-4 py-2.5 bg-[#F9FAFB] border border-slate-200 rounded-xl text-[14px] text-[#191F28] focus:outline-none focus:border-[#3182F6] transition-all"
@@ -815,14 +871,18 @@ export default function AdminEmployeesPage() {
                           <button
                             key={opt.value}
                             type="button"
-                            onClick={() => handleFormChange("insurance_type", opt.value)}
+                            onClick={() =>
+                              handleFormChange("insurance_type", opt.value)
+                            }
                             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold transition-all border ${
                               editForm.insurance_type === opt.value
                                 ? "bg-[#E8F3FF] text-[#3182F6] border-[#3182F6]"
                                 : "bg-[#F2F4F6] text-[#4E5968] border-transparent"
                             }`}
                           >
-                            <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${editForm.insurance_type === opt.value ? "border-[#3182F6]" : "border-[#8B95A1]"}`}>
+                            <span
+                              className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${editForm.insurance_type === opt.value ? "border-[#3182F6]" : "border-[#8B95A1]"}`}
+                            >
                               {editForm.insurance_type === opt.value && (
                                 <span className="w-2 h-2 bg-[#3182F6] rounded-full" />
                               )}
@@ -890,7 +950,7 @@ export default function AdminEmployeesPage() {
                         onChange={(e) =>
                           handleFormChange(
                             "health_cert_verified",
-                            e.target.checked
+                            e.target.checked,
                           )
                         }
                         className="w-4 h-4 rounded text-[#3182F6] focus:ring-[#3182F6] cursor-pointer"
@@ -975,7 +1035,8 @@ export default function AdminEmployeesPage() {
               {/* 5. 기본 근무 패턴 */}
               <section className="space-y-3">
                 <h3 className="text-[15px] font-bold text-[#191F28] flex items-center gap-2">
-                  <Briefcase className="w-4 h-4 text-[#3182F6]" /> 기본 근무 패턴
+                  <Briefcase className="w-4 h-4 text-[#3182F6]" /> 기본 근무
+                  패턴
                 </h3>
                 {workDefaultsLoading ? (
                   <div className="flex justify-center py-4">
@@ -984,33 +1045,64 @@ export default function AdminEmployeesPage() {
                 ) : (
                   <div className="space-y-2">
                     {DAY_LABELS.map((label, dow) => {
-                      const existing = workDefaults.filter((d) => d.day_of_week === dow);
+                      const existing = workDefaults.filter(
+                        (d) => d.day_of_week === dow,
+                      );
                       return (
                         <div key={dow} className="flex items-start gap-3">
-                          <span className="w-6 text-[13px] font-bold text-[#8B95A1] pt-2 shrink-0">{label}</span>
+                          <span className="w-6 text-[13px] font-bold text-[#8B95A1] pt-2 shrink-0">
+                            {label}
+                          </span>
                           <div className="flex-1 space-y-1">
                             {existing.map((wd) => (
-                              <div key={wd.id} className="flex items-center gap-2 bg-[#F2F4F6] rounded-xl px-3 py-2">
+                              <div
+                                key={wd.id}
+                                className="flex items-center gap-2 bg-[#F2F4F6] rounded-xl px-3 py-2"
+                              >
                                 <span className="text-[12px] font-bold text-[#3182F6] bg-[#E8F3FF] px-2 py-0.5 rounded-md">
-                                  {wd.work_location === "cafe" ? "카페" : wd.work_location === "factory" ? "공장" : "케이터링"}
+                                  {wd.work_location === "cafe"
+                                    ? "카페"
+                                    : wd.work_location === "factory"
+                                      ? "공장"
+                                      : "케이터링"}
                                 </span>
                                 <span className="text-[12px] text-[#4E5968] font-medium flex-1">
-                                  {wd.start_time.slice(0, 5)} ~ {wd.end_time.slice(0, 5)}
+                                  {wd.start_time.slice(0, 5)} ~{" "}
+                                  {wd.end_time.slice(0, 5)}
                                 </span>
                                 <button
-                                  onClick={() => setEditingDefault({ ...wd, day_of_week: dow })}
+                                  onClick={() =>
+                                    setEditingDefault({
+                                      ...wd,
+                                      day_of_week: dow,
+                                    })
+                                  }
                                   className="text-[11px] text-[#3182F6] font-bold px-2 py-1 hover:bg-[#E8F3FF] rounded-lg"
-                                >수정</button>
+                                >
+                                  수정
+                                </button>
                                 <button
                                   onClick={() => handleDeleteWorkDefault(wd.id)}
                                   className="text-[11px] text-[#D9480F] font-bold px-2 py-1 hover:bg-[#FFF4E6] rounded-lg"
-                                >삭제</button>
+                                >
+                                  삭제
+                                </button>
                               </div>
                             ))}
                             <button
-                              onClick={() => setEditingDefault({ day_of_week: dow, start_time: "09:00", end_time: "18:00", work_location: "cafe", cafe_positions: [] })}
+                              onClick={() =>
+                                setEditingDefault({
+                                  day_of_week: dow,
+                                  start_time: "09:00",
+                                  end_time: "18:00",
+                                  work_location: "cafe",
+                                  cafe_positions: [],
+                                })
+                              }
                               className="text-[12px] text-[#8B95A1] hover:text-[#3182F6] font-bold px-3 py-1.5 hover:bg-[#F2F4F6] rounded-xl transition-all"
-                            >+ 추가</button>
+                            >
+                              + 추가
+                            </button>
                           </div>
                         </div>
                       );
@@ -1033,64 +1125,120 @@ export default function AdminEmployeesPage() {
       {/* 기본 근무 패턴 편집 바텀시트 */}
       {editingDefault && (
         <div className="fixed inset-0 z-[200] flex items-end justify-center">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setEditingDefault(null)} />
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => setEditingDefault(null)}
+          />
           <div className="relative w-full max-w-md bg-white rounded-t-[28px] px-5 pt-8 pb-10 shadow-2xl animate-in slide-in-from-bottom-4 duration-250">
             <div className="absolute top-3 left-1/2 -translate-x-1/2 w-9 h-1 bg-[#D1D6DB] rounded-full" />
             <h3 className="text-[18px] font-bold text-[#191F28] mb-6">
-              {DAY_LABELS[editingDefault.day_of_week]}요일 근무 패턴 {editingDefault.id ? "수정" : "추가"}
+              {DAY_LABELS[editingDefault.day_of_week]}요일 근무 패턴{" "}
+              {editingDefault.id ? "수정" : "추가"}
             </h3>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[12px] font-medium text-[#8B95A1] mb-1">시작 시간</label>
+                  <label className="block text-[12px] font-medium text-[#8B95A1] mb-1">
+                    시작 시간
+                  </label>
                   <select
                     value={editingDefault.start_time || "09:00"}
-                    onChange={(e) => setEditingDefault((prev) => prev ? { ...prev, start_time: e.target.value } : null)}
+                    onChange={(e) =>
+                      setEditingDefault((prev) =>
+                        prev ? { ...prev, start_time: e.target.value } : null,
+                      )
+                    }
                     className="w-full px-3 py-2.5 bg-[#F9FAFB] border border-slate-200 rounded-xl text-[14px] text-[#191F28] focus:outline-none focus:border-[#3182F6]"
                   >
-                    {generateTimeOptions(7, 21).map((t) => <option key={t} value={t}>{t}</option>)}
+                    {generateTimeOptions(7, 21).map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[12px] font-medium text-[#8B95A1] mb-1">종료 시간</label>
+                  <label className="block text-[12px] font-medium text-[#8B95A1] mb-1">
+                    종료 시간
+                  </label>
                   <select
                     value={editingDefault.end_time || "18:00"}
-                    onChange={(e) => setEditingDefault((prev) => prev ? { ...prev, end_time: e.target.value } : null)}
+                    onChange={(e) =>
+                      setEditingDefault((prev) =>
+                        prev ? { ...prev, end_time: e.target.value } : null,
+                      )
+                    }
                     className="w-full px-3 py-2.5 bg-[#F9FAFB] border border-slate-200 rounded-xl text-[14px] text-[#191F28] focus:outline-none focus:border-[#3182F6]"
                   >
-                    {generateTimeOptions(7, 22).map((t) => <option key={t} value={t}>{t}</option>)}
+                    {generateTimeOptions(7, 22).map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
               <div>
-                <label className="block text-[12px] font-medium text-[#8B95A1] mb-2">근무 장소</label>
+                <label className="block text-[12px] font-medium text-[#8B95A1] mb-2">
+                  근무 장소
+                </label>
                 <div className="flex gap-2">
                   {WORK_LOCATION_OPTIONS.map((opt) => (
                     <button
                       key={opt.value}
                       type="button"
-                      onClick={() => setEditingDefault((prev) => prev ? { ...prev, work_location: opt.value, cafe_positions: opt.value !== "cafe" ? [] : prev.cafe_positions } : null)}
+                      onClick={() =>
+                        setEditingDefault((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                work_location: opt.value,
+                                cafe_positions:
+                                  opt.value !== "cafe"
+                                    ? []
+                                    : prev.cafe_positions,
+                              }
+                            : null,
+                        )
+                      }
                       className={`flex-1 py-2 rounded-xl text-[13px] font-bold transition-all ${editingDefault.work_location === opt.value ? "bg-[#3182F6] text-white" : "bg-[#F2F4F6] text-[#4E5968]"}`}
-                    >{opt.label}</button>
+                    >
+                      {opt.label}
+                    </button>
                   ))}
                 </div>
               </div>
               {editingDefault.work_location === "cafe" && (
                 <div>
-                  <label className="block text-[12px] font-medium text-[#8B95A1] mb-2">카페 포지션</label>
+                  <label className="block text-[12px] font-medium text-[#8B95A1] mb-2">
+                    카페 포지션
+                  </label>
                   <div className="flex gap-2">
                     {CAFE_POSITION_OPTIONS.map((opt) => {
-                      const sel = (editingDefault.cafe_positions || []).includes(opt.value);
+                      const sel = (
+                        editingDefault.cafe_positions || []
+                      ).includes(opt.value);
                       return (
                         <button
                           key={opt.value}
                           type="button"
                           onClick={() => {
                             const cur = editingDefault.cafe_positions || [];
-                            setEditingDefault((prev) => prev ? { ...prev, cafe_positions: sel ? cur.filter((v) => v !== opt.value) : [...cur, opt.value] } : null);
+                            setEditingDefault((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    cafe_positions: sel
+                                      ? cur.filter((v) => v !== opt.value)
+                                      : [...cur, opt.value],
+                                  }
+                                : null,
+                            );
                           }}
                           className={`flex-1 py-2 rounded-xl text-[13px] font-bold transition-all ${sel ? "bg-[#E8F3FF] text-[#3182F6] border border-[#3182F6]" : "bg-[#F2F4F6] text-[#4E5968]"}`}
-                        >{opt.label}</button>
+                        >
+                          {opt.label}
+                        </button>
                       );
                     })}
                   </div>
@@ -1105,7 +1253,10 @@ export default function AdminEmployeesPage() {
               >
                 {savingDefault ? "저장 중..." : "저장하기"}
               </button>
-              <button onClick={() => setEditingDefault(null)} className="w-full h-14 bg-[#F2F4F6] text-[#4E5968] rounded-2xl font-bold text-[16px]">
+              <button
+                onClick={() => setEditingDefault(null)}
+                className="w-full h-14 bg-[#F2F4F6] text-[#4E5968] rounded-2xl font-bold text-[16px]"
+              >
                 취소
               </button>
             </div>

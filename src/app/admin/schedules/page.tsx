@@ -467,7 +467,7 @@ export default function AdminSchedulesPage() {
         slots: slotData,
       };
     },
-    { dedupingInterval: 30_000, revalidateOnFocus: false }
+    { dedupingInterval: 30_000, revalidateOnFocus: false },
   );
 
   // 대기중 대타 요청 수
@@ -481,7 +481,7 @@ export default function AdminSchedulesPage() {
         .eq("status", "pending");
       return count ?? 0;
     },
-    { dedupingInterval: 30_000, revalidateOnFocus: false }
+    { dedupingInterval: 30_000, revalidateOnFocus: false },
   );
 
   // 일간 슬롯
@@ -497,29 +497,27 @@ export default function AdminSchedulesPage() {
         startOfWeek(new Date(dds + "T00:00:00"), { weekStartsOn: 0 }),
         "yyyy-MM-dd",
       );
-      const [{ data: slotData }, { data: wsData }, { data: pData }] = await Promise.all([
-        supabase
-          .from("schedule_slots")
-          .select("*")
-          .eq("slot_date", dds)
-          .neq("status", "cancelled"),
-        supabase
-          .from("weekly_schedules")
-          .select("*")
-          .eq("week_start", dailyWeekStartStr)
-          .maybeSingle(),
-        supabase
-          .from("profiles")
-          .select("id, name, color_hex")
-          .order("name"),
-      ]);
+      const [{ data: slotData }, { data: wsData }, { data: pData }] =
+        await Promise.all([
+          supabase
+            .from("schedule_slots")
+            .select("*")
+            .eq("slot_date", dds)
+            .neq("status", "cancelled"),
+          supabase
+            .from("weekly_schedules")
+            .select("*")
+            .eq("week_start", dailyWeekStartStr)
+            .maybeSingle(),
+          supabase.from("profiles").select("id, name, color_hex").order("name"),
+        ]);
       return {
         dailySlotsData: (slotData as ScheduleSlot[]) || [],
         dailyWeeklySchedule: (wsData as WeeklySchedule) ?? null,
         dailyProfiles: (pData as Profile[]) ?? [],
       };
     },
-    { dedupingInterval: 30_000, revalidateOnFocus: false }
+    { dedupingInterval: 30_000, revalidateOnFocus: false },
   );
 
   // 일간 출근 현황
@@ -552,23 +550,26 @@ export default function AdminSchedulesPage() {
           });
         }
         const entry = map.get(log.profile_id)!;
-        if (log.type === "IN" && !entry.clock_in) entry.clock_in = log.created_at;
+        if (log.type === "IN" && !entry.clock_in)
+          entry.clock_in = log.created_at;
         if (log.type === "OUT") entry.clock_out = log.created_at;
       });
       return Array.from(map.values());
     },
-    { dedupingInterval: 30_000, revalidateOnFocus: false }
+    { dedupingInterval: 30_000, revalidateOnFocus: false },
   );
 
   // 파생 값
-  const profiles = tab === "daily"
-    ? (dailySlotsResult?.dailyProfiles ?? [])
-    : (weeklyData?.profiles ?? []);
+  const profiles =
+    tab === "daily"
+      ? (dailySlotsResult?.dailyProfiles ?? [])
+      : (weeklyData?.profiles ?? []);
   const weeklySchedule = weeklyData?.weeklySchedule ?? null;
   const slots = weeklyData?.slots ?? [];
   const dailySlotsData = dailySlotsResult?.dailySlotsData ?? [];
   const dailyWeeklySchedule = dailySlotsResult?.dailyWeeklySchedule ?? null;
-  const loading = tab === "weekly" ? weeklyLoading : dailySlotsLoading || dailyAttLoading;
+  const loading =
+    tab === "weekly" ? weeklyLoading : dailySlotsLoading || dailyAttLoading;
 
   // 해당 날짜가 확정된 상태인지 — 주간 전체 확정 OR 일간 confirmed_dates 포함
   const isDayConfirmedState = (slotDate: string): boolean => {
@@ -665,7 +666,11 @@ export default function AdminSchedulesPage() {
         return;
       }
       if (isDayConfirmedState(data.slot_date!) && data.profile_id) {
-        const slotDateLabel = format(new Date(data.slot_date! + "T00:00:00"), "M월 d일", { locale: ko });
+        const slotDateLabel = format(
+          new Date(data.slot_date! + "T00:00:00"),
+          "M월 d일",
+          { locale: ko },
+        );
         await supabase.from("notifications").insert({
           profile_id: data.profile_id,
           target_role: "employee",
@@ -695,7 +700,9 @@ export default function AdminSchedulesPage() {
       }
       if (isDayConfirmedState(data.slot_date!) && data.profile_id) {
         const slotDateLabel = data.slot_date
-          ? format(new Date(data.slot_date + "T00:00:00"), "M월 d일", { locale: ko })
+          ? format(new Date(data.slot_date + "T00:00:00"), "M월 d일", {
+              locale: ko,
+            })
           : "";
         const sourceId = weeklySchedule?.id ?? dailyWeeklySchedule?.id ?? wsId;
         await supabase.from("notifications").insert({
@@ -717,8 +724,7 @@ export default function AdminSchedulesPage() {
   const handleDeleteSlot = async (id: string) => {
     const supabase = createClient();
     const deletingSlot =
-      slots.find((s) => s.id === id) ??
-      dailySlotsData.find((s) => s.id === id);
+      slots.find((s) => s.id === id) ?? dailySlotsData.find((s) => s.id === id);
     const { error } = await supabase
       .from("schedule_slots")
       .update({ status: "cancelled" })
@@ -947,7 +953,7 @@ export default function AdminSchedulesPage() {
       .update({
         status: "confirmed",
         published_at: new Date().toISOString(),
-        confirmed_dates: weekDates,  // 주 확정 시 해당 주 전체 날짜 확정
+        confirmed_dates: weekDates, // 주 확정 시 해당 주 전체 날짜 확정
       })
       .eq("id", wsId)
       .eq("status", "draft");
@@ -1040,7 +1046,9 @@ export default function AdminSchedulesPage() {
       await supabase.from("notifications").insert(notifications);
     }
 
-    toast.success(`${format(dailyDate, "M월 d일", { locale: ko })} 스케줄을 확정했어요`);
+    toast.success(
+      `${format(dailyDate, "M월 d일", { locale: ko })} 스케줄을 확정했어요`,
+    );
     mutateDailySlots();
     mutateWeekly();
     setConfirmingDay(false);
@@ -1097,7 +1105,7 @@ export default function AdminSchedulesPage() {
                         backgroundColor: profile.color_hex || "#8B95A1",
                       }}
                     >
-                      {profile.name.charAt(0)}
+                      {profile.name?.charat(0)}
                     </div>
                     <span className="text-[13px] font-bold text-[#191F28] truncate max-w-[60px]">
                       {profile.name}
@@ -1126,18 +1134,19 @@ export default function AdminSchedulesPage() {
                               }}
                             >
                               <div>{LOCATION_LABELS[slot.work_location]}</div>
-                              {slot.cafe_positions && slot.cafe_positions.length > 0 && (
-                                <div className="flex gap-0.5 flex-wrap mt-0.5">
-                                  {slot.cafe_positions.map((pos) => (
-                                    <span
-                                      key={pos}
-                                      className="px-1 py-0.5 bg-white/20 rounded text-[10px] font-bold leading-none"
-                                    >
-                                      {CAFE_POSITION_LABELS[pos] || pos}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
+                              {slot.cafe_positions &&
+                                slot.cafe_positions.length > 0 && (
+                                  <div className="flex gap-0.5 flex-wrap mt-0.5">
+                                    {slot.cafe_positions.map((pos) => (
+                                      <span
+                                        key={pos}
+                                        className="px-1 py-0.5 bg-white/20 rounded text-[10px] font-bold leading-none"
+                                      >
+                                        {CAFE_POSITION_LABELS[pos] || pos}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
                               <div className="opacity-90">
                                 {slot.start_time.slice(0, 5)}~
                                 {slot.end_time.slice(0, 5)}
@@ -1199,206 +1208,213 @@ export default function AdminSchedulesPage() {
             {isDayConfirmed ? "확정됨" : "미확정"}
           </span>
         </div>
-      <div className="overflow-x-auto rounded-[20px] border border-slate-100 bg-white shadow-sm">
-        <div className="min-w-[700px]">
-          {/* 헤더 행 */}
-          <div className="flex bg-[#F9FAFB] border-b border-slate-100">
-            <div className="w-[80px] shrink-0 sticky left-0 z-20 bg-[#F9FAFB] border-r border-slate-100" />
-            {hours.map((h) => (
-              <div
-                key={h}
-                className="flex-1 text-center text-[11px] font-bold text-[#8B95A1] border-l border-slate-100 py-2"
-              >
-                {h}시
-              </div>
-            ))}
-          </div>
-
-          {profiles.map((profile) => {
-            const empSlots = daySlots.filter(
-              (s) => s.profile_id === profile.id,
-            );
-            return (
-              <div
-                key={profile.id}
-                className="flex border-t border-slate-100 relative"
-                style={{ height: "72px" }}
-              >
-                {/* 직원명 — sticky */}
-                <div className="w-[80px] shrink-0 px-2 flex items-center gap-2 sticky left-0 z-10 bg-white border-r border-slate-50">
-                  <div
-                    className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
-                    style={{ backgroundColor: profile.color_hex || "#8B95A1" }}
-                  >
-                    {profile.name.charAt(0)}
-                  </div>
-                  <span className="text-[12px] font-bold text-[#191F28] truncate">
-                    {profile.name}
-                  </span>
+        <div className="overflow-x-auto rounded-[20px] border border-slate-100 bg-white shadow-sm">
+          <div className="min-w-[700px]">
+            {/* 헤더 행 */}
+            <div className="flex bg-[#F9FAFB] border-b border-slate-100">
+              <div className="w-[80px] shrink-0 sticky left-0 z-20 bg-[#F9FAFB] border-r border-slate-100" />
+              {hours.map((h) => (
+                <div
+                  key={h}
+                  className="flex-1 text-center text-[11px] font-bold text-[#8B95A1] border-l border-slate-100 py-2"
+                >
+                  {h}시
                 </div>
-                <div className="flex-1 relative h-[72px]">
-                  <div className="absolute inset-0 flex">
-                    {hours.map((h) => (
-                      <div
-                        key={h}
-                        className="flex-1 border-l border-slate-50 cursor-pointer hover:bg-[#F9FAFB] transition-colors"
-                        onClick={() =>
-                          setEditSlot({
-                            slot: null,
-                            defaultDate: dateStr,
-                            defaultProfileId: profile.id,
-                          })
-                        }
-                      />
-                    ))}
-                  </div>
-                  {empSlots.map((slot) => {
-                    const totalHours = hourEnd - hourStart;
-                    const startH =
-                      parseInt(slot.start_time.split(":")[0]) +
-                      parseInt(slot.start_time.split(":")[1]) / 60;
-                    const endH =
-                      parseInt(slot.end_time.split(":")[0]) +
-                      parseInt(slot.end_time.split(":")[1]) / 60;
-                    const leftPct = ((startH - hourStart) / totalHours) * 100;
-                    const widthPct = ((endH - startH) / totalHours) * 100;
-                    return (
-                      <button
-                        key={slot.id}
-                        onClick={() => setEditSlot({ slot })}
-                        className="absolute rounded-lg text-white text-[11px] font-bold px-2 flex items-center overflow-hidden hover:opacity-80 transition-all"
-                        style={{
-                          top: "6px",
-                          height: "26px",
-                          left: `${leftPct}%`,
-                          width: `${widthPct}%`,
-                          backgroundColor: LOCATION_COLORS[slot.work_location],
-                          minWidth: "4px",
-                        }}
-                      >
-                        <span className="truncate">
-                          {slot.cafe_positions && slot.cafe_positions.length > 0
-                            ? slot.cafe_positions.map((p) => CAFE_POSITION_LABELS[p] || p).join("·") + " "
-                            : ""}
-                          {slot.start_time.slice(0, 5)}~
-                          {slot.end_time.slice(0, 5)}
-                        </span>
-                      </button>
-                    );
-                  })}
-                  {/* 근태 레이어 */}
-                  {(() => {
-                    const attLog = dailyAttLogs.find(
-                      (a) => a.profile_id === profile.id,
-                    );
-                    if (empSlots.length === 0) return null;
-                    const firstSlot = empSlots[0];
-                    const isPast =
-                      dailyDate < new Date(new Date().setHours(0, 0, 0, 0));
+              ))}
+            </div>
 
-                    if (!attLog?.clock_in && isPast) {
+            {profiles.map((profile) => {
+              const empSlots = daySlots.filter(
+                (s) => s.profile_id === profile.id,
+              );
+              return (
+                <div
+                  key={profile.id}
+                  className="flex border-t border-slate-100 relative"
+                  style={{ height: "72px" }}
+                >
+                  {/* 직원명 — sticky */}
+                  <div className="w-[80px] shrink-0 px-2 flex items-center gap-2 sticky left-0 z-10 bg-white border-r border-slate-50">
+                    <div
+                      className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
+                      style={{
+                        backgroundColor: profile.color_hex || "#8B95A1",
+                      }}
+                    >
+                      {profile.name?.charat(0)}
+                    </div>
+                    <span className="text-[12px] font-bold text-[#191F28] truncate">
+                      {profile.name}
+                    </span>
+                  </div>
+                  <div className="flex-1 relative h-[72px]">
+                    <div className="absolute inset-0 flex">
+                      {hours.map((h) => (
+                        <div
+                          key={h}
+                          className="flex-1 border-l border-slate-50 cursor-pointer hover:bg-[#F9FAFB] transition-colors"
+                          onClick={() =>
+                            setEditSlot({
+                              slot: null,
+                              defaultDate: dateStr,
+                              defaultProfileId: profile.id,
+                            })
+                          }
+                        />
+                      ))}
+                    </div>
+                    {empSlots.map((slot) => {
+                      const totalHours = hourEnd - hourStart;
+                      const startH =
+                        parseInt(slot.start_time.split(":")[0]) +
+                        parseInt(slot.start_time.split(":")[1]) / 60;
+                      const endH =
+                        parseInt(slot.end_time.split(":")[0]) +
+                        parseInt(slot.end_time.split(":")[1]) / 60;
+                      const leftPct = ((startH - hourStart) / totalHours) * 100;
+                      const widthPct = ((endH - startH) / totalHours) * 100;
+                      return (
+                        <button
+                          key={slot.id}
+                          onClick={() => setEditSlot({ slot })}
+                          className="absolute rounded-lg text-white text-[11px] font-bold px-2 flex items-center overflow-hidden hover:opacity-80 transition-all"
+                          style={{
+                            top: "6px",
+                            height: "26px",
+                            left: `${leftPct}%`,
+                            width: `${widthPct}%`,
+                            backgroundColor:
+                              LOCATION_COLORS[slot.work_location],
+                            minWidth: "4px",
+                          }}
+                        >
+                          <span className="truncate">
+                            {slot.cafe_positions &&
+                            slot.cafe_positions.length > 0
+                              ? slot.cafe_positions
+                                  .map((p) => CAFE_POSITION_LABELS[p] || p)
+                                  .join("·") + " "
+                              : ""}
+                            {slot.start_time.slice(0, 5)}~
+                            {slot.end_time.slice(0, 5)}
+                          </span>
+                        </button>
+                      );
+                    })}
+                    {/* 근태 레이어 */}
+                    {(() => {
+                      const attLog = dailyAttLogs.find(
+                        (a) => a.profile_id === profile.id,
+                      );
+                      if (empSlots.length === 0) return null;
+                      const firstSlot = empSlots[0];
+                      const isPast =
+                        dailyDate < new Date(new Date().setHours(0, 0, 0, 0));
+
+                      if (!attLog?.clock_in && isPast) {
+                        return (
+                          <div
+                            className="absolute flex items-center px-2 rounded-md text-[10px] font-bold text-[#E03131]"
+                            style={{
+                              bottom: "6px",
+                              height: "22px",
+                              left: "4px",
+                              right: "4px",
+                              backgroundColor: "#FFF5F5",
+                              border: "1px solid #FFCDD2",
+                            }}
+                          >
+                            미출근
+                          </div>
+                        );
+                      }
+                      if (!attLog?.clock_in) return null;
+
+                      const clockInDate = new Date(attLog.clock_in);
+                      const clockOutDate = attLog.clock_out
+                        ? new Date(attLog.clock_out)
+                        : new Date();
+                      const totalHours = hourEnd - hourStart;
+                      const inH =
+                        clockInDate.getHours() + clockInDate.getMinutes() / 60;
+                      const outH =
+                        clockOutDate.getHours() +
+                        clockOutDate.getMinutes() / 60;
+                      const attLeftPct = Math.max(
+                        0,
+                        ((inH - hourStart) / totalHours) * 100,
+                      );
+                      const attWidthPct = Math.max(
+                        0.5,
+                        Math.min(
+                          100 - attLeftPct,
+                          ((outH - inH) / totalHours) * 100,
+                        ),
+                      );
+
+                      const [sh, sm] = firstSlot.start_time
+                        .split(":")
+                        .map(Number);
+                      const schedStart = new Date(
+                        `${dateStr}T${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}:00`,
+                      );
+                      const lateMin = Math.floor(
+                        (clockInDate.getTime() - schedStart.getTime()) / 60000,
+                      );
+                      const isLate = lateMin > 10;
+
                       return (
                         <div
-                          className="absolute flex items-center px-2 rounded-md text-[10px] font-bold text-[#E03131]"
+                          className="absolute flex items-center px-1.5 rounded-md text-[10px] font-bold text-white overflow-hidden"
                           style={{
                             bottom: "6px",
                             height: "22px",
-                            left: "4px",
-                            right: "4px",
-                            backgroundColor: "#FFF5F5",
-                            border: "1px solid #FFCDD2",
+                            left: `${attLeftPct}%`,
+                            width: `${attWidthPct}%`,
+                            backgroundColor: isLate ? "#F59E0B" : "#00B761",
+                            minWidth: "4px",
                           }}
                         >
-                          미출근
+                          {attWidthPct > 5 && (
+                            <span className="truncate">
+                              {isLate ? `+${lateMin}분` : ""}
+                            </span>
+                          )}
                         </div>
                       );
-                    }
-                    if (!attLog?.clock_in) return null;
-
-                    const clockInDate = new Date(attLog.clock_in);
-                    const clockOutDate = attLog.clock_out
-                      ? new Date(attLog.clock_out)
-                      : new Date();
-                    const totalHours = hourEnd - hourStart;
-                    const inH =
-                      clockInDate.getHours() + clockInDate.getMinutes() / 60;
-                    const outH =
-                      clockOutDate.getHours() + clockOutDate.getMinutes() / 60;
-                    const attLeftPct = Math.max(
-                      0,
-                      ((inH - hourStart) / totalHours) * 100,
-                    );
-                    const attWidthPct = Math.max(
-                      0.5,
-                      Math.min(
-                        100 - attLeftPct,
-                        ((outH - inH) / totalHours) * 100,
-                      ),
-                    );
-
-                    const [sh, sm] = firstSlot.start_time
-                      .split(":")
-                      .map(Number);
-                    const schedStart = new Date(
-                      `${dateStr}T${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}:00`,
-                    );
-                    const lateMin = Math.floor(
-                      (clockInDate.getTime() - schedStart.getTime()) / 60000,
-                    );
-                    const isLate = lateMin > 10;
-
-                    return (
-                      <div
-                        className="absolute flex items-center px-1.5 rounded-md text-[10px] font-bold text-white overflow-hidden"
-                        style={{
-                          bottom: "6px",
-                          height: "22px",
-                          left: `${attLeftPct}%`,
-                          width: `${attWidthPct}%`,
-                          backgroundColor: isLate ? "#F59E0B" : "#00B761",
-                          minWidth: "4px",
-                        }}
-                      >
-                        {attWidthPct > 5 && (
-                          <span className="truncate">
-                            {isLate ? `+${lateMin}분` : ""}
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })()}
-                </div>
-              </div>
-            );
-          })}
-
-          {/* 인원 행 */}
-          <div className="flex border-t-2 border-slate-200 bg-[#F9FAFB]">
-            <div className="w-[80px] shrink-0 px-2 py-2 text-[11px] font-bold text-[#8B95A1] sticky left-0 z-10 bg-[#F9FAFB] border-r border-slate-100">
-              인원
-            </div>
-            {hours.map((h) => {
-              const count = dailySlotsData.filter(
-                (s) =>
-                  timeToMinutes(s.start_time) < (h + 1) * 60 &&
-                  timeToMinutes(s.end_time) > h * 60,
-              ).length;
-              return (
-                <div
-                  key={h}
-                  className="flex-1 border-l border-slate-100 text-center py-2"
-                >
-                  <span
-                    className={`text-[12px] font-bold ${count > 0 ? "text-[#3182F6]" : "text-[#D1D6DB]"}`}
-                  >
-                    {count > 0 ? count : "-"}
-                  </span>
+                    })()}
+                  </div>
                 </div>
               );
             })}
+
+            {/* 인원 행 */}
+            <div className="flex border-t-2 border-slate-200 bg-[#F9FAFB]">
+              <div className="w-[80px] shrink-0 px-2 py-2 text-[11px] font-bold text-[#8B95A1] sticky left-0 z-10 bg-[#F9FAFB] border-r border-slate-100">
+                인원
+              </div>
+              {hours.map((h) => {
+                const count = dailySlotsData.filter(
+                  (s) =>
+                    timeToMinutes(s.start_time) < (h + 1) * 60 &&
+                    timeToMinutes(s.end_time) > h * 60,
+                ).length;
+                return (
+                  <div
+                    key={h}
+                    className="flex-1 border-l border-slate-100 text-center py-2"
+                  >
+                    <span
+                      className={`text-[12px] font-bold ${count > 0 ? "text-[#3182F6]" : "text-[#D1D6DB]"}`}
+                    >
+                      {count > 0 ? count : "-"}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
-      </div>
       </div>
     );
   };
@@ -1446,29 +1462,32 @@ export default function AdminSchedulesPage() {
                   ? "확정하는 중이에요"
                   : "주 확정하기"}
             </button>
-          ) : (() => {
-            const dateStr = format(dailyDate, "yyyy-MM-dd");
-            const isDayConfirmed =
-              dailyWeeklySchedule?.confirmed_dates?.includes(dateStr) ?? false;
-            return (
-              <button
-                onClick={handleConfirmDay}
-                disabled={confirmingDay || isDayConfirmed}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold transition-all disabled:opacity-50 ${
-                  isDayConfirmed
-                    ? "bg-[#E6FAF0] text-[#00B761] border border-[#00B761]"
-                    : "bg-[#3182F6] text-white hover:bg-[#1B64DA]"
-                }`}
-              >
-                <Check className="w-4 h-4" />
-                {isDayConfirmed
-                  ? "확정됨"
-                  : confirmingDay
-                    ? "확정하는 중이에요"
-                    : "이 날 확정하기"}
-              </button>
-            );
-          })()}
+          ) : (
+            (() => {
+              const dateStr = format(dailyDate, "yyyy-MM-dd");
+              const isDayConfirmed =
+                dailyWeeklySchedule?.confirmed_dates?.includes(dateStr) ??
+                false;
+              return (
+                <button
+                  onClick={handleConfirmDay}
+                  disabled={confirmingDay || isDayConfirmed}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold transition-all disabled:opacity-50 ${
+                    isDayConfirmed
+                      ? "bg-[#E6FAF0] text-[#00B761] border border-[#00B761]"
+                      : "bg-[#3182F6] text-white hover:bg-[#1B64DA]"
+                  }`}
+                >
+                  <Check className="w-4 h-4" />
+                  {isDayConfirmed
+                    ? "확정됨"
+                    : confirmingDay
+                      ? "확정하는 중이에요"
+                      : "이 날 확정하기"}
+                </button>
+              );
+            })()
+          )}
         </div>
       </div>
 

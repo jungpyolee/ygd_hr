@@ -63,7 +63,7 @@ function CommentCard({
 }: CommentCardProps) {
   const replies = comments.filter((c) => c.parent_id === comment.id);
   const isShowingReplyInput = replyingTo?.id === comment.id;
-  const initial = (comment.profiles?.name || "?").charAt(0);
+  const initial = (comment.profiles?.name || "?")?.charat(0);
   const color = comment.profiles?.color_hex || "#8B95A1";
 
   return (
@@ -160,9 +160,11 @@ function CommentCard({
             <div key={reply.id} className="flex gap-3">
               <div
                 className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
-                style={{ backgroundColor: reply.profiles?.color_hex || "#8B95A1" }}
+                style={{
+                  backgroundColor: reply.profiles?.color_hex || "#8B95A1",
+                }}
               >
-                {(reply.profiles?.name || "?").charAt(0)}
+                {(reply.profiles?.name || "?")?.charat(0)}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-0.5">
@@ -264,7 +266,7 @@ export default function RecipeComments({
           table: "recipe_comments",
           filter: `recipe_id=eq.${recipeId}`,
         },
-        () => fetchComments()
+        () => fetchComments(),
       )
       .subscribe();
 
@@ -322,7 +324,8 @@ export default function RecipeComments({
 
     const parentAuthorId = replyingTo.profile_id;
     const mentionedId = replyingTo.profile_id;
-    const finalMentionedId = mentionedId !== currentUser.id ? mentionedId : null;
+    const finalMentionedId =
+      mentionedId !== currentUser.id ? mentionedId : null;
 
     const { error } = await supabase.from("recipe_comments").insert({
       recipe_id: recipeId,
@@ -339,7 +342,9 @@ export default function RecipeComments({
       return;
     }
 
-    const snippet = replyText.trim().slice(0, 30) + (replyText.trim().length > 30 ? "..." : "");
+    const snippet =
+      replyText.trim().slice(0, 30) +
+      (replyText.trim().length > 30 ? "..." : "");
 
     if (parentAuthorId !== currentUser.id) {
       await sendNotification({
@@ -370,7 +375,9 @@ export default function RecipeComments({
   };
 
   const deleteComment = async (comment: CommentRow) => {
-    const hasReplies = comments.some((c) => c.parent_id === comment.id && !c.is_deleted);
+    const hasReplies = comments.some(
+      (c) => c.parent_id === comment.id && !c.is_deleted,
+    );
     if (hasReplies) {
       await supabase
         .from("recipe_comments")
@@ -391,7 +398,7 @@ export default function RecipeComments({
 
   const topLevel = comments.filter((c) => !c.parent_id);
   const totalVisible = comments.filter(
-    (c) => !c.is_deleted || comments.some((r) => r.parent_id === c.id)
+    (c) => !c.is_deleted || comments.some((r) => r.parent_id === c.id),
   ).length;
 
   if (loading) {
@@ -447,7 +454,7 @@ export default function RecipeComments({
               className="w-8 h-8 rounded-full flex items-center justify-center text-[12px] font-bold text-white shrink-0 mt-0.5"
               style={{ backgroundColor: "#8B95A1" }}
             >
-              {currentUser.name.charAt(0)}
+              {currentUser.name?.charat(0)}
             </div>
             <textarea
               value={text}

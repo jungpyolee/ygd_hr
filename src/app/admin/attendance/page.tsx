@@ -89,7 +89,11 @@ export default function AdminAttendanceCalendar() {
 
   const rangeKey = `${format(startDate, "yyyy-MM-dd")}_${format(endDate, "yyyy-MM-dd")}`;
 
-  const { data: logsByDate = {}, isLoading: loading, mutate } = useSWR(
+  const {
+    data: logsByDate = {},
+    isLoading: loading,
+    mutate,
+  } = useSWR(
     ["admin-attendance", rangeKey],
     async ([, range]) => {
       const supabase = createClient();
@@ -139,7 +143,9 @@ export default function AdminAttendanceCalendar() {
       const startDateObj = new Date(start);
       const endDateObj = new Date(end);
       const startStr = startDateObj.toISOString();
-      const endStr = new Date(endDateObj.setHours(23, 59, 59, 999)).toISOString();
+      const endStr = new Date(
+        endDateObj.setHours(23, 59, 59, 999),
+      ).toISOString();
 
       const { data, error } = await supabase
         .from("attendance_logs")
@@ -227,7 +233,7 @@ export default function AdminAttendanceCalendar() {
       });
       return finalData;
     },
-    { dedupingInterval: 60_000, revalidateOnFocus: false }
+    { dedupingInterval: 60_000, revalidateOnFocus: false },
   );
 
   const getContrastYIQ = (hexcolor: string) => {
@@ -497,7 +503,7 @@ export default function AdminAttendanceCalendar() {
                       className="w-12 h-12 rounded-full flex items-center justify-center text-[16px] font-bold text-white shadow-sm shrink-0"
                       style={{ backgroundColor: log.color_hex }}
                     >
-                      {log.name.charAt(0)}
+                      {log.name?.charat(0)}
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
@@ -555,7 +561,7 @@ export default function AdminAttendanceCalendar() {
                       className="w-12 h-12 rounded-full flex items-center justify-center text-[16px] font-bold text-white shadow-sm shrink-0"
                       style={{ backgroundColor: log.color_hex }}
                     >
-                      {log.name.charAt(0)}
+                      {log.name?.charat(0)}
                     </div>
                     <div>
                       <div className="flex items-center gap-2 mb-0.5">
@@ -748,7 +754,7 @@ export default function AdminAttendanceCalendar() {
                 className="w-10 h-10 rounded-full flex items-center justify-center text-[14px] font-bold text-white shrink-0"
                 style={{ backgroundColor: manualOutTarget.log.color_hex }}
               >
-                {manualOutTarget.log.name.charAt(0)}
+                {manualOutTarget.log.name?.charat(0)}
               </div>
               <div>
                 <p className="text-[15px] font-bold text-[#191F28]">

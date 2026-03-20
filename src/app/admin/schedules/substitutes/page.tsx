@@ -4,7 +4,14 @@ import { useEffect, useState } from "react";
 import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
 import { toast } from "sonner";
-import { ChevronLeft, X, Check, AlertCircle, Clock, MapPin } from "lucide-react";
+import {
+  ChevronLeft,
+  X,
+  Check,
+  AlertCircle,
+  Clock,
+  MapPin,
+} from "lucide-react";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import Link from "next/link";
@@ -52,7 +59,12 @@ interface SubstituteRequestRow {
   accepted_by: string | null;
   accepted_at: string | null;
   created_at: string;
-  schedule_slots?: { slot_date: string; start_time: string; end_time: string; work_location: string } | null;
+  schedule_slots?: {
+    slot_date: string;
+    start_time: string;
+    end_time: string;
+    work_location: string;
+  } | null;
   requester?: { name: string; color_hex: string } | null;
   accepted?: { name: string } | null;
 }
@@ -73,19 +85,25 @@ export default function AdminSubstitutesPage() {
   const [currentAdminId, setCurrentAdminId] = useState<string | null>(null);
 
   // Reject bottom sheet
-  const [rejectTarget, setRejectTarget] = useState<SubstituteRequest | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<SubstituteRequest | null>(
+    null,
+  );
   const [rejectReason, setRejectReason] = useState("");
   const [rejecting, setRejecting] = useState(false);
 
   // Approve bottom sheet
-  const [approveTarget, setApproveTarget] = useState<SubstituteRequest | null>(null);
+  const [approveTarget, setApproveTarget] = useState<SubstituteRequest | null>(
+    null,
+  );
   const [eligibleIds, setEligibleIds] = useState<string[]>([]);
   const [approving, setApproving] = useState(false);
 
   useEffect(() => {
     const init = async () => {
       const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (user) setCurrentAdminId(user.id);
     };
     init();
@@ -95,25 +113,34 @@ export default function AdminSubstitutesPage() {
     "admin-substitutes-profiles",
     async () => {
       const supabase = createClient();
-      const { data } = await supabase.from("profiles").select("id, name, color_hex, work_locations").order("name");
+      const { data } = await supabase
+        .from("profiles")
+        .select("id, name, color_hex, work_locations")
+        .order("name");
       return (data as Profile[]) ?? [];
     },
-    { dedupingInterval: 60_000, revalidateOnFocus: false }
+    { dedupingInterval: 60_000, revalidateOnFocus: false },
   );
 
-  const { data: requests = [], isLoading: loading, mutate } = useSWR(
+  const {
+    data: requests = [],
+    isLoading: loading,
+    mutate,
+  } = useSWR(
     "admin-substitutes-requests",
     async () => {
       const supabase = createClient();
       const { data, error } = await supabase
         .from("substitute_requests")
-        .select(`
+        .select(
+          `
           id, slot_id, requester_id, reason, status, reject_reason, rejected_at, approved_at,
           eligible_profile_ids, accepted_by, accepted_at, created_at,
           schedule_slots!slot_id (slot_date, start_time, end_time, work_location),
           requester:profiles!requester_id (name, color_hex),
           accepted:profiles!accepted_by (name)
-        `)
+        `,
+        )
         .order("created_at", { ascending: false });
 
       if (error || !data) return [];
@@ -140,7 +167,7 @@ export default function AdminSubstitutesPage() {
         accepted_name: r.accepted?.name,
       })) as SubstituteRequest[];
     },
-    { dedupingInterval: 30_000, revalidateOnFocus: true }
+    { dedupingInterval: 30_000, revalidateOnFocus: true },
   );
 
   const handleReject = async () => {
@@ -157,8 +184,9 @@ export default function AdminSubstitutesPage() {
       })
       .eq("id", rejectTarget.id);
 
-    if (error) { toast.error("반려에 실패했어요", { description: error.message }); }
-    else {
+    if (error) {
+      toast.error("반려에 실패했어요", { description: error.message });
+    } else {
       // Notify requester
       await supabase.from("notifications").insert({
         profile_id: rejectTarget.requester_id,
@@ -181,7 +209,8 @@ export default function AdminSubstitutesPage() {
     // Auto-populate eligible profiles: work_location matches, not requester
     const eligible = profiles.filter((p) => {
       if (p.id === req.requester_id) return false;
-      if (!p.work_locations || !p.work_locations.includes(req.work_location)) return false;
+      if (!p.work_locations || !p.work_locations.includes(req.work_location))
+        return false;
       return true;
     });
     setEligibleIds(eligible.map((p) => p.id));
@@ -189,7 +218,12 @@ export default function AdminSubstitutesPage() {
 
   const handleApprove = async () => {
     if (!approveTarget || !currentAdminId) return;
-    if (eligibleIds.length === 0) { toast.error("대타 가능한 직원을 선택해주세요.", { description: "목록에서 대타 가능한 직원을 1명 이상 선택해주세요." }); return; }
+    if (eligibleIds.length === 0) {
+      toast.error("대타 가능한 직원을 선택해주세요.", {
+        description: "목록에서 대타 가능한 직원을 1명 이상 선택해주세요.",
+      });
+      return;
+    }
     const supabase = createClient();
     setApproving(true);
 
@@ -203,8 +237,9 @@ export default function AdminSubstitutesPage() {
       })
       .eq("id", approveTarget.id);
 
-    if (error) { toast.error("승인에 실패했어요", { description: error.message }); }
-    else {
+    if (error) {
+      toast.error("승인에 실패했어요", { description: error.message });
+    } else {
       // Notify eligible employees (중복 ID 제거)
       const uniqueEligibleIds = Array.from(new Set(eligibleIds));
       const notifications = uniqueEligibleIds.map((pid) => ({
@@ -225,16 +260,39 @@ export default function AdminSubstitutesPage() {
   };
 
   const filtered = requests.filter((r) =>
-    tab === "pending" ? r.status === "pending" : ["approved", "rejected", "filled"].includes(r.status)
+    tab === "pending"
+      ? r.status === "pending"
+      : ["approved", "rejected", "filled"].includes(r.status),
   );
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "pending": return <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-[#FFF3BF] text-[#E67700]">대기중</span>;
-      case "approved": return <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-[#E8F3FF] text-[#3182F6]">승인됨</span>;
-      case "rejected": return <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-[#FFEBEB] text-[#E03131]">반려됨</span>;
-      case "filled": return <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-[#E6FAF0] text-[#00B761]">충원됨</span>;
-      default: return null;
+      case "pending":
+        return (
+          <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-[#FFF3BF] text-[#E67700]">
+            대기중
+          </span>
+        );
+      case "approved":
+        return (
+          <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-[#E8F3FF] text-[#3182F6]">
+            승인됨
+          </span>
+        );
+      case "rejected":
+        return (
+          <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-[#FFEBEB] text-[#E03131]">
+            반려됨
+          </span>
+        );
+      case "filled":
+        return (
+          <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-[#E6FAF0] text-[#00B761]">
+            충원됨
+          </span>
+        );
+      default:
+        return null;
     }
   };
 
@@ -242,12 +300,17 @@ export default function AdminSubstitutesPage() {
     <div className="max-w-3xl animate-in fade-in duration-500 pb-20">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
-        <Link href="/admin/schedules" className="p-2 rounded-full hover:bg-[#F2F4F6] text-[#8B95A1] transition-all">
+        <Link
+          href="/admin/schedules"
+          className="p-2 rounded-full hover:bg-[#F2F4F6] text-[#8B95A1] transition-all"
+        >
           <ChevronLeft className="w-5 h-5" />
         </Link>
         <div>
           <h1 className="text-2xl font-bold text-[#191F28]">대체근무 관리</h1>
-          <p className="text-[14px] text-[#8B95A1]">직원들의 대타 요청을 검토하고 승인해요.</p>
+          <p className="text-[14px] text-[#8B95A1]">
+            직원들의 대타 요청을 검토하고 승인해요.
+          </p>
         </div>
       </div>
 
@@ -267,7 +330,10 @@ export default function AdminSubstitutesPage() {
       {loading ? (
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="bg-white rounded-[20px] p-5 border border-slate-100">
+            <div
+              key={i}
+              className="bg-white rounded-[20px] p-5 border border-slate-100"
+            >
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-8 h-8 rounded-full bg-[#F2F4F6] animate-pulse" />
                 <div className="w-24 h-4 bg-[#F2F4F6] rounded animate-pulse" />
@@ -281,13 +347,18 @@ export default function AdminSubstitutesPage() {
         <div className="bg-white rounded-[24px] border border-slate-100 p-12 text-center">
           <AlertCircle className="w-8 h-8 text-[#D1D6DB] mx-auto mb-3" />
           <p className="text-[#8B95A1] text-[15px] font-medium">
-            {tab === "pending" ? "대기 중인 요청이 없어요" : "처리된 요청이 없어요"}
+            {tab === "pending"
+              ? "대기 중인 요청이 없어요"
+              : "처리된 요청이 없어요"}
           </p>
         </div>
       ) : (
         <div className="space-y-3">
           {filtered.map((req) => (
-            <div key={req.id} className="bg-white rounded-[20px] p-5 border border-slate-100 shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
+            <div
+              key={req.id}
+              className="bg-white rounded-[20px] p-5 border border-slate-100 shadow-[0_2px_10px_rgba(0,0,0,0.02)]"
+            >
               {/* Top row: requester + status */}
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
@@ -295,9 +366,11 @@ export default function AdminSubstitutesPage() {
                     className="w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-bold text-white"
                     style={{ backgroundColor: req.requester_color }}
                   >
-                    {req.requester_name.charAt(0)}
+                    {req.requester_name?.charat(0)}
                   </div>
-                  <span className="text-[15px] font-bold text-[#191F28]">{req.requester_name}</span>
+                  <span className="text-[15px] font-bold text-[#191F28]">
+                    {req.requester_name}
+                  </span>
                 </div>
                 {getStatusBadge(req.status)}
               </div>
@@ -306,20 +379,34 @@ export default function AdminSubstitutesPage() {
               <div className="flex flex-wrap gap-3 mb-3 text-[13px] text-[#4E5968]">
                 <span className="flex items-center gap-1 font-medium">
                   <Clock className="w-3.5 h-3.5 text-[#8B95A1]" />
-                  {req.slot_date ? format(new Date(req.slot_date + "T00:00:00"), "M월 d일 (EEE)", { locale: ko }) : ""}
+                  {req.slot_date
+                    ? format(
+                        new Date(req.slot_date + "T00:00:00"),
+                        "M월 d일 (EEE)",
+                        { locale: ko },
+                      )
+                    : ""}
                 </span>
-                <span className="font-medium">{req.start_time.slice(0, 5)} ~ {req.end_time.slice(0, 5)}</span>
+                <span className="font-medium">
+                  {req.start_time.slice(0, 5)} ~ {req.end_time.slice(0, 5)}
+                </span>
                 <span
                   className="flex items-center gap-1 font-bold px-2 py-0.5 rounded-md text-white text-[12px]"
-                  style={{ backgroundColor: LOCATION_COLORS[req.work_location] }}
+                  style={{
+                    backgroundColor: LOCATION_COLORS[req.work_location],
+                  }}
                 >
-                  <MapPin className="w-3 h-3" />{LOCATION_LABELS[req.work_location]}
+                  <MapPin className="w-3 h-3" />
+                  {LOCATION_LABELS[req.work_location]}
                 </span>
               </div>
 
               {req.reason && (
                 <p className="text-[13px] text-[#8B95A1] mb-3 bg-[#F9FAFB] rounded-xl px-3 py-2">
-                  사유: <span className="text-[#4E5968] font-medium">{req.reason}</span>
+                  사유:{" "}
+                  <span className="text-[#4E5968] font-medium">
+                    {req.reason}
+                  </span>
                 </p>
               )}
 
@@ -360,12 +447,20 @@ export default function AdminSubstitutesPage() {
       {/* Reject Bottom Sheet */}
       {rejectTarget && (
         <div className="fixed inset-0 z-[200] flex items-end justify-center">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setRejectTarget(null)} />
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => setRejectTarget(null)}
+          />
           <div className="relative w-full max-w-md bg-white rounded-t-[28px] px-5 pt-8 pb-10 shadow-2xl animate-in slide-in-from-bottom-4 duration-250">
             <div className="absolute top-3 left-1/2 -translate-x-1/2 w-9 h-1 bg-[#D1D6DB] rounded-full" />
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-[18px] font-bold text-[#191F28]">반려 사유 입력</h3>
-              <button onClick={() => setRejectTarget(null)} className="w-8 h-8 flex items-center justify-center rounded-full bg-[#F2F4F6]">
+              <h3 className="text-[18px] font-bold text-[#191F28]">
+                반려 사유 입력
+              </h3>
+              <button
+                onClick={() => setRejectTarget(null)}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-[#F2F4F6]"
+              >
                 <X className="w-5 h-5 text-[#8B95A1]" />
               </button>
             </div>
@@ -387,7 +482,10 @@ export default function AdminSubstitutesPage() {
               >
                 {rejecting ? "처리하는 중이에요" : "반려하기"}
               </button>
-              <button onClick={() => setRejectTarget(null)} className="w-full h-14 bg-[#F2F4F6] text-[#4E5968] rounded-2xl font-bold text-[16px]">
+              <button
+                onClick={() => setRejectTarget(null)}
+                className="w-full h-14 bg-[#F2F4F6] text-[#4E5968] rounded-2xl font-bold text-[16px]"
+              >
                 닫기
               </button>
             </div>
@@ -398,12 +496,20 @@ export default function AdminSubstitutesPage() {
       {/* Approve Bottom Sheet */}
       {approveTarget && (
         <div className="fixed inset-0 z-[200] flex items-end justify-center">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setApproveTarget(null)} />
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => setApproveTarget(null)}
+          />
           <div className="relative w-full max-w-md bg-white rounded-t-[28px] px-5 pt-8 pb-10 shadow-2xl animate-in slide-in-from-bottom-4 duration-250 max-h-[80vh] overflow-y-auto scrollbar-hide">
             <div className="absolute top-3 left-1/2 -translate-x-1/2 w-9 h-1 bg-[#D1D6DB] rounded-full" />
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-[18px] font-bold text-[#191F28]">대타 승인 및 알림</h3>
-              <button onClick={() => setApproveTarget(null)} className="w-8 h-8 flex items-center justify-center rounded-full bg-[#F2F4F6]">
+              <h3 className="text-[18px] font-bold text-[#191F28]">
+                대타 승인 및 알림
+              </h3>
+              <button
+                onClick={() => setApproveTarget(null)}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-[#F2F4F6]"
+              >
                 <X className="w-5 h-5 text-[#8B95A1]" />
               </button>
             </div>
@@ -423,7 +529,9 @@ export default function AdminSubstitutesPage() {
                       type="button"
                       onClick={() => {
                         setEligibleIds((prev) =>
-                          selected ? prev.filter((id) => id !== p.id) : [...prev, p.id]
+                          selected
+                            ? prev.filter((id) => id !== p.id)
+                            : [...prev, p.id],
                         );
                       }}
                       className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border transition-all ${
@@ -436,9 +544,11 @@ export default function AdminSubstitutesPage() {
                         className="w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-bold text-white shrink-0"
                         style={{ backgroundColor: p.color_hex }}
                       >
-                        {p.name.charAt(0)}
+                        {p.name?.charat(0)}
                       </div>
-                      <span className="font-bold text-[14px] flex-1 text-left">{p.name}</span>
+                      <span className="font-bold text-[14px] flex-1 text-left">
+                        {p.name}
+                      </span>
                       {selected && <Check className="w-4 h-4" />}
                     </button>
                   );
@@ -451,9 +561,14 @@ export default function AdminSubstitutesPage() {
                 disabled={approving}
                 className="w-full h-14 bg-[#3182F6] text-white rounded-2xl font-bold text-[16px] disabled:opacity-50 active:scale-[0.98] transition-all"
               >
-                {approving ? "처리하는 중이에요" : `승인 및 알림 보내기 (${eligibleIds.length}명)`}
+                {approving
+                  ? "처리하는 중이에요"
+                  : `승인 및 알림 보내기 (${eligibleIds.length}명)`}
               </button>
-              <button onClick={() => setApproveTarget(null)} className="w-full h-14 bg-[#F2F4F6] text-[#4E5968] rounded-2xl font-bold text-[16px]">
+              <button
+                onClick={() => setApproveTarget(null)}
+                className="w-full h-14 bg-[#F2F4F6] text-[#4E5968] rounded-2xl font-bold text-[16px]"
+              >
                 닫기
               </button>
             </div>

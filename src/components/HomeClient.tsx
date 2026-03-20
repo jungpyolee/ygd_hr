@@ -6,13 +6,13 @@ import {
   UserCircle,
   BookOpen,
   MapPin,
-  Clock,
   Bell,
   BellDot,
   CheckCircle,
   ArrowRightLeft,
   Info,
   Megaphone,
+  ChevronRight,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import WeeklyScheduleCard, {
@@ -21,21 +21,9 @@ import WeeklyScheduleCard, {
 import OnboardingFunnel from "@/components/OnboardingFunnel";
 import AttendanceCard from "@/components/AttendanceCard";
 import MyInfoModal from "@/components/MyInfoModal";
-import ConfirmDialog from "@/components/ui/confirm-dialog";
 import { useRouter } from "next/navigation";
 import { useGeolocation } from "@/lib/hooks/useGeolocation";
-import { format, startOfWeek, addDays } from "date-fns";
 import type { Announcement } from "@/types/announcement";
-
-interface TodaySlot {
-  id: string;
-  slot_date: string;
-  start_time: string;
-  end_time: string;
-  work_location: string;
-  cafe_positions: string[];
-  notes: string | null;
-}
 
 const LOCATION_LABELS: Record<string, string> = {
   cafe: "카페",
@@ -63,189 +51,97 @@ const DynamicClock = dynamic(() => import("@/components/Clock"), {
 });
 const RADIUS_METER = 100;
 
-export default function HomePage() {
-  const [loading, setLoading] = useState(true);
-  const [needsOnboarding, setNeedsOnboarding] = useState(false);
-  const [profile, setProfile] = useState<any>(null);
+type TodaySlot = {
+  id: string;
+  slot_date: string;
+  start_time: string;
+  end_time: string;
+  work_location: string;
+  cafe_positions: string[];
+  notes: string | null;
+};
+type RawLogData = {
+  type: string;
+  created_at: string;
+  attendance_type: string;
+  stores: { name: string } | null;
+};
+
+interface HomeClientProps {
+  profile: any | null;
+  needsOnboarding: boolean;
+  stores: any[];
+  logData: RawLogData | null;
+  todaySlots: TodaySlot[];
+  weeklySlots: ScheduleSlot[];
+  announcements: Announcement[];
+  announcementReadIds: string[];
+  initialNotis: any[];
+}
+
+export default function HomeClient({
+  profile,
+  needsOnboarding,
+  stores,
+  logData,
+  todaySlots,
+  weeklySlots,
+  announcements,
+  announcementReadIds,
+  initialNotis,
+}: HomeClientProps) {
+  const router = useRouter();
+  const supabase = useMemo(() => createClient(), []);
+
   const [showGuideRedDot, setShowGuideRedDot] = useState(false);
-  const [stores, setStores] = useState<any[]>([]);
-  const [lastLog, setLastLog] = useState<any>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [todaySlots, setTodaySlots] = useState<TodaySlot[]>([]);
-  const [weeklySlots, setWeeklySlots] = useState<ScheduleSlot[]>([]);
-  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  const [announcementReadIds, setAnnouncementReadIds] = useState<Set<string>>(
-    new Set(),
+  const [notis, setNotis] = useState<any[]>(initialNotis);
+  const [unreadCount, setUnreadCount] = useState(
+    initialNotis.filter((n) => !n.is_read).length,
   );
-  const [announcementsLoading, setAnnouncementsLoading] = useState(true);
-  // 알림 관련 상태
-  const [notis, setNotis] = useState<any[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
   const [showNoti, setShowNoti] = useState(false);
   const notiRef = useRef<HTMLDivElement>(null);
-  const supabase = useMemo(() => createClient(), []);
-  const router = useRouter();
 
-  // 위치 훅 — 5초 타임아웃, 45초 캐시(표시용), 권한 변경 감시 포함
+  const announcementReadSet = useMemo(
+    () => new Set(announcementReadIds),
+    [announcementReadIds],
+  );
+
+  // 클라이언트에서 타임존 변환
+  const lastLog = useMemo(() => {
+    if (!logData) return null;
+    const createdAt = new Date(logData.created_at);
+    const isToday = createdAt.toDateString() === new Date().toDateString();
+    return {
+      type: logData.type,
+      attendance_type: logData.attendance_type,
+      time: createdAt.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      date: isToday
+        ? "오늘"
+        : createdAt.toLocaleDateString("ko-KR", {
+            month: "long",
+            day: "numeric",
+          }),
+      store:
+        logData.attendance_type === "business_trip_in"
+          ? "출장"
+          : (logData.store_name ?? "알 수 없음"),
+    };
+  }, [logData]);
+
   const {
     locationState,
     retry: retryLocation,
     fetchForAttendance,
   } = useGeolocation();
 
-  // 2. 전체 데이터 Fetch (온보딩 여부 포함)
-  const fetchAllData = async () => {
-    setLoading(true);
-    setAnnouncementsLoading(true);
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      setLoading(false);
-      setAnnouncementsLoading(false);
-      return;
-    }
-
-    const todayStr = format(new Date(), "yyyy-MM-dd");
-
-    const weekStartSun = startOfWeek(new Date(), { weekStartsOn: 0 });
-    const weekEndSun = addDays(weekStartSun, 6);
-    const weekStartStr = format(weekStartSun, "yyyy-MM-dd");
-    const weekEndStr = format(weekEndSun, "yyyy-MM-dd");
-
-    // 모든 쿼리 병렬 실행
-    const [
-      { data: profileData },
-      { data: storeData },
-      { data: logData },
-      { data: todaySlotsData },
-      { data: weeklySlotsData },
-      { data: notisData },
-      { data: announcementsData },
-      { data: readsData },
-    ] = await Promise.all([
-      supabase.from("profiles").select("*").eq("id", user.id).single(),
-      supabase.from("stores").select("*"),
-      supabase
-        .from("attendance_logs")
-        .select("type, created_at, attendance_type, stores!store_id(name)")
-        .eq("profile_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      // 오늘 슬롯 — weekly_schedules inner join으로 confirmed 필터
-      supabase
-        .from("schedule_slots")
-        .select(
-          "id, slot_date, start_time, end_time, work_location, cafe_positions, notes, weekly_schedules!inner(status)",
-        )
-        .eq("profile_id", user.id)
-        .eq("slot_date", todayStr)
-        .eq("status", "active")
-        .eq("weekly_schedules.status", "confirmed"),
-      // 이번 주 슬롯 (WeeklyScheduleCard용)
-      supabase
-        .from("schedule_slots")
-        .select(
-          "slot_date, start_time, end_time, work_location, weekly_schedules!inner(status)",
-        )
-        .eq("profile_id", user.id)
-        .eq("status", "active")
-        .eq("weekly_schedules.status", "confirmed")
-        .gte("slot_date", weekStartStr)
-        .lte("slot_date", weekEndStr)
-        .order("slot_date"),
-      supabase
-        .from("notifications")
-        .select("*")
-        .eq("profile_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(15),
-      supabase
-        .from("announcements")
-        .select("id, title, is_pinned, created_at, content")
-        .order("is_pinned", { ascending: false })
-        .order("created_at", { ascending: false })
-        .limit(3),
-      supabase
-        .from("announcement_reads")
-        .select("announcement_id")
-        .eq("profile_id", user.id),
-    ]);
-
-    // 프로필 확인 (온보딩 탔는지 체크)
-    if (!profileData?.name || !profileData?.phone) {
-      setNeedsOnboarding(true);
-    } else {
-      setNeedsOnboarding(false);
-      setProfile(profileData);
-    }
-
-    // 매장 (목동 제외)
-    if (storeData) setStores(storeData.filter((s) => s.name !== "목동"));
-
-    // 최근 출퇴근 로그
-    if (logData) {
-      const isTodayLog =
-        new Date(logData.created_at).toDateString() ===
-        new Date().toDateString();
-      setLastLog({
-        type: logData.type,
-        attendance_type: logData.attendance_type || "regular",
-        time: new Date(logData.created_at).toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-        date: isTodayLog
-          ? "오늘"
-          : new Date(logData.created_at).toLocaleDateString("ko-KR", {
-              month: "long",
-              day: "numeric",
-            }),
-        store:
-          logData.attendance_type === "business_trip_in"
-            ? "출장"
-            : (logData.stores as any)?.name || "알 수 없음",
-      });
-    }
-
-    // 알림
-    if (notisData) {
-      setNotis(notisData);
-      setUnreadCount(notisData.filter((n: any) => !n.is_read).length);
-    }
-
-    // 오늘 슬롯 — weekly_schedules 필드 제거 후 TodaySlot으로 캐스팅
-    setTodaySlots(
-      (
-        (todaySlotsData ?? []) as Array<
-          TodaySlot & { weekly_schedules: unknown }
-        >
-      ).map(({ weekly_schedules: _ws, ...rest }) => rest as TodaySlot),
-    );
-
-    // 주간 슬롯 — weekly_schedules 필드 제거 후 ScheduleSlot으로 캐스팅
-    setWeeklySlots(
-      (
-        (weeklySlotsData ?? []) as Array<
-          ScheduleSlot & { weekly_schedules: unknown }
-        >
-      ).map(({ weekly_schedules: _ws, ...rest }) => rest as ScheduleSlot),
-    );
-
-    // 공지사항
-    setAnnouncements((announcementsData as Announcement[]) ?? []);
-    setAnnouncementReadIds(
-      new Set(
-        (readsData ?? []).map(
-          (r: { announcement_id: string }) => r.announcement_id,
-        ),
-      ),
-    );
-    setAnnouncementsLoading(false);
-
-    setLoading(false);
-  };
+  useEffect(() => {
+    const seen = localStorage.getItem("guide_seen_version");
+    setShowGuideRedDot(seen !== "v1.0.1");
+  }, []);
 
   const fetchNotis = async (userId: string) => {
     const { data } = await supabase
@@ -315,14 +211,7 @@ export default function HomePage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showNoti]);
 
-  useEffect(() => {
-    fetchAllData();
-    // 이용가이드 레드닷: 마지막으로 본 버전이 현재와 다르면 표시
-    const seen = localStorage.getItem("guide_seen_version");
-    setShowGuideRedDot(seen !== "v1.0.1");
-  }, []);
-
-  // 실시간 알림 구독 — profile 로드 후 채널 등록, cleanup으로 누수 방지
+  // 실시간 알림 구독
   useEffect(() => {
     if (!profile?.id) return;
     const channel = supabase
@@ -347,33 +236,13 @@ export default function HomePage() {
     };
   }, [profile?.id, supabase]);
 
-  // 💡 온보딩이 필요하면 아까 만든 퍼널만 딱 띄워줍니다!
   if (needsOnboarding) {
-    return <OnboardingFunnel onComplete={fetchAllData} />;
+    return <OnboardingFunnel onComplete={() => router.refresh()} />;
   }
-
-  if (loading)
-    return (
-      <div className="flex min-h-screen flex-col bg-[#F2F4F6] font-pretendard">
-        <div className="h-[60px] bg-[#F2F4F6]/80" />
-        <main className="flex-1 px-5 pb-10 space-y-4">
-          <div className="py-6 px-1">
-            <div className="h-8 w-36 bg-slate-200 animate-pulse rounded-lg mb-2" />
-            <div className="h-6 w-20 bg-slate-200 animate-pulse rounded-lg" />
-          </div>
-          <div className="bg-white rounded-[28px] p-6 h-[180px] animate-pulse border border-slate-100" />
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-white rounded-[24px] p-4 h-[110px] animate-pulse border border-slate-100" />
-            <div className="bg-white rounded-[24px] p-4 h-[110px] animate-pulse border border-slate-100" />
-          </div>
-          <div className="bg-white rounded-[28px] p-6 h-[180px] animate-pulse border border-slate-100" />
-        </main>
-      </div>
-    );
 
   return (
     <div className="flex min-h-screen flex-col bg-[#F2F4F6] font-pretendard">
-      {/* Navbar 영역 */}
+      {/* Navbar */}
       <nav className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-[#F2F4F6]/80 backdrop-blur-md">
         <span className="text-xl font-bold text-[#333D4B]">연경당 HR</span>
         <div className="flex items-center gap-3">
@@ -393,7 +262,7 @@ export default function HomePage() {
           >
             {profile?.color_hex ? (
               <span className="text-white font-bold text-sm">
-                {profile.name?.charat(0)}
+                {profile.name?.charAt(0)}
               </span>
             ) : (
               <UserCircle className="w-6 h-6 text-[#8B95A1]" />
@@ -490,68 +359,84 @@ export default function HomePage() {
           <DynamicClock />
         </section>
 
-        {/* 💡 핵심: 출퇴근 로직을 전담하는 컴포넌트 삽입 */}
         <AttendanceCard
           stores={stores}
           lastLog={lastLog}
           locationState={locationState}
           radius={RADIUS_METER}
           todaySlots={todaySlots}
-          onSuccess={fetchAllData}
+          onSuccess={() => router.refresh()}
           onRetryLocation={retryLocation}
           onFetchForAttendance={fetchForAttendance}
         />
 
-        {/* 오늘 스케줄 위젯 */}
+        {/* 오늘 스케줄 */}
         {todaySlots.length > 0 && (
-          <section className="bg-white rounded-[28px] p-5 border border-slate-100 shadow-sm space-y-3">
-            <h3 className="text-[15px] font-bold text-[#191F28]">
-              오늘 스케줄
-            </h3>
-            {todaySlots.map((slot) => (
-              <div key={slot.id}>
-                <div className="flex items-center gap-2 mb-1">
-                  <span
-                    className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[12px] font-bold"
+          <button
+            onClick={() => router.push("/schedule")}
+            className="w-full text-left bg-white rounded-[28px] p-5 border border-slate-100 shadow-sm active:scale-[0.99] transition-transform"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-[15px] font-bold text-[#191F28]">
+                오늘 스케줄
+              </h3>
+              <ChevronRight className="w-4 h-4 text-[#D1D6DB]" />
+            </div>
+            <div className="space-y-3">
+              {todaySlots.map((slot) => (
+                <div key={slot.id} className="flex items-start gap-3">
+                  {/* 위치 컬러 바 */}
+                  <div
+                    className="w-1 rounded-full self-stretch min-h-[44px] shrink-0"
                     style={{
                       backgroundColor:
-                        LOCATION_BG[slot.work_location] || "#F2F4F6",
-                      color: LOCATION_COLORS[slot.work_location] || "#4E5968",
+                        LOCATION_COLORS[slot.work_location] || "#8B95A1",
                     }}
-                  >
-                    <MapPin className="w-3 h-3" />
-                    {LOCATION_LABELS[slot.work_location] || slot.work_location}
-                  </span>
-                  {slot.cafe_positions && slot.cafe_positions.length > 0 && (
-                    <div className="flex gap-1">
-                      {slot.cafe_positions.map((pos) => (
+                  />
+                  <div className="flex-1 min-w-0">
+                    {/* 위치 배지 + 포지션 배지 */}
+                    <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+                      <span
+                        className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[12px] font-bold shrink-0"
+                        style={{
+                          backgroundColor:
+                            LOCATION_BG[slot.work_location] || "#F2F4F6",
+                          color:
+                            LOCATION_COLORS[slot.work_location] || "#4E5968",
+                        }}
+                      >
+                        <MapPin className="w-3 h-3" />
+                        {LOCATION_LABELS[slot.work_location] ||
+                          slot.work_location}
+                      </span>
+                      {slot.cafe_positions?.map((pos) => (
                         <span
                           key={pos}
-                          className="px-2 py-0.5 bg-[#F2F4F6] text-[#4E5968] rounded-md text-[11px] font-bold"
+                          className="px-2 py-0.5 bg-[#F2F4F6] text-[#4E5968] rounded-full text-[11px] font-bold"
                         >
                           {CAFE_POSITION_LABELS[pos] || pos}
                         </span>
                       ))}
                     </div>
-                  )}
+                    {/* 시간 */}
+                    <p className="text-[18px] font-bold text-[#191F28] tabular-nums leading-tight">
+                      {slot.start_time.slice(0, 5)} ~{" "}
+                      {slot.end_time.slice(0, 5)}
+                    </p>
+                    {slot.work_location === "catering" && (
+                      <p className="text-[12px] text-[#F59E0B] font-medium mt-1">
+                        출장출근으로 기록해주세요
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 text-[#191F28] font-bold text-[17px]">
-                  <Clock className="w-4 h-4 text-[#8B95A1]" />
-                  {slot.start_time.slice(0, 5)} ~ {slot.end_time.slice(0, 5)}
-                </div>
-                {slot.work_location === "catering" && (
-                  <p className="text-[13px] text-[#F59E0B] font-medium mt-1">
-                    출장출근으로 기록해주세요
-                  </p>
-                )}
-              </div>
-            ))}
-          </section>
+              ))}
+            </div>
+          </button>
         )}
 
         {/* 공지사항 + 레시피 2열 그리드 */}
         <div className="grid grid-cols-2 gap-3">
-          {/* 공지사항 컴팩트 카드 */}
           <button
             onClick={() => router.push("/announcements")}
             className="flex flex-col bg-white rounded-[24px] p-4 border border-slate-100 text-left active:scale-[0.98] transition-transform"
@@ -560,27 +445,22 @@ export default function HomePage() {
               <div className="w-9 h-9 bg-[#FFF7E6] rounded-full flex items-center justify-center shrink-0">
                 <Megaphone className="w-4 h-4 text-[#F59E0B]" />
               </div>
-              {announcementReadIds !== undefined &&
-                announcements.filter((a) => !announcementReadIds.has(a.id))
-                  .length > 0 && (
-                  <span className="text-[10px] font-bold text-white bg-red-400 rounded-full px-1.5 py-0.5 leading-none">
-                    {
-                      announcements.filter(
-                        (a) => !announcementReadIds.has(a.id),
-                      ).length
-                    }
-                  </span>
-                )}
+              {announcements.filter((a) => !announcementReadSet.has(a.id))
+                .length > 0 && (
+                <span className="text-[10px] font-bold text-white bg-red-400 rounded-full px-1.5 py-0.5 leading-none">
+                  {
+                    announcements.filter((a) => !announcementReadSet.has(a.id))
+                      .length
+                  }
+                </span>
+              )}
             </div>
             <p className="text-[14px] font-bold text-[#333D4B]">공지사항</p>
             <p className="text-[12px] text-[#8B95A1] mt-0.5 line-clamp-1">
-              {announcementsLoading
-                ? "불러오는 중..."
-                : (announcements[0]?.title ?? "새 공지가 없어요")}
+              {announcements[0]?.title ?? "새 공지가 없어요"}
             </p>
           </button>
 
-          {/* 레시피 바로가기 */}
           <button
             onClick={() => router.push("/recipes")}
             className="flex flex-col bg-white rounded-[24px] p-4 border border-slate-100 text-left active:scale-[0.98] transition-transform"
@@ -595,13 +475,14 @@ export default function HomePage() {
           </button>
         </div>
 
-        <WeeklyScheduleCard slots={weeklySlots} loading={loading} />
+        <WeeklyScheduleCard slots={weeklySlots} />
       </main>
+
       <MyInfoModal
         isOpen={isEditModalOpen}
         profile={profile}
         onClose={() => setIsEditModalOpen(false)}
-        onUpdate={fetchAllData}
+        onUpdate={() => router.refresh()}
       />
     </div>
   );

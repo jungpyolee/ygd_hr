@@ -38,8 +38,16 @@ interface TodayAttendanceItem {
   late_minutes: number;
 }
 
-const LOCATION_LABELS: Record<string, string> = { cafe: "카페", factory: "공장", catering: "케이터링" };
-const LOCATION_COLORS: Record<string, string> = { cafe: "#3182F6", factory: "#00B761", catering: "#F59E0B" };
+const LOCATION_LABELS: Record<string, string> = {
+  cafe: "카페",
+  factory: "공장",
+  catering: "케이터링",
+};
+const LOCATION_COLORS: Record<string, string> = {
+  cafe: "#3182F6",
+  factory: "#00B761",
+  catering: "#F59E0B",
+};
 
 export default function AdminDashboardPage() {
   const router = useRouter();
@@ -61,7 +69,9 @@ export default function AdminDashboardPage() {
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       const { data: latestLogs } = await supabase
         .from("attendance_logs")
-        .select(`profile_id, type, created_at, profiles(name, phone, color_hex)`)
+        .select(
+          `profile_id, type, created_at, profiles(name, phone, color_hex)`,
+        )
         .gte("created_at", thirtyDaysAgo.toISOString())
         .order("created_at", { ascending: false });
 
@@ -83,13 +93,13 @@ export default function AdminDashboardPage() {
       const workingList = userLastActions.filter(
         (log) =>
           log.type === "IN" &&
-          format(new Date(log.created_at), "yyyy-MM-dd") === todayStr
+          format(new Date(log.created_at), "yyyy-MM-dd") === todayStr,
       );
 
       const anomalyList = userLastActions.filter(
         (log) =>
           log.type === "IN" &&
-          format(new Date(log.created_at), "yyyy-MM-dd") !== todayStr
+          format(new Date(log.created_at), "yyyy-MM-dd") !== todayStr,
       );
 
       const now = new Date();
@@ -111,9 +121,9 @@ export default function AdminDashboardPage() {
               .filter(
                 (l) =>
                   format(new Date(l.created_at), "yyyy-MM-dd") === todayStr &&
-                  l.type === "IN"
+                  l.type === "IN",
               )
-              .map((l) => l.profile_id)
+              .map((l) => l.profile_id),
           ).size,
           pendingDocs: docsList.length,
           anomalies: anomalyList.length,
@@ -125,7 +135,7 @@ export default function AdminDashboardPage() {
         },
       };
     },
-    { dedupingInterval: 30_000, revalidateOnFocus: true }
+    { dedupingInterval: 30_000, revalidateOnFocus: true },
   );
 
   const { data: todayAttendance } = useSWR(
@@ -186,7 +196,9 @@ export default function AdminDashboardPage() {
 
         if (clockIn) {
           const clockInDate = new Date(clockIn);
-          const diff = Math.floor((clockInDate.getTime() - slotStart.getTime()) / 60000);
+          const diff = Math.floor(
+            (clockInDate.getTime() - slotStart.getTime()) / 60000,
+          );
           if (diff > 10) {
             status = "late";
             late_minutes = diff;
@@ -218,7 +230,7 @@ export default function AdminDashboardPage() {
 
       return items;
     },
-    { dedupingInterval: 30_000, revalidateOnFocus: true }
+    { dedupingInterval: 30_000, revalidateOnFocus: true },
   );
 
   const stats = dashboardData?.stats ?? {
@@ -243,8 +255,8 @@ export default function AdminDashboardPage() {
       type === "working"
         ? details.workingNow
         : type === "docs"
-        ? details.pendingDocs
-        : details.anomalies;
+          ? details.pendingDocs
+          : details.anomalies;
 
     return (
       <div className="mt-3 bg-white rounded-[24px] border border-slate-100 shadow-xl overflow-hidden animate-in slide-in-from-top-2 duration-300 z-10">
@@ -293,7 +305,7 @@ export default function AdminDashboardPage() {
                         backgroundColor: profile.color_hex || "#8B95A1",
                       }}
                     >
-                      {profile.name.charAt(0)}
+                      {profile.name?.charat(0)}
                     </div>
                     <div>
                       <p className="text-[15px] font-bold text-[#191F28]">
@@ -308,7 +320,7 @@ export default function AdminDashboardPage() {
                           `${format(
                             new Date(item.created_at),
                             "M월 d일 a h:mm",
-                            { locale: ko }
+                            { locale: ko },
                           )} 출근 후 미퇴근`}
                         {type === "docs" && (
                           <span className="text-[#D9480F]">
@@ -502,13 +514,19 @@ export default function AdminDashboardPage() {
       {(todayAttendance ?? []).length > 0 && (
         <div className="mb-10">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-[18px] font-bold text-[#191F28]">오늘 출근 현황</h2>
+            <h2 className="text-[18px] font-bold text-[#191F28]">
+              오늘 출근 현황
+            </h2>
             <div className="flex gap-2 text-[12px] font-medium text-[#8B95A1]">
               {Object.entries(
-                (todayAttendance ?? []).reduce((acc, item) => {
-                  acc[item.work_location] = (acc[item.work_location] || 0) + 1;
-                  return acc;
-                }, {} as Record<string, number>)
+                (todayAttendance ?? []).reduce(
+                  (acc, item) => {
+                    acc[item.work_location] =
+                      (acc[item.work_location] || 0) + 1;
+                    return acc;
+                  },
+                  {} as Record<string, number>,
+                ),
               ).map(([loc, cnt]) => (
                 <span key={loc} style={{ color: LOCATION_COLORS[loc] }}>
                   {LOCATION_LABELS[loc]} {cnt}명
@@ -519,42 +537,78 @@ export default function AdminDashboardPage() {
           <div className="bg-white rounded-[24px] border border-slate-100 overflow-hidden divide-y divide-slate-50">
             {(todayAttendance ?? []).map((item) => {
               const statusConfig = {
-                attended: { icon: "✅", text: "출근완료", color: "#00B761", bg: "#E6FAF0" },
-                late: { icon: "⚠️", text: `지각 (+${item.late_minutes}분)`, color: "#F59E0B", bg: "#FFF7E6" },
-                scheduled: { icon: "⏳", text: `${item.start_time.slice(0, 5)} 예정`, color: "#8B95A1", bg: "#F2F4F6" },
-                absent: { icon: "❌", text: "미출근", color: "#F04438", bg: "#FFF0F0" },
+                attended: {
+                  icon: "✅",
+                  text: "출근완료",
+                  color: "#00B761",
+                  bg: "#E6FAF0",
+                },
+                late: {
+                  icon: "⚠️",
+                  text: `지각 (+${item.late_minutes}분)`,
+                  color: "#F59E0B",
+                  bg: "#FFF7E6",
+                },
+                scheduled: {
+                  icon: "⏳",
+                  text: `${item.start_time.slice(0, 5)} 예정`,
+                  color: "#8B95A1",
+                  bg: "#F2F4F6",
+                },
+                absent: {
+                  icon: "❌",
+                  text: "미출근",
+                  color: "#F04438",
+                  bg: "#FFF0F0",
+                },
               }[item.status];
 
               return (
-                <div key={`${item.profile_id}_${item.start_time}`} className="flex items-center justify-between p-4">
+                <div
+                  key={`${item.profile_id}_${item.start_time}`}
+                  className="flex items-center justify-between p-4"
+                >
                   <div className="flex items-center gap-3">
                     <div
                       className="w-9 h-9 rounded-full flex items-center justify-center text-[14px] font-bold text-white shrink-0"
                       style={{ backgroundColor: item.color_hex }}
                     >
-                      {item.name.charAt(0)}
+                      {item.name?.charat(0)}
                     </div>
                     <div>
-                      <p className="text-[15px] font-bold text-[#191F28]">{item.name}</p>
+                      <p className="text-[15px] font-bold text-[#191F28]">
+                        {item.name}
+                      </p>
                       <div className="flex items-center gap-1.5 text-[12px] text-[#8B95A1]">
-                        <span style={{ color: LOCATION_COLORS[item.work_location] }}>
-                          {LOCATION_LABELS[item.work_location] || item.work_location}
+                        <span
+                          style={{ color: LOCATION_COLORS[item.work_location] }}
+                        >
+                          {LOCATION_LABELS[item.work_location] ||
+                            item.work_location}
                         </span>
                         <span>·</span>
-                        <span>{item.start_time.slice(0, 5)}~{item.end_time.slice(0, 5)}</span>
+                        <span>
+                          {item.start_time.slice(0, 5)}~
+                          {item.end_time.slice(0, 5)}
+                        </span>
                       </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <span
                       className="px-2.5 py-1 rounded-lg text-[12px] font-bold"
-                      style={{ backgroundColor: statusConfig.bg, color: statusConfig.color }}
+                      style={{
+                        backgroundColor: statusConfig.bg,
+                        color: statusConfig.color,
+                      }}
                     >
                       {statusConfig.icon} {statusConfig.text}
                     </span>
                     {item.clock_in_time && (
                       <span className="text-[12px] text-[#8B95A1] font-medium">
-                        {format(new Date(item.clock_in_time), "H:mm", { locale: ko })}
+                        {format(new Date(item.clock_in_time), "H:mm", {
+                          locale: ko,
+                        })}
                       </span>
                     )}
                   </div>
