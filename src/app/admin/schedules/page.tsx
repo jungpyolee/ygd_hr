@@ -497,7 +497,7 @@ export default function AdminSchedulesPage() {
         startOfWeek(new Date(dds + "T00:00:00"), { weekStartsOn: 0 }),
         "yyyy-MM-dd",
       );
-      const [{ data: slotData }, { data: wsData }] = await Promise.all([
+      const [{ data: slotData }, { data: wsData }, { data: pData }] = await Promise.all([
         supabase
           .from("schedule_slots")
           .select("*")
@@ -508,10 +508,15 @@ export default function AdminSchedulesPage() {
           .select("*")
           .eq("week_start", dailyWeekStartStr)
           .maybeSingle(),
+        supabase
+          .from("profiles")
+          .select("id, name, color_hex")
+          .order("name"),
       ]);
       return {
         dailySlotsData: (slotData as ScheduleSlot[]) || [],
         dailyWeeklySchedule: (wsData as WeeklySchedule) ?? null,
+        dailyProfiles: (pData as Profile[]) ?? [],
       };
     },
     { dedupingInterval: 10_000, revalidateOnFocus: false }
@@ -556,12 +561,22 @@ export default function AdminSchedulesPage() {
   );
 
   // 파생 값
-  const profiles = weeklyData?.profiles ?? [];
+  const profiles = tab === "daily"
+    ? (dailySlotsResult?.dailyProfiles ?? [])
+    : (weeklyData?.profiles ?? []);
   const weeklySchedule = weeklyData?.weeklySchedule ?? null;
   const slots = weeklyData?.slots ?? [];
   const dailySlotsData = dailySlotsResult?.dailySlotsData ?? [];
   const dailyWeeklySchedule = dailySlotsResult?.dailyWeeklySchedule ?? null;
   const loading = tab === "weekly" ? weeklyLoading : dailySlotsLoading || dailyAttLoading;
+
+  // 해당 날짜가 확정된 상태인지 — 주간 전체 확정 OR 일간 confirmed_dates 포함
+  const isDayConfirmedState = (slotDate: string): boolean => {
+    if (weeklySchedule?.status === "confirmed") return true;
+    if (weeklySchedule?.confirmed_dates?.includes(slotDate)) return true;
+    if (dailyWeeklySchedule?.confirmed_dates?.includes(slotDate)) return true;
+    return false;
+  };
 
   const getOrCreateWeeklySchedule = async (): Promise<string | null> => {
     const supabase = createClient();
@@ -649,6 +664,17 @@ export default function AdminSchedulesPage() {
         toast.error("추가에 실패했어요", { description: error.message });
         return;
       }
+      if (isDayConfirmedState(data.slot_date!) && data.profile_id) {
+        const slotDateLabel = format(new Date(data.slot_date! + "T00:00:00"), "M월 d일", { locale: ko });
+        await supabase.from("notifications").insert({
+          profile_id: data.profile_id,
+          target_role: "employee",
+          type: "schedule_updated",
+          title: "스케줄이 변경됐어요",
+          content: `${slotDateLabel} 근무 일정이 추가됐어요. 확인해보세요.`,
+          source_id: wsId,
+        });
+      }
       toast.success("근무 슬롯을 추가했어요");
     } else {
       const { error } = await supabase
@@ -667,19 +693,18 @@ export default function AdminSchedulesPage() {
         toast.error("수정에 실패했어요", { description: error.message });
         return;
       }
-      if (weeklySchedule?.status === "confirmed" && data.profile_id) {
+      if (isDayConfirmedState(data.slot_date!) && data.profile_id) {
         const slotDateLabel = data.slot_date
-          ? format(new Date(data.slot_date + "T00:00:00"), "M월 d일", {
-              locale: ko,
-            })
+          ? format(new Date(data.slot_date + "T00:00:00"), "M월 d일", { locale: ko })
           : "";
+        const sourceId = weeklySchedule?.id ?? dailyWeeklySchedule?.id ?? wsId;
         await supabase.from("notifications").insert({
           profile_id: data.profile_id,
           target_role: "employee",
           type: "schedule_updated",
           title: "스케줄이 변경됐어요",
           content: `${slotDateLabel} 근무 일정이 수정됐어요. 확인해보세요.`,
-          source_id: weeklySchedule.id,
+          source_id: sourceId,
         });
       }
       toast.success("근무 슬롯을 수정했어요");
@@ -702,19 +727,20 @@ export default function AdminSchedulesPage() {
       toast.error("삭제에 실패했어요");
       return;
     }
-    if (weeklySchedule?.status === "confirmed" && deletingSlot) {
+    if (isDayConfirmedState(deletingSlot?.slot_date ?? "") && deletingSlot) {
       const slotDateLabel = format(
         new Date(deletingSlot.slot_date + "T00:00:00"),
         "M월 d일",
         { locale: ko },
       );
+      const sourceId = weeklySchedule?.id ?? dailyWeeklySchedule?.id ?? "";
       await supabase.from("notifications").insert({
         profile_id: deletingSlot.profile_id,
         target_role: "employee",
         type: "schedule_updated",
         title: "스케줄이 변경됐어요",
         content: `${slotDateLabel} 근무가 삭제됐어요. 확인해보세요.`,
-        source_id: weeklySchedule.id,
+        source_id: sourceId,
       });
     }
     toast.success("슬롯을 삭제했어요");
