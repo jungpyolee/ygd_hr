@@ -12,13 +12,12 @@ import {
   CheckCircle,
   ArrowRightLeft,
   Info,
+  Megaphone,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import WeeklyScheduleCard, { type ScheduleSlot } from "@/components/WeeklyScheduleCard";
-import AnnouncementBanner from "@/components/AnnouncementBanner";
 import OnboardingFunnel from "@/components/OnboardingFunnel";
 import AttendanceCard from "@/components/AttendanceCard";
-import StoreDistanceList from "@/components/StoreDistanceList";
 import MyInfoModal from "@/components/MyInfoModal";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
 import { useRouter } from "next/navigation";
@@ -66,6 +65,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [profile, setProfile] = useState<any>(null);
+  const [showGuideRedDot, setShowGuideRedDot] = useState(false);
   const [stores, setStores] = useState<any[]>([]);
   const [lastLog, setLastLog] = useState<any>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -301,6 +301,9 @@ export default function HomePage() {
 
   useEffect(() => {
     fetchAllData();
+    // 이용가이드 레드닷: 마지막으로 본 버전이 현재와 다르면 표시
+    const seen = localStorage.getItem("guide_seen_version");
+    setShowGuideRedDot(seen !== "v1.0.1");
   }, []);
 
   // 실시간 알림 구독 — profile 로드 후 채널 등록, cleanup으로 누수 방지
@@ -338,11 +341,11 @@ export default function HomePage() {
             <div className="h-6 w-20 bg-slate-200 animate-pulse rounded-lg" />
           </div>
           <div className="bg-white rounded-[28px] p-6 h-[180px] animate-pulse border border-slate-100" />
-          <div className="bg-white rounded-[28px] p-6 h-[140px] animate-pulse border border-slate-100" />
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-white rounded-[28px] p-5 h-[100px] animate-pulse border border-slate-100" />
-            <div className="bg-white rounded-[28px] p-5 h-[100px] animate-pulse border border-slate-100" />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-white rounded-[24px] p-4 h-[110px] animate-pulse border border-slate-100" />
+            <div className="bg-white rounded-[24px] p-4 h-[110px] animate-pulse border border-slate-100" />
           </div>
+          <div className="bg-white rounded-[28px] p-6 h-[180px] animate-pulse border border-slate-100" />
         </main>
       </div>
     );
@@ -355,9 +358,12 @@ export default function HomePage() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => router.push("/guide")}
-            className="h-8 px-3 rounded-full bg-white shadow-sm flex items-center justify-center text-[13px] font-bold text-[#4E5968] hover:text-[#3182F6] hover:bg-[#E8F3FF] transition-colors"
+            className="h-8 px-3 rounded-full bg-white shadow-sm flex items-center justify-center gap-1.5 text-[13px] font-bold text-[#4E5968] hover:text-[#3182F6] hover:bg-[#E8F3FF] transition-colors"
           >
             이용 가이드
+            {showGuideRedDot && (
+              <span className="w-1.5 h-1.5 bg-red-500 rounded-full shrink-0" />
+            )}
           </button>
           <button
             onClick={() => setIsEditModalOpen(true)}
@@ -475,12 +481,6 @@ export default function HomePage() {
           onFetchForAttendance={fetchForAttendance}
         />
 
-        <AnnouncementBanner
-          items={announcements}
-          readIds={announcementReadIds}
-          loading={announcementsLoading}
-        />
-
         {/* 오늘 스케줄 위젯 */}
         {todaySlots.length > 0 && (
           <section className="bg-white rounded-[28px] p-5 border border-slate-100 shadow-sm space-y-3">
@@ -528,27 +528,46 @@ export default function HomePage() {
           </section>
         )}
 
+        {/* 공지사항 + 레시피 2열 그리드 */}
+        <div className="grid grid-cols-2 gap-3">
+          {/* 공지사항 컴팩트 카드 */}
+          <button
+            onClick={() => router.push("/announcements")}
+            className="flex flex-col bg-white rounded-[24px] p-4 border border-slate-100 text-left active:scale-[0.98] transition-transform"
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-9 h-9 bg-[#FFF7E6] rounded-full flex items-center justify-center shrink-0">
+                <Megaphone className="w-4 h-4 text-[#F59E0B]" />
+              </div>
+              {announcementReadIds !== undefined &&
+                announcements.filter((a) => !announcementReadIds.has(a.id)).length > 0 && (
+                  <span className="text-[10px] font-bold text-white bg-red-400 rounded-full px-1.5 py-0.5 leading-none">
+                    {announcements.filter((a) => !announcementReadIds.has(a.id)).length}
+                  </span>
+                )}
+            </div>
+            <p className="text-[14px] font-bold text-[#333D4B]">공지사항</p>
+            <p className="text-[12px] text-[#8B95A1] mt-0.5 line-clamp-1">
+              {announcementsLoading
+                ? "불러오는 중..."
+                : announcements[0]?.title ?? "새 공지가 없어요"}
+            </p>
+          </button>
+
+          {/* 레시피 바로가기 */}
+          <button
+            onClick={() => router.push("/recipes")}
+            className="flex flex-col bg-white rounded-[24px] p-4 border border-slate-100 text-left active:scale-[0.98] transition-transform"
+          >
+            <div className="w-9 h-9 bg-[#E8F3FF] rounded-full flex items-center justify-center mb-2">
+              <BookOpen className="w-4 h-4 text-[#3182F6]" />
+            </div>
+            <p className="text-[14px] font-bold text-[#333D4B]">레시피 보기</p>
+            <p className="text-[12px] text-[#8B95A1] mt-0.5">음료 레시피를 확인해요</p>
+          </button>
+        </div>
+
         <WeeklyScheduleCard slots={weeklySlots} loading={loading} />
-
-        {/* 레시피 바로가기 */}
-        <button
-          onClick={() => router.push("/recipes")}
-          className="w-full flex items-center gap-4 bg-white rounded-[28px] p-5 border border-slate-100 text-left active:scale-[0.98] transition-transform"
-        >
-          <div className="w-10 h-10 bg-[#E8F3FF] rounded-full flex items-center justify-center shrink-0">
-            <BookOpen className="w-5 h-5 text-[#3182F6]" />
-          </div>
-          <div>
-            <p className="text-[15px] font-bold text-[#333D4B]">레시피 보기</p>
-            <p className="text-sm text-[#6B7684]">음료 레시피를 확인해요</p>
-          </div>
-        </button>
-
-        <StoreDistanceList
-          stores={stores}
-          locationState={locationState}
-          radius={RADIUS_METER}
-        />
       </main>
       <MyInfoModal
         isOpen={isEditModalOpen}

@@ -270,6 +270,31 @@ function Badge({
 function UpdateHistory() {
   return (
     <div className="space-y-4">
+      {/* v1.0.1 */}
+      <div className="bg-white rounded-[24px] p-5 border border-slate-100 shadow-sm">
+        <div className="flex items-center gap-3 mb-4">
+          <span className="px-3 py-1 bg-[#3182F6] text-white text-[13px] font-bold rounded-full">
+            v1.0.1
+          </span>
+          <span className="text-[13px] text-[#8B95A1] font-medium">
+            2026. 3. 20. · 홈 화면 개선
+          </span>
+        </div>
+        <div className="space-y-3">
+          <UpdateItem emoji="📅" title="이번 주 스케줄 카드 개선">
+            날짜 숫자가 표시되고 셀이 더 커져서 한눈에 보기 편해졌어요. 근무지
+            이름도 셀 안에 바로 보여요.
+          </UpdateItem>
+          <UpdateItem emoji="📢" title="공지사항 & 레시피 카드 배치 변경">
+            공지사항과 레시피 바로가기가 나란히 배치됐어요. 스크롤 없이 홈
+            화면에서 바로 확인할 수 있어요.
+          </UpdateItem>
+          <UpdateItem emoji="⚡" title="홈 화면 로딩 속도 개선">
+            불필요한 거리 계산 로직을 제거해 홈 화면이 더 빠르게 열려요.
+          </UpdateItem>
+        </div>
+      </div>
+
       <div className="bg-white rounded-[24px] p-5 border border-slate-100 shadow-sm">
         {/* v1.0.0 */}
         <div className="flex items-center gap-3 mb-4">
@@ -452,6 +477,8 @@ const SEARCH_INDEX = [
 /* ─────────────────────────────────────────────
    메인 페이지
 ───────────────────────────────────────────── */
+const CURRENT_VERSION = "v1.0.1";
+
 export default function GuidePage() {
   const router = useRouter();
   const [tab, setTab] = useState<"guide" | "updates">("guide");
@@ -460,6 +487,11 @@ export default function GuidePage() {
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const [showGame, setShowGame] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
+
+  // 진입 시 레드닷 해제
+  useEffect(() => {
+    localStorage.setItem("guide_seen_version", CURRENT_VERSION);
+  }, []);
 
   const results =
     query.trim().length > 0
@@ -563,7 +595,7 @@ export default function GuidePage() {
                 연경당 HR
               </p>
               <span className="inline-block px-3 py-1 bg-[#E8F3FF] text-[#3182F6] text-[13px] font-bold rounded-full">
-                v1.0.0
+                v1.0.1
               </span>
             </div>
             <span className="text-[12px] text-[#8B95A1]">2026. 3. 20.</span>
@@ -681,11 +713,20 @@ export default function GuidePage() {
                 </div>
                 <div className="p-3 bg-[#F9FAFB] rounded-[16px]">
                   <p className="text-[13px] font-bold text-[#191F28] mb-1">
-                    📢 공지 배너
+                    📢 공지사항 & 레시피
                   </p>
                   <p className="text-[13px] text-[#4E5968] leading-relaxed">
-                    관리자의 새 공지가 있으면 배너로 표시돼요. 탭하면 바로
-                    확인할 수 있어요.
+                    공지사항 카드와 레시피 바로가기 카드가 나란히 배치돼요.
+                    읽지 않은 공지는 빨간 숫자로 표시돼요.
+                  </p>
+                </div>
+                <div className="p-3 bg-[#F9FAFB] rounded-[16px]">
+                  <p className="text-[13px] font-bold text-[#191F28] mb-1">
+                    📅 이번 주 스케줄 카드
+                  </p>
+                  <p className="text-[13px] text-[#4E5968] leading-relaxed">
+                    요일·날짜별로 내 근무 시간과 근무지를 한눈에 볼 수 있어요.
+                    탭하면 스케줄 상세 페이지로 이동해요.
                   </p>
                 </div>
                 <div className="p-3 bg-[#F9FAFB] rounded-[16px]">
@@ -986,14 +1027,14 @@ export default function GuidePage() {
               onToggle={toggle}
             >
               <p className="text-[14px] text-[#4E5968] leading-relaxed mt-3">
-                관리자가 올린 공지를 확인할 수 있어요. 중요한 내용은 홈 화면에
-                배너로 먼저 표시돼요.
+                관리자가 올린 공지를 확인할 수 있어요. 읽지 않은 공지 수는 홈
+                화면 공지사항 카드에 빨간 숫자로 표시돼요.
               </p>
               <Sub>공지 확인 방법</Sub>
               <div className="space-y-3">
                 <Step
                   num={1}
-                  text="홈 화면 공지 배너를 탭하거나 하단 메뉴에서 공지사항으로 이동해요."
+                  text="홈 화면 공지사항 카드를 탭하거나 하단 메뉴에서 공지사항으로 이동해요."
                 />
                 <Step num={2} text="목록에서 공지를 탭하면 내용이 펼쳐져요." />
                 <Step num={3} text="읽은 공지는 자동으로 읽음 처리돼요." />

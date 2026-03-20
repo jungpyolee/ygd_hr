@@ -530,6 +530,7 @@ export default function AdminAttendanceCalendar() {
               // 출근 카드 (기존)
               const isWorking = !log.clock_out;
               const isAnomaly = isWorking && !isToday(selectedDate);
+              const canManualOut = isWorking;
 
               let durationText = "";
               if (log.clock_in && log.clock_out) {
@@ -566,7 +567,7 @@ export default function AdminAttendanceCalendar() {
                             <AlertCircle className="w-3 h-3" /> 미퇴근
                           </span>
                         )}
-                        {isAnomaly && (
+                        {canManualOut && (
                           <button
                             onClick={() => openManualOut(log, selectedDateKey)}
                             className="flex items-center gap-1 bg-[#F3F0FF] text-[#7950F2] text-[11px] font-bold px-2 py-0.5 rounded-md hover:bg-[#E9DFFF] transition-colors"

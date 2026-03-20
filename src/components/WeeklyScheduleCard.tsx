@@ -12,6 +12,12 @@ const LOCATION_COLORS: Record<string, string> = {
   catering: "#F59E0B",
 };
 
+const LOCATION_LABELS: Record<string, string> = {
+  cafe: "카페",
+  factory: "공장",
+  catering: "케이터링",
+};
+
 export interface ScheduleSlot {
   slot_date: string;
   start_time: string;
@@ -31,6 +37,9 @@ export default function WeeklyScheduleCard({ slots: propSlots, loading: propLoad
 
   const weekDays = ["월", "화", "수", "목", "금", "토", "일"];
   const todayIndex = (new Date().getDay() + 6) % 7;
+  const weekStartSun = startOfWeek(new Date(), { weekStartsOn: 0 });
+  // idx 0=월, 1=화 … 6=일 → weekStartSun +1, +2 … +7
+  const weekDates = Array.from({ length: 7 }, (_, i) => addDays(weekStartSun, i + 1));
 
   // propSlots가 바뀌면 동기화
   useEffect(() => {
@@ -94,11 +103,12 @@ export default function WeeklyScheduleCard({ slots: propSlots, loading: propLoad
           <div className="w-5 h-5 bg-slate-100 animate-pulse rounded" />
           <div className="h-5 w-28 bg-slate-100 animate-pulse rounded" />
         </div>
-        <div className="grid grid-cols-7 gap-1.5">
+        <div className="grid grid-cols-7 gap-2">
           {Array.from({ length: 7 }).map((_, i) => (
             <div key={i} className="flex flex-col items-center gap-1.5">
               <div className="h-3 w-4 bg-slate-100 animate-pulse rounded" />
-              <div className="h-16 w-full bg-slate-100 animate-pulse rounded-xl" />
+              <div className="h-3 w-5 bg-slate-100 animate-pulse rounded" />
+              <div className="h-[88px] w-full bg-slate-100 animate-pulse rounded-2xl" />
             </div>
           ))}
         </div>
@@ -117,20 +127,21 @@ export default function WeeklyScheduleCard({ slots: propSlots, loading: propLoad
       </Link>
 
       {slots.length === 0 ? (
-        <div className="text-center py-3">
+        <div className="text-center py-6">
           <p className="text-[14px] text-[#8B95A1]">확정된 스케줄이 없어요</p>
           <p className="text-[12px] text-[#B0B8C1] mt-1">
             관리자가 스케줄을 확정하면 여기서 볼 수 있어요
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-7 gap-1.5">
+        <div className="grid grid-cols-7 gap-2">
           {weekDays.map((label, idx) => {
             const daySlots = slotsByDay[idx] || [];
             const isToday = idx === todayIndex;
 
             return (
               <div key={label} className="flex flex-col items-center gap-1.5">
+                {/* 요일 + 날짜 */}
                 <span
                   className={`text-[11px] font-bold ${
                     isToday ? "text-[#3182F6]" : "text-[#8B95A1]"
@@ -138,8 +149,16 @@ export default function WeeklyScheduleCard({ slots: propSlots, loading: propLoad
                 >
                   {label}
                 </span>
+                <span
+                  className={`text-[12px] font-bold ${
+                    isToday ? "text-[#3182F6]" : "text-[#B0B8C1]"
+                  }`}
+                >
+                  {format(weekDates[idx], "d")}
+                </span>
+                {/* 셀 */}
                 <div
-                  className={`w-full min-h-[64px] rounded-[12px] flex flex-col items-center justify-center gap-1 px-1 py-2 ${
+                  className={`w-full min-h-[88px] rounded-[14px] flex flex-col items-center justify-center gap-1 px-1 py-2 ${
                     isToday
                       ? "bg-[#E8F3FF]"
                       : daySlots.length > 0
@@ -148,32 +167,39 @@ export default function WeeklyScheduleCard({ slots: propSlots, loading: propLoad
                   }`}
                 >
                   {daySlots.length === 0 ? (
-                    <span className="text-[11px] text-[#D1D6DB] font-bold">
+                    <span className="text-[13px] text-[#D1D6DB] font-bold">
                       -
                     </span>
                   ) : (
                     daySlots.map((slot, si) => (
                       <div key={si} className="w-full text-center">
                         <div
-                          className="w-2 h-2 rounded-full mx-auto mb-0.5"
+                          className="w-2.5 h-2.5 rounded-full mx-auto mb-1"
                           style={{
                             backgroundColor:
                               LOCATION_COLORS[slot.work_location] || "#8B95A1",
                           }}
                         />
                         <p
-                          className={`text-[9px] font-bold leading-tight ${
+                          className={`text-[10px] font-bold leading-tight ${
                             isToday ? "text-[#3182F6]" : "text-[#333D4B]"
                           }`}
                         >
                           {slot.start_time.slice(0, 5)}
                         </p>
                         <p
-                          className={`text-[9px] leading-tight ${
+                          className={`text-[10px] leading-tight ${
                             isToday ? "text-[#3182F6]/70" : "text-[#8B95A1]"
                           }`}
                         >
                           ~{slot.end_time.slice(0, 5)}
+                        </p>
+                        <p
+                          className={`text-[9px] font-medium mt-0.5 truncate ${
+                            isToday ? "text-[#3182F6]/80" : "text-[#6B7684]"
+                          }`}
+                        >
+                          {LOCATION_LABELS[slot.work_location] || slot.work_location}
                         </p>
                       </div>
                     ))
