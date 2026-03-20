@@ -98,6 +98,8 @@ export default function CatDodgeGame({ onClose }: Props) {
   const frameRef = useRef(0);
   const screenWRef = useRef(375);
   const screenHRef = useRef(812);
+  const pausedTimeRef = useRef(0); // 백그라운드로 이탈한 총 시간 (ms)
+  const hiddenAtRef = useRef<number | null>(null); // 탭 숨김 시점
 
   /* ── 초기화 ── */
   useEffect(() => {
@@ -127,6 +129,26 @@ export default function CatDodgeGame({ onClose }: Props) {
     return () => clearTimeout(t);
   }, [gameState, countdown]);
 
+  /* ── 백그라운드 이탈 시간 보정 ── */
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (gameStateRef.current !== "playing") return;
+      if (document.hidden) {
+        hiddenAtRef.current = performance.now();
+      } else {
+        if (hiddenAtRef.current !== null) {
+          pausedTimeRef.current += performance.now() - hiddenAtRef.current;
+          hiddenAtRef.current = null;
+          // 돌아왔을 때 dt 스파이크 방지
+          lastFrameRef.current = 0;
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, []);
+
   /* ── 게임 루프 ── */
   useEffect(() => {
     if (gameState !== "playing") return;
@@ -141,7 +163,7 @@ export default function CatDodgeGame({ onClose }: Props) {
         : 16.67;
       lastFrameRef.current = ts;
 
-      const elapsed = (ts - startTimeRef.current) / 1000;
+      const elapsed = (ts - startTimeRef.current - pausedTimeRef.current) / 1000;
       const diff = getDifficulty(elapsed);
 
       /* 고양이 자동 이동 */
@@ -308,6 +330,8 @@ export default function CatDodgeGame({ onClose }: Props) {
     lastSpawnRef.current = 0;
     lastFrameRef.current = 0;
     nextIdRef.current = 0;
+    pausedTimeRef.current = 0;
+    hiddenAtRef.current = null;
 
     setItems([]);
     setCatX(screenWRef.current / 2);
