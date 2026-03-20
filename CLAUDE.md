@@ -11,7 +11,7 @@
 | **GitHub** | `jungpyolee/ygd_hr` |
 | **Git 계정** | `jungpyolee` / `jungpyo5789@gmail.com` |
 | **Supabase Production** | `ymvdjxzkjodasctktunh` / `https://ymvdjxzkjodasctktunh.supabase.co` |
-| **Supabase Dev** | `aayedfstvegiswgjwcuw` / `https://aayedfstvegiswgjwcuw.supabase.co` |
+| **Supabase Dev** | `rddplpiwvmclreeblkmi` / `https://rddplpiwvmclreeblkmi.supabase.co` |
 | **배포** | Vercel |
 | **DB 연결** | Supabase Management API (psql 불가 — IPv6 전용) |
 
@@ -99,13 +99,14 @@ psql 직접 연결 불가. **Supabase Management API**로 SQL 실행.
 source .env.local
 
 # ✅ Dev (기본 — 항상 이걸 사용)
-curl -s -X POST "https://api.supabase.com/v1/projects/aayedfstvegiswgjwcuw/database/query" \
+curl -s -X POST "https://api.supabase.com/v1/projects/rddplpiwvmclreeblkmi/database/query" \
   -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query": "SQL HERE"}'
 
-# ✅ Production (배포 시 — 섹션 3-1 절차에 따라 실행)
+# ✅ Production (배포 시 — 섹션 3-1 절차에 따라 실행, SUPABASE_PROD_ACCESS_TOKEN 사용)
 # curl -s -X POST "https://api.supabase.com/v1/projects/ymvdjxzkjodasctktunh/database/query" \
+#   -H "Authorization: Bearer $SUPABASE_PROD_ACCESS_TOKEN" \
 ```
 
 ### DB 스키마 변경 플로우
@@ -113,7 +114,7 @@ curl -s -X POST "https://api.supabase.com/v1/projects/aayedfstvegiswgjwcuw/datab
 ```
 1. docs/db-issues/NNN-제목.md 작성 (배경, 원인, 계획)
 2. docs/migrations/NNN_설명.sql 작성
-3. Dev DB에 SQL 실행 (aayedfstvegiswgjwcuw)
+3. Dev DB에 SQL 실행 (rddplpiwvmclreeblkmi)
 4. Dev에서 검증 SQL 실행
 5. docs/db-issues/NNN-제목.md 결과 기록
 6. docs/schema.md 갱신
