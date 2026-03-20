@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, Megaphone, Pin } from "lucide-react";
@@ -9,18 +9,13 @@ import { ko } from "date-fns/locale";
 import type { Announcement } from "@/types/announcement";
 
 export default function AnnouncementsPage() {
-  const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
-  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  const [readIds, setReadIds] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
+  const { data, isLoading: loading } = useSWR(
+    "announcements-list",
+    async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
       const [{ data: items }, { data: reads }] = await Promise.all([
         supabase
           .from("announcements")
@@ -34,13 +29,16 @@ export default function AnnouncementsPage() {
               .eq("profile_id", user.id)
           : Promise.resolve({ data: [] }),
       ]);
+      return {
+        announcements: (items as Announcement[]) ?? [],
+        readIds: new Set((reads ?? []).map((r: any) => r.announcement_id as string)),
+      };
+    },
+    { dedupingInterval: 120_000, revalidateOnFocus: false }
+  );
 
-      setAnnouncements((items as Announcement[]) ?? []);
-      setReadIds(new Set((reads ?? []).map((r: { announcement_id: string }) => r.announcement_id)));
-      setLoading(false);
-    };
-    fetchData();
-  }, []);
+  const announcements = data?.announcements ?? [];
+  const readIds = data?.readIds ?? new Set<string>();
 
   if (loading) {
     return (

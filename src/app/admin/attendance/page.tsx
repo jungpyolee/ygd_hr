@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useState, useMemo } from "react";
+import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
 import {
   format,
@@ -64,10 +65,6 @@ export default function AdminAttendanceCalendar() {
   const [viewType, setViewType] = useState<"week" | "month">("week");
   const [baseDate, setBaseDate] = useState<Date>(new Date());
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [logsByDate, setLogsByDate] = useState<Record<string, ProcessedLog[]>>(
-    {},
-  );
-  const [loading, setLoading] = useState(true);
   const [manualOutTarget, setManualOutTarget] = useState<{
     log: ProcessedLog;
     dateKey: string;
@@ -75,35 +72,38 @@ export default function AdminAttendanceCalendar() {
   const [manualOutTime, setManualOutTime] = useState("");
   const [manualOutSubmitting, setManualOutSubmitting] = useState(false);
 
-  const supabase = useMemo(() => createClient(), []);
+  const { startDate, endDate } = useMemo(() => {
+    if (viewType === "week") {
+      return {
+        startDate: startOfWeek(baseDate, { weekStartsOn: 0 }),
+        endDate: endOfWeek(baseDate, { weekStartsOn: 0 }),
+      };
+    } else {
+      const monthStart = startOfMonth(baseDate);
+      return {
+        startDate: startOfWeek(monthStart, { weekStartsOn: 0 }),
+        endDate: endOfWeek(endOfMonth(monthStart), { weekStartsOn: 0 }),
+      };
+    }
+  }, [viewType, baseDate]);
 
-  const fetchLogsForCalendar = useCallback(
-    async (date: Date, type: "week" | "month") => {
-      setLoading(true);
+  const rangeKey = `${format(startDate, "yyyy-MM-dd")}_${format(endDate, "yyyy-MM-dd")}`;
 
-      let startDate, endDate;
-      if (type === "week") {
-        startDate = startOfWeek(date, { weekStartsOn: 0 });
-        endDate = endOfWeek(date, { weekStartsOn: 0 });
-      } else {
-        const monthStart = startOfMonth(date);
-        startDate = startOfWeek(monthStart, { weekStartsOn: 0 });
-        endDate = endOfWeek(endOfMonth(monthStart), { weekStartsOn: 0 });
-      }
-
-      const startDateStr = format(startDate, "yyyy-MM-dd");
-      const endDateStr = format(endDate, "yyyy-MM-dd");
+  const { data: logsByDate = {}, isLoading: loading, mutate } = useSWR(
+    ["admin-attendance", rangeKey],
+    async ([, range]) => {
+      const supabase = createClient();
+      const [start, end] = range.split("_");
 
       // [1] schedule_slots 먼저 조회 (status=active, substituted 제외)
-      // profiles JOIN으로 별도 조회 불필요
       const { data: slotsData } = await supabase
         .from("schedule_slots")
         .select(
           "profile_id, slot_date, start_time, end_time, work_location, profiles!profile_id(name, color_hex)",
         )
         .eq("status", "active")
-        .gte("slot_date", startDateStr)
-        .lte("slot_date", endDateStr);
+        .gte("slot_date", start)
+        .lte("slot_date", end);
 
       // [2] 슬롯 기반 base 맵 생성 (is_absent=true 기본값)
       const grouped: Record<string, Map<string, ProcessedLog>> = {};
@@ -135,11 +135,11 @@ export default function AdminAttendanceCalendar() {
         }
       });
 
-      // [3] attendance_logs 조회 (기존과 동일 범위)
-      const startStr = startDate.toISOString();
-      const endStr = new Date(
-        new Date(endDate).setHours(23, 59, 59, 999),
-      ).toISOString();
+      // [3] attendance_logs 조회
+      const startDateObj = new Date(start);
+      const endDateObj = new Date(end);
+      const startStr = startDateObj.toISOString();
+      const endStr = new Date(endDateObj.setHours(23, 59, 59, 999)).toISOString();
 
       const { data, error } = await supabase
         .from("attendance_logs")
@@ -158,7 +158,6 @@ export default function AdminAttendanceCalendar() {
           const pId = log.profile_id;
 
           if (!grouped[dateKey].has(pId)) {
-            // 슬롯 없이 출근 기록만 있는 경우 (비정상 출근 등)
             grouped[dateKey].set(pId, {
               profile_id: pId,
               name: log.profiles?.name || "알 수 없음",
@@ -187,9 +186,8 @@ export default function AdminAttendanceCalendar() {
             userLog.distance_in = log.distance_m ?? null;
             userLog.attendance_type_in = log.attendance_type || "regular";
             userLog.store_name = log.stores?.name || "알 수 없음";
-            userLog.is_absent = false; // 출근 확인
+            userLog.is_absent = false;
 
-            // 지각 계산
             if (userLog.scheduled_start) {
               const [sh, sm] = userLog.scheduled_start.split(":").map(Number);
               const clockInDate = new Date(log.created_at);
@@ -208,7 +206,6 @@ export default function AdminAttendanceCalendar() {
             userLog.attendance_type_out = log.attendance_type || "regular";
             userLog.reason_out = log.reason ?? null;
 
-            // 조기퇴근 계산
             if (userLog.scheduled_end && userLog.clock_out) {
               const [eh, em] = userLog.scheduled_end.split(":").map(Number);
               const clockOutDate = new Date(userLog.clock_out);
@@ -228,15 +225,10 @@ export default function AdminAttendanceCalendar() {
       Object.keys(grouped).forEach((key) => {
         finalData[key] = Array.from(grouped[key].values());
       });
-      setLogsByDate(finalData);
-      setLoading(false);
+      return finalData;
     },
-    [supabase],
+    { dedupingInterval: 60_000, revalidateOnFocus: false }
   );
-
-  useEffect(() => {
-    fetchLogsForCalendar(baseDate, viewType);
-  }, [baseDate, viewType, fetchLogsForCalendar]);
 
   const getContrastYIQ = (hexcolor: string) => {
     const hex = hexcolor.replace("#", "");
@@ -288,6 +280,7 @@ export default function AdminAttendanceCalendar() {
   const handleManualOut = async () => {
     if (!manualOutTarget || !manualOutTime) return;
     setManualOutSubmitting(true);
+    const supabase = createClient();
     const { log, dateKey } = manualOutTarget;
     const clockOutDate = new Date(`${dateKey}T${manualOutTime}:00`);
 
@@ -304,7 +297,7 @@ export default function AdminAttendanceCalendar() {
     } else {
       toast.success(`${log.name}님 퇴근 처리가 완료됐어요.`);
       setManualOutTarget(null);
-      fetchLogsForCalendar(baseDate, viewType);
+      mutate();
     }
     setManualOutSubmitting(false);
   };

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
+import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
 import { Plus, Trash2, ClipboardList } from "lucide-react";
 import { toast } from "sonner";
@@ -21,10 +22,7 @@ const POSITION_LABELS: Record<string, string> = {
 };
 
 export default function AdminChecklistsPage() {
-  const supabase = useMemo(() => createClient(), []);
   const [activeTab, setActiveTab] = useState<TriggerTab>("check_in");
-  const [templates, setTemplates] = useState<ChecklistTemplate[]>([]);
-  const [loading, setLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<ChecklistTemplate | null>(null);
 
   // 신규 항목 입력 상태
@@ -34,23 +32,24 @@ export default function AdminChecklistsPage() {
   const [newPosition, setNewPosition] = useState<string>("");
   const [saving, setSaving] = useState(false);
 
-  const fetchTemplates = async () => {
-    const { data } = await supabase
-      .from("checklist_templates")
-      .select("*")
-      .order("trigger")
-      .order("order_index");
-    setTemplates((data as ChecklistTemplate[]) ?? []);
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    fetchTemplates();
-  }, []);
+  const { data: templates = [], isLoading: loading, mutate } = useSWR(
+    "admin-checklist-templates",
+    async () => {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("checklist_templates")
+        .select("*")
+        .order("trigger")
+        .order("order_index");
+      return (data as ChecklistTemplate[]) ?? [];
+    },
+    { dedupingInterval: 60_000, revalidateOnFocus: false }
+  );
 
   const filtered = templates.filter((t) => t.trigger === activeTab);
 
   const toggleActive = async (item: ChecklistTemplate) => {
+    const supabase = createClient();
     const { error } = await supabase
       .from("checklist_templates")
       .update({ is_active: !item.is_active })
@@ -58,12 +57,13 @@ export default function AdminChecklistsPage() {
     if (error) {
       toast.error("변경에 실패했어요", { description: "잠시 후 다시 시도해 주세요." });
     } else {
-      fetchTemplates();
+      mutate();
     }
   };
 
   const addTemplate = async () => {
     if (!newTitle.trim()) return;
+    const supabase = createClient();
     setSaving(true);
 
     const maxOrder = filtered.reduce((max, t) => Math.max(max, t.order_index), -1);
@@ -83,12 +83,13 @@ export default function AdminChecklistsPage() {
       setNewLocation("");
       setNewPosition("");
       setShowAddForm(false);
-      fetchTemplates();
+      mutate();
     }
     setSaving(false);
   };
 
   const deleteTemplate = async (item: ChecklistTemplate) => {
+    const supabase = createClient();
     const { error } = await supabase
       .from("checklist_templates")
       .delete()
@@ -97,7 +98,7 @@ export default function AdminChecklistsPage() {
       toast.error("삭제에 실패했어요", { description: "잠시 후 다시 시도해 주세요." });
     } else {
       toast.success("항목을 삭제했어요");
-      fetchTemplates();
+      mutate();
     }
     setDeleteTarget(null);
   };

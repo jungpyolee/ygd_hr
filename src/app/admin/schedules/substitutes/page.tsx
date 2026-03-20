@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState } from "react";
+import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
 import { toast } from "sonner";
 import { ChevronLeft, X, Check, AlertCircle, Clock, MapPin } from "lucide-react";
@@ -68,11 +69,7 @@ const LOCATION_COLORS: Record<string, string> = {
 };
 
 export default function AdminSubstitutesPage() {
-  const supabase = useMemo(() => createClient(), []);
   const [tab, setTab] = useState<"pending" | "done">("pending");
-  const [requests, setRequests] = useState<SubstituteRequest[]>([]);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [loading, setLoading] = useState(true);
   const [currentAdminId, setCurrentAdminId] = useState<string | null>(null);
 
   // Reject bottom sheet
@@ -87,29 +84,41 @@ export default function AdminSubstitutesPage() {
 
   useEffect(() => {
     const init = async () => {
+      const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (user) setCurrentAdminId(user.id);
-      const { data } = await supabase.from("profiles").select("id, name, color_hex, work_locations").order("name");
-      if (data) setProfiles(data as Profile[]);
     };
     init();
   }, []);
 
-  const fetchRequests = useCallback(async () => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from("substitute_requests")
-      .select(`
-        id, slot_id, requester_id, reason, status, reject_reason, rejected_at, approved_at,
-        eligible_profile_ids, accepted_by, accepted_at, created_at,
-        schedule_slots!slot_id (slot_date, start_time, end_time, work_location),
-        requester:profiles!requester_id (name, color_hex),
-        accepted:profiles!accepted_by (name)
-      `)
-      .order("created_at", { ascending: false });
+  const { data: profiles = [] } = useSWR(
+    "admin-substitutes-profiles",
+    async () => {
+      const supabase = createClient();
+      const { data } = await supabase.from("profiles").select("id, name, color_hex, work_locations").order("name");
+      return (data as Profile[]) ?? [];
+    },
+    { dedupingInterval: 60_000, revalidateOnFocus: false }
+  );
 
-    if (!error && data) {
-      const mapped = (data as unknown as SubstituteRequestRow[]).map((r) => ({
+  const { data: requests = [], isLoading: loading, mutate } = useSWR(
+    "admin-substitutes-requests",
+    async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("substitute_requests")
+        .select(`
+          id, slot_id, requester_id, reason, status, reject_reason, rejected_at, approved_at,
+          eligible_profile_ids, accepted_by, accepted_at, created_at,
+          schedule_slots!slot_id (slot_date, start_time, end_time, work_location),
+          requester:profiles!requester_id (name, color_hex),
+          accepted:profiles!accepted_by (name)
+        `)
+        .order("created_at", { ascending: false });
+
+      if (error || !data) return [];
+
+      return (data as unknown as SubstituteRequestRow[]).map((r) => ({
         id: r.id,
         slot_id: r.slot_id,
         requester_id: r.requester_id,
@@ -130,17 +139,13 @@ export default function AdminSubstitutesPage() {
         requester_color: r.requester?.color_hex || "#8B95A1",
         accepted_name: r.accepted?.name,
       })) as SubstituteRequest[];
-      setRequests(mapped);
-    }
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    fetchRequests();
-  }, [fetchRequests]);
+    },
+    { dedupingInterval: 30_000, revalidateOnFocus: true }
+  );
 
   const handleReject = async () => {
     if (!rejectTarget || !currentAdminId) return;
+    const supabase = createClient();
     setRejecting(true);
     const { error } = await supabase
       .from("substitute_requests")
@@ -166,7 +171,7 @@ export default function AdminSubstitutesPage() {
       toast.success("반려 처리했어요");
       setRejectTarget(null);
       setRejectReason("");
-      fetchRequests();
+      mutate();
     }
     setRejecting(false);
   };
@@ -185,6 +190,7 @@ export default function AdminSubstitutesPage() {
   const handleApprove = async () => {
     if (!approveTarget || !currentAdminId) return;
     if (eligibleIds.length === 0) { toast.error("대타 가능한 직원을 선택해주세요.", { description: "목록에서 대타 가능한 직원을 1명 이상 선택해주세요." }); return; }
+    const supabase = createClient();
     setApproving(true);
 
     const { error } = await supabase
@@ -213,7 +219,7 @@ export default function AdminSubstitutesPage() {
       toast.success(`승인 완료! ${eligibleIds.length}명에게 알림을 보냈어요`);
       setApproveTarget(null);
       setEligibleIds([]);
-      fetchRequests();
+      mutate();
     }
     setApproving(false);
   };

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
+import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { Plus, BookOpen, Eye, EyeOff, Trash2, Copy, Search, X, Settings2 } from "lucide-react";
@@ -10,38 +11,38 @@ import ConfirmDialog from "@/components/ui/confirm-dialog";
 import type { RecipeCategory, RecipeItem } from "@/types/recipe";
 
 export default function AdminRecipesPage() {
-  const [categories, setCategories] = useState<RecipeCategory[]>([]);
-  const [recipes, setRecipes] = useState<RecipeItem[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<string | "all">(
-    "all"
-  );
-  const [loading, setLoading] = useState(true);
+  const [selectedCategory, setSelectedCategory] = useState<string | "all">("all");
   const [deleteTarget, setDeleteTarget] = useState<RecipeItem | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
 
-  const fetchData = async () => {
-    const [{ data: cats }, { data: items }] = await Promise.all([
-      supabase
-        .from("recipe_categories")
-        .select("*")
-        .order("order_index", { ascending: true }),
-      supabase
-        .from("recipe_items")
-        .select("*, recipe_categories(name)")
-        .order("order_index", { ascending: true }),
-    ]);
-    setCategories(cats ?? []);
-    setRecipes(items ?? []);
-    setLoading(false);
-  };
+  const { data, isLoading: loading, mutate } = useSWR(
+    "admin-recipes-list",
+    async () => {
+      const supabase = createClient();
+      const [{ data: cats }, { data: items }] = await Promise.all([
+        supabase
+          .from("recipe_categories")
+          .select("*")
+          .order("order_index", { ascending: true }),
+        supabase
+          .from("recipe_items")
+          .select("*, recipe_categories(name)")
+          .order("order_index", { ascending: true }),
+      ]);
+      return {
+        categories: (cats as RecipeCategory[]) ?? [],
+        recipes: (items as RecipeItem[]) ?? [],
+      };
+    },
+    { dedupingInterval: 60_000, revalidateOnFocus: false }
+  );
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  const categories = data?.categories ?? [];
+  const recipes = data?.recipes ?? [];
 
   const togglePublish = async (recipe: RecipeItem) => {
+    const supabase = createClient();
     const { error } = await supabase
       .from("recipe_items")
       .update({ is_published: !recipe.is_published })
@@ -54,11 +55,12 @@ export default function AdminRecipesPage() {
       return;
     }
     toast.success(recipe.is_published ? "비공개로 전환했어요" : "공개로 전환했어요");
-    fetchData();
+    mutate();
   };
 
   const deleteRecipe = async () => {
     if (!deleteTarget) return;
+    const supabase = createClient();
     const { error } = await supabase
       .from("recipe_items")
       .delete()
@@ -72,10 +74,11 @@ export default function AdminRecipesPage() {
     }
     toast.success("레시피를 삭제했어요");
     setDeleteTarget(null);
-    fetchData();
+    mutate();
   };
 
   const copyRecipe = async (recipe: RecipeItem) => {
+    const supabase = createClient();
     const newId = crypto.randomUUID();
     const { error: recipeError } = await supabase.from("recipe_items").insert({
       id: newId,
@@ -111,7 +114,7 @@ export default function AdminRecipesPage() {
       );
     }
     toast.success("레시피를 복사했어요", { description: "비공개로 저장됐어요" });
-    fetchData();
+    mutate();
   };
 
   const baseFiltered =

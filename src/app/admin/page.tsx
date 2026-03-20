@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useState } from "react";
+import useSWR from "swr";
 import {
   Users,
   UserCheck,
@@ -42,22 +43,7 @@ const LOCATION_COLORS: Record<string, string> = { cafe: "#3182F6", factory: "#00
 
 export default function AdminDashboardPage() {
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
-
-  const [stats, setStats] = useState({
-    workingNow: 0,
-    totalToday: 0,
-    pendingDocs: 0,
-    anomalies: 0,
-  });
-  const [details, setDetails] = useState<DashboardDetails>({
-    workingNow: [],
-    pendingDocs: [],
-    anomalies: [],
-  });
-  const [loading, setLoading] = useState(true);
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
-  const [todayAttendance, setTodayAttendance] = useState<TodayAttendanceItem[]>([]);
 
   const todayText = new Intl.DateTimeFormat("ko-KR", {
     month: "long",
@@ -65,51 +51,47 @@ export default function AdminDashboardPage() {
     weekday: "short",
   }).format(new Date());
 
-  useEffect(() => {
-    fetchDashboardData();
-    fetchTodayAttendance();
-  }, []);
+  const { data: dashboardData } = useSWR(
+    "admin-dashboard",
+    async () => {
+      const supabase = createClient();
+      const todayStr = format(new Date(), "yyyy-MM-dd");
 
-  const fetchDashboardData = async () => {
-    setLoading(true);
-    const todayStr = format(new Date(), "yyyy-MM-dd");
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const { data: latestLogs } = await supabase
+        .from("attendance_logs")
+        .select(`profile_id, type, created_at, profiles(name, phone, color_hex)`)
+        .gte("created_at", thirtyDaysAgo.toISOString())
+        .order("created_at", { ascending: false });
 
-    // 1. 모든 직원의 마지막 근태 기록 + 프로필 조인
-    // 최근 30일로 범위 제한 (유저별 최신 기록 파악용 — 전체 이력 로딩 방지)
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const { data: latestLogs } = await supabase
-      .from("attendance_logs")
-      .select(`profile_id, type, created_at, profiles(name, phone, color_hex)`)
-      .gte("created_at", thirtyDaysAgo.toISOString())
-      .order("created_at", { ascending: false });
+      const { data: profiles } = await supabase.from("profiles").select("*");
 
-    // 2. 전체 직원 서류 정보
-    const { data: profiles } = await supabase.from("profiles").select("*");
+      if (!latestLogs || !profiles) {
+        return {
+          stats: { workingNow: 0, totalToday: 0, pendingDocs: 0, anomalies: 0 },
+          details: { workingNow: [], pendingDocs: [], anomalies: [] },
+        };
+      }
 
-    if (latestLogs && profiles) {
-      // 유저별 최신 기록 1개만 남기기 (중복 제거)
       const latestMap = new Map();
       latestLogs.forEach((log) => {
         if (!latestMap.has(log.profile_id)) latestMap.set(log.profile_id, log);
       });
       const userLastActions = Array.from(latestMap.values());
 
-      // 🚀 [현재 근무 중 명단]
       const workingList = userLastActions.filter(
         (log) =>
           log.type === "IN" &&
           format(new Date(log.created_at), "yyyy-MM-dd") === todayStr
       );
 
-      // 🚀 [기록 이상 명단] (마지막이 IN인데 오늘이 아님)
       const anomalyList = userLastActions.filter(
         (log) =>
           log.type === "IN" &&
           format(new Date(log.created_at), "yyyy-MM-dd") !== todayStr
       );
 
-      // 🚀 [서류 미비 명단]
       const now = new Date();
       const docsList = profiles.filter((p) => {
         const hasMissingFile =
@@ -121,120 +103,134 @@ export default function AdminDashboardPage() {
         return hasMissingFile || isHealthExpired;
       });
 
-      setStats({
-        workingNow: workingList.length,
-        totalToday: new Set(
-          latestLogs
-            .filter(
-              (l) =>
-                format(new Date(l.created_at), "yyyy-MM-dd") === todayStr &&
-                l.type === "IN"
-            )
-            .map((l) => l.profile_id)
-        ).size,
-        pendingDocs: docsList.length,
-        anomalies: anomalyList.length,
-      });
-
-      setDetails({
-        workingNow: workingList,
-        pendingDocs: docsList,
-        anomalies: anomalyList,
-      });
-    }
-    setLoading(false);
-  };
-
-  const fetchTodayAttendance = async () => {
-    const todayStr = format(new Date(), "yyyy-MM-dd");
-    const now = new Date();
-
-    // Fetch confirmed weekly schedules for today
-    const weekAgo = new Date();
-    weekAgo.setDate(weekAgo.getDate() - 7);
-    const { data: wsData } = await supabase
-      .from("weekly_schedules")
-      .select("id")
-      .eq("status", "confirmed")
-      .gte("week_start", format(weekAgo, "yyyy-MM-dd"));
-
-    if (!wsData || wsData.length === 0) return;
-    const wsIds = wsData.map((ws: { id: string }) => ws.id);
-
-    // Fetch today's active schedule slots with profile info
-    const { data: slotsData } = await supabase
-      .from("schedule_slots")
-      .select(`*, profiles!profile_id(name, color_hex)`)
-      .eq("slot_date", todayStr)
-      .eq("status", "active")
-      .in("weekly_schedule_id", wsIds);
-
-    if (!slotsData || slotsData.length === 0) return;
-
-    // Fetch today's attendance IN logs
-    const profileIds = [...new Set(slotsData.map((s: any) => s.profile_id))];
-    const dayStart = new Date(todayStr + "T00:00:00").toISOString();
-    const dayEnd = new Date(todayStr + "T23:59:59").toISOString();
-
-    const { data: logsData } = await supabase
-      .from("attendance_logs")
-      .select("profile_id, created_at, type")
-      .eq("type", "IN")
-      .in("profile_id", profileIds)
-      .gte("created_at", dayStart)
-      .lte("created_at", dayEnd)
-      .order("created_at", { ascending: true });
-
-    // Map: profile_id -> first IN time today
-    const checkInMap = new Map<string, string>();
-    (logsData || []).forEach((log: any) => {
-      if (!checkInMap.has(log.profile_id)) {
-        checkInMap.set(log.profile_id, log.created_at);
-      }
-    });
-
-    const items: TodayAttendanceItem[] = slotsData.map((slot: any) => {
-      const clockIn = checkInMap.get(slot.profile_id) || null;
-      const [sh, sm] = slot.start_time.split(":").map(Number);
-      const slotStart = new Date(todayStr + "T00:00:00");
-      slotStart.setHours(sh, sm, 0, 0);
-
-      let status: TodayAttendanceItem["status"];
-      let late_minutes = 0;
-
-      if (clockIn) {
-        const clockInDate = new Date(clockIn);
-        const diff = Math.floor((clockInDate.getTime() - slotStart.getTime()) / 60000);
-        if (diff > 10) {
-          status = "late";
-          late_minutes = diff;
-        } else {
-          status = "attended";
-        }
-      } else {
-        const msSinceStart = now.getTime() - slotStart.getTime();
-        if (msSinceStart >= 10 * 60 * 1000) {
-          status = "absent";
-        } else {
-          status = "scheduled";
-        }
-      }
-
       return {
-        profile_id: slot.profile_id,
-        name: slot.profiles?.name || "알 수 없음",
-        color_hex: slot.profiles?.color_hex || "#8B95A1",
-        slot_date: slot.slot_date,
-        start_time: slot.start_time,
-        end_time: slot.end_time,
-        work_location: slot.work_location,
-        clock_in_time: clockIn,
-        status,
-        late_minutes,
+        stats: {
+          workingNow: workingList.length,
+          totalToday: new Set(
+            latestLogs
+              .filter(
+                (l) =>
+                  format(new Date(l.created_at), "yyyy-MM-dd") === todayStr &&
+                  l.type === "IN"
+              )
+              .map((l) => l.profile_id)
+          ).size,
+          pendingDocs: docsList.length,
+          anomalies: anomalyList.length,
+        },
+        details: {
+          workingNow: workingList,
+          pendingDocs: docsList,
+          anomalies: anomalyList,
+        },
       };
-    });
+    },
+    { dedupingInterval: 30_000, revalidateOnFocus: true }
+  );
 
-    setTodayAttendance(items);
+  const { data: todayAttendance } = useSWR(
+    "admin-today-attendance",
+    async () => {
+      const supabase = createClient();
+      const todayStr = format(new Date(), "yyyy-MM-dd");
+      const now = new Date();
+
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      const { data: wsData } = await supabase
+        .from("weekly_schedules")
+        .select("id")
+        .eq("status", "confirmed")
+        .gte("week_start", format(weekAgo, "yyyy-MM-dd"));
+
+      if (!wsData || wsData.length === 0) return [];
+      const wsIds = wsData.map((ws: { id: string }) => ws.id);
+
+      const { data: slotsData } = await supabase
+        .from("schedule_slots")
+        .select(`*, profiles!profile_id(name, color_hex)`)
+        .eq("slot_date", todayStr)
+        .eq("status", "active")
+        .in("weekly_schedule_id", wsIds);
+
+      if (!slotsData || slotsData.length === 0) return [];
+
+      const profileIds = [...new Set(slotsData.map((s: any) => s.profile_id))];
+      const dayStart = new Date(todayStr + "T00:00:00").toISOString();
+      const dayEnd = new Date(todayStr + "T23:59:59").toISOString();
+
+      const { data: logsData } = await supabase
+        .from("attendance_logs")
+        .select("profile_id, created_at, type")
+        .eq("type", "IN")
+        .in("profile_id", profileIds)
+        .gte("created_at", dayStart)
+        .lte("created_at", dayEnd)
+        .order("created_at", { ascending: true });
+
+      const checkInMap = new Map<string, string>();
+      (logsData || []).forEach((log: any) => {
+        if (!checkInMap.has(log.profile_id)) {
+          checkInMap.set(log.profile_id, log.created_at);
+        }
+      });
+
+      const items: TodayAttendanceItem[] = slotsData.map((slot: any) => {
+        const clockIn = checkInMap.get(slot.profile_id) || null;
+        const [sh, sm] = slot.start_time.split(":").map(Number);
+        const slotStart = new Date(todayStr + "T00:00:00");
+        slotStart.setHours(sh, sm, 0, 0);
+
+        let status: TodayAttendanceItem["status"];
+        let late_minutes = 0;
+
+        if (clockIn) {
+          const clockInDate = new Date(clockIn);
+          const diff = Math.floor((clockInDate.getTime() - slotStart.getTime()) / 60000);
+          if (diff > 10) {
+            status = "late";
+            late_minutes = diff;
+          } else {
+            status = "attended";
+          }
+        } else {
+          const msSinceStart = now.getTime() - slotStart.getTime();
+          if (msSinceStart >= 10 * 60 * 1000) {
+            status = "absent";
+          } else {
+            status = "scheduled";
+          }
+        }
+
+        return {
+          profile_id: slot.profile_id,
+          name: slot.profiles?.name || "알 수 없음",
+          color_hex: slot.profiles?.color_hex || "#8B95A1",
+          slot_date: slot.slot_date,
+          start_time: slot.start_time,
+          end_time: slot.end_time,
+          work_location: slot.work_location,
+          clock_in_time: clockIn,
+          status,
+          late_minutes,
+        };
+      });
+
+      return items;
+    },
+    { dedupingInterval: 30_000, revalidateOnFocus: true }
+  );
+
+  const stats = dashboardData?.stats ?? {
+    workingNow: 0,
+    totalToday: 0,
+    pendingDocs: 0,
+    anomalies: 0,
+  };
+  const details = dashboardData?.details ?? {
+    workingNow: [],
+    pendingDocs: [],
+    anomalies: [],
   };
 
   const toggleSection = (section: string) => {
@@ -503,13 +499,13 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* 오늘 출근 현황 섹션 */}
-      {todayAttendance.length > 0 && (
+      {(todayAttendance ?? []).length > 0 && (
         <div className="mb-10">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-[18px] font-bold text-[#191F28]">오늘 출근 현황</h2>
             <div className="flex gap-2 text-[12px] font-medium text-[#8B95A1]">
               {Object.entries(
-                todayAttendance.reduce((acc, item) => {
+                (todayAttendance ?? []).reduce((acc, item) => {
                   acc[item.work_location] = (acc[item.work_location] || 0) + 1;
                   return acc;
                 }, {} as Record<string, number>)
@@ -521,7 +517,7 @@ export default function AdminDashboardPage() {
             </div>
           </div>
           <div className="bg-white rounded-[24px] border border-slate-100 overflow-hidden divide-y divide-slate-50">
-            {todayAttendance.map((item) => {
+            {(todayAttendance ?? []).map((item) => {
               const statusConfig = {
                 attended: { icon: "✅", text: "출근완료", color: "#00B761", bg: "#E6FAF0" },
                 late: { icon: "⚠️", text: `지각 (+${item.late_minutes}분)`, color: "#F59E0B", bg: "#FFF7E6" },

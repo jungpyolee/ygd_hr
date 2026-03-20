@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
 import {
   Trash2,
@@ -95,10 +96,7 @@ function generateTimeOptions(startH: number, endH: number) {
 }
 
 export default function AdminEmployeesPage() {
-  const [employees, setEmployees] = useState<Profile[]>([]);
-  const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const supabase = createClient();
 
   const [editingEmployee, setEditingEmployee] = useState<Profile | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
@@ -113,31 +111,33 @@ export default function AdminEmployeesPage() {
   const [editingDefault, setEditingDefault] = useState<Partial<WorkDefault> & { day_of_week: number } | null>(null);
   const [savingDefault, setSavingDefault] = useState(false);
 
-  useEffect(() => {
-    fetchEmployees();
-  }, []);
-
-  const fetchEmployees = async () => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("*")
-      .order("created_at", { ascending: true });
-    if (!error && data) setEmployees(data);
-    setLoading(false);
-  };
+  const { data: employees = [], isLoading: loading, mutate: mutateEmployees } = useSWR(
+    "admin-employees-list",
+    async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .order("created_at", { ascending: true });
+      if (error) return [];
+      return (data as Profile[]) ?? [];
+    },
+    { dedupingInterval: 60_000, revalidateOnFocus: false }
+  );
 
   const handleColorChange = async (id: string, newColor: string) => {
-    setEmployees((prev) =>
-      prev.map((emp) => (emp.id === id ? { ...emp, color_hex: newColor } : emp))
-    );
+    const supabase = createClient();
     const { error } = await supabase
       .from("profiles")
       .update({ color_hex: newColor })
       .eq("id", id);
     if (error) {
       toast.error("색상 변경에 실패했어요", { description: "다시 시도해주세요" });
-      fetchEmployees(); // 롤백
+      mutateEmployees(); // 롤백
+    } else {
+      mutateEmployees((prev) =>
+        prev?.map((emp) => (emp.id === id ? { ...emp, color_hex: newColor } : emp))
+      );
     }
   };
 
@@ -147,6 +147,7 @@ export default function AdminEmployeesPage() {
 
   const confirmDelete = async () => {
     if (!deleteConfirm) return;
+    const supabase = createClient();
     const { id, name } = deleteConfirm;
     setDeleteConfirm(null);
     const { error } = await supabase.rpc("delete_user_admin", {
@@ -154,7 +155,7 @@ export default function AdminEmployeesPage() {
     });
     if (!error) {
       toast.success(`${name}님이 삭제됐어요`);
-      setEmployees((prev) => prev.filter((emp) => emp.id !== id));
+      mutateEmployees((prev) => prev?.filter((emp) => emp.id !== id));
     } else {
       toast.error("삭제에 실패했어요", { description: "다시 시도해주세요" });
     }
@@ -167,6 +168,7 @@ export default function AdminEmployeesPage() {
   };
 
   const fetchWorkDefaults = async (profileId: string) => {
+    const supabase = createClient();
     setWorkDefaultsLoading(true);
     const { data } = await supabase
       .from("work_defaults")
@@ -179,6 +181,7 @@ export default function AdminEmployeesPage() {
 
   const handleSaveWorkDefault = async () => {
     if (!editingDefault || !editingEmployee) return;
+    const supabase = createClient();
     setSavingDefault(true);
     const { day_of_week, start_time, end_time, work_location, cafe_positions, id } = editingDefault;
     if (!start_time || !end_time || !work_location) {
@@ -209,6 +212,7 @@ export default function AdminEmployeesPage() {
 
   const handleDeleteWorkDefault = async (id: string) => {
     if (!editingEmployee) return;
+    const supabase = createClient();
     const { error } = await supabase.from("work_defaults").delete().eq("id", id);
     if (error) { toast.error("삭제에 실패했어요"); }
     else {
@@ -224,6 +228,7 @@ export default function AdminEmployeesPage() {
   const handleSaveEdit = async () => {
     if (!editingEmployee || !editForm.name?.trim())
       return toast.error("이름을 입력해주세요.");
+    const supabase = createClient();
 
     // 불변 컬럼 제외 후 업데이트
     const { id: _id, email: _email, created_at: _ca, ...safeForm } = editForm;
@@ -234,9 +239,9 @@ export default function AdminEmployeesPage() {
 
     if (error) return toast.error("수정에 실패했어요", { description: "다시 시도해주세요" });
 
-    // 즉시 반영
-    setEmployees((prev) =>
-      prev.map((emp) =>
+    // 즉시 캐시 반영
+    mutateEmployees((prev) =>
+      prev?.map((emp) =>
         emp.id === editingEmployee.id
           ? ({ ...emp, ...editForm } as Profile)
           : emp
@@ -253,6 +258,7 @@ export default function AdminEmployeesPage() {
   ) => {
     if (!editingEmployee || !e.target.files || e.target.files.length === 0)
       return;
+    const supabase = createClient();
     const file = e.target.files[0];
     setUploading(true);
 
@@ -276,8 +282,8 @@ export default function AdminEmployeesPage() {
 
       setEditingEmployee({ ...editingEmployee, [column]: filePath });
       setEditForm((prev) => ({ ...prev, [column]: filePath }));
-      setEmployees((prev) =>
-        prev.map((emp) =>
+      mutateEmployees((prev) =>
+        prev?.map((emp) =>
           emp.id === editingEmployee.id ? { ...emp, [column]: filePath } : emp
         )
       );
@@ -298,6 +304,7 @@ export default function AdminEmployeesPage() {
       window.open(path, "_blank");
       return;
     }
+    const supabase = createClient();
 
     // 임시 열람 권한 생성
     const { data, error } = await supabase.storage
@@ -320,6 +327,7 @@ export default function AdminEmployeesPage() {
 
   const confirmFileDelete = async () => {
     if (!editingEmployee || !fileDeleteConfirm) return;
+    const supabase = createClient();
     const column = fileDeleteConfirm;
     const filePath = editingEmployee[column];
     setFileDeleteConfirm(null);
@@ -335,8 +343,8 @@ export default function AdminEmployeesPage() {
       .eq("id", editingEmployee.id);
     setEditingEmployee({ ...editingEmployee, [column]: null });
     setEditForm((prev) => ({ ...prev, [column]: null }));
-    setEmployees((prev) =>
-      prev.map((emp) =>
+    mutateEmployees((prev) =>
+      prev?.map((emp) =>
         emp.id === editingEmployee.id ? { ...emp, [column]: null } : emp
       )
     );

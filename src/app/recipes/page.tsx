@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, BookOpen, Search, X, Plus } from "lucide-react";
@@ -8,32 +9,25 @@ import Image from "next/image";
 import type { RecipeCategory, RecipeItem } from "@/types/recipe";
 
 export default function RecipesPage() {
-  const [categories, setCategories] = useState<RecipeCategory[]>([]);
-  const [recipes, setRecipes] = useState<RecipeItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [recentIds, setRecentIds] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [canCreate, setCanCreate] = useState(false);
-  const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
 
-  useEffect(() => {
-    const fetchData = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+  const { data, isLoading: loading } = useSWR(
+    "recipes-list",
+    async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
 
+      let canCreate = false;
       if (user) {
         const { data: profile } = await supabase
           .from("profiles")
           .select("role, employment_type")
           .eq("id", user.id)
           .single();
-        setCanCreate(
-          profile?.role === "admin" ||
-            profile?.employment_type === "full_time"
-        );
+        canCreate = profile?.role === "admin" || profile?.employment_type === "full_time";
       }
 
       const [{ data: cats }, { data: items }] = await Promise.all([
@@ -48,22 +42,30 @@ export default function RecipesPage() {
           .order("order_index", { ascending: true }),
       ]);
 
-      const catList = cats ?? [];
-      setCategories(catList);
-      setRecipes(items ?? []);
-      if (catList.length > 0) setSelectedCategory(catList[0].id);
+      return { categories: (cats as RecipeCategory[]) ?? [], recipes: (items as RecipeItem[]) ?? [], canCreate };
+    },
+    { dedupingInterval: 300_000, revalidateOnFocus: false }
+  );
 
-      try {
-        const stored: string[] = JSON.parse(
-          localStorage.getItem("recent_recipes") || "[]"
-        );
-        setRecentIds(stored);
-      } catch {}
+  const categories = data?.categories ?? [];
+  const recipes = data?.recipes ?? [];
+  const canCreate = data?.canCreate ?? false;
 
-      setLoading(false);
-    };
+  // 첫 번째 카테고리 자동 선택
+  useEffect(() => {
+    if (categories.length > 0 && selectedCategory === null) {
+      setSelectedCategory(categories[0].id);
+    }
+  }, [categories, selectedCategory]);
 
-    fetchData();
+  // recentIds는 localStorage에서 로드
+  useEffect(() => {
+    try {
+      const stored: string[] = JSON.parse(
+        localStorage.getItem("recent_recipes") || "[]"
+      );
+      setRecentIds(stored);
+    } catch {}
   }, []);
 
   const filtered = searchQuery.trim()

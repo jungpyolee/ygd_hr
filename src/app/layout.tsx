@@ -6,6 +6,7 @@ import Script from "next/script";
 import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 import KakaoEscape from "@/components/KakaoEscape";
 import NextTopLoader from "nextjs-toploader";
+import Providers from "./providers";
 
 const isDev = process.env.NEXT_PUBLIC_APP_ENV === "dev";
 const appName = isDev ? "연경당 테섭" : "연경당 HR";
@@ -79,7 +80,7 @@ export default function RootLayout({
       <body className="antialiased font-pretendard">
         <NextTopLoader color="#3182F6" height={3} showSpinner={false} />
         <KakaoEscape />
-        {children}
+        <Providers>{children}</Providers>
         <Toaster />
         <PWAInstallPrompt />
         <Script id="register-sw" strategy="afterInteractive">

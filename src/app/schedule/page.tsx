@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo, Suspense } from "react";
+import { useState, Suspense, useEffect } from "react";
+import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
 import { toast } from "sonner";
 import { ChevronLeft, ChevronRight, Calendar, MapPin, Clock, ArrowRightLeft, X, Check, UserCheck } from "lucide-react";
@@ -77,15 +78,11 @@ function getWeekDates(weekStart: Date): Date[] {
 }
 
 function SchedulePageInner() {
-  const supabase = useMemo(() => createClient(), []);
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  const [loading, setLoading] = useState(true);
-  const [profileId, setProfileId] = useState<string | null>(null);
   const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date(), { weekStartsOn: 0 }));
   const [selectedDay, setSelectedDay] = useState<Date>(new Date());
-  const [slots, setSlots] = useState<ScheduleSlot[]>([]);
 
   // 대타 요청하기 바텀시트 (내가 요청)
   const [requestTarget, setRequestTarget] = useState<ScheduleSlot | null>(null);
@@ -93,124 +90,119 @@ function SchedulePageInner() {
   const [submitting, setSubmitting] = useState(false);
 
   // 나에게 온 대타 요청
-  const [incomingRequests, setIncomingRequests] = useState<SubstituteRequest[]>([]);
   const [respondingId, setRespondingId] = useState<string | null>(null);
 
   // 대타 수락 확인 바텀시트
   const [activeRequest, setActiveRequest] = useState<SubstituteRequest | null>(null);
 
-  // 내가 요청한 대타 현황
-  const [myRequests, setMyRequests] = useState<MySubstituteRequest[]>([]);
-
-  useEffect(() => {
-    const init = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      setProfileId(user.id);
-    };
-    init();
-  }, [supabase]);
-
   const weekDates = getWeekDates(weekStart);
+  const weekStartStr = format(weekStart, "yyyy-MM-dd");
 
-  const fetchSlots = useCallback(async () => {
-    if (!profileId) return;
-    setLoading(true);
-    try {
-      const weekStartStr = format(weekStart, "yyyy-MM-dd");
+  // 1. userId SWR
+  const { data: profileId } = useSWR(
+    "current-user-id",
+    async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      return user?.id ?? null;
+    },
+    { revalidateOnFocus: false, dedupingInterval: 300_000 }
+  );
 
+  // 2. 내 스케줄 슬롯
+  const { data: slots = [], isLoading, mutate: mutateSlots } = useSWR(
+    profileId ? ["schedule-slots", profileId, weekStartStr] : null,
+    async ([, pid, wss]) => {
+      const supabase = createClient();
       const { data: wsData } = await supabase
         .from("weekly_schedules")
         .select("id")
         .eq("status", "confirmed")
-        .eq("week_start", weekStartStr);
+        .eq("week_start", wss);
 
-      if (!wsData || wsData.length === 0) {
-        setSlots([]);
-        return;
-      }
+      if (!wsData || wsData.length === 0) return [];
 
       const wsIds = wsData.map((ws: { id: string }) => ws.id);
       const { data: slotData } = await supabase
         .from("schedule_slots")
         .select("*")
-        .eq("profile_id", profileId)
+        .eq("profile_id", pid)
         .in("weekly_schedule_id", wsIds)
         .eq("status", "active");
 
-      setSlots((slotData as ScheduleSlot[]) ?? []);
-    } finally {
-      setLoading(false);
-    }
-  }, [profileId, weekStart, supabase]);
+      return (slotData as ScheduleSlot[]) ?? [];
+    },
+    { dedupingInterval: 30_000, revalidateOnFocus: true }
+  );
 
-  const fetchIncomingRequests = useCallback(async () => {
-    if (!profileId) return;
+  // 3. 나에게 온 대타 요청
+  const { data: incomingRequests = [], mutate: mutateIncoming } = useSWR(
+    profileId ? ["substitute-incoming", profileId] : null,
+    async ([, pid]) => {
+      const supabase = createClient();
+      const { data: requests } = await supabase
+        .from("substitute_requests")
+        .select(`
+          id, slot_id, requester_id, reason, status, eligible_profile_ids, accepted_by,
+          schedule_slots!slot_id(slot_date, start_time, end_time, work_location, cafe_positions),
+          profiles!requester_id(name)
+        `)
+        .eq("status", "approved");
 
-    const { data: requests } = await supabase
-      .from("substitute_requests")
-      .select(`
-        id, slot_id, requester_id, reason, status, eligible_profile_ids, accepted_by,
-        schedule_slots!slot_id(slot_date, start_time, end_time, work_location, cafe_positions),
-        profiles!requester_id(name)
-      `)
-      .eq("status", "approved");
+      if (!requests) return [];
 
-    if (!requests) return;
+      const eligibleRequests = requests.filter((r: any) =>
+        Array.isArray(r.eligible_profile_ids) && r.eligible_profile_ids.includes(pid)
+      );
 
-    const eligibleRequests = requests.filter((r: any) =>
-      Array.isArray(r.eligible_profile_ids) && r.eligible_profile_ids.includes(profileId)
-    );
+      if (eligibleRequests.length === 0) return [];
 
-    if (eligibleRequests.length === 0) {
-      setIncomingRequests([]);
-      return;
-    }
+      const requestIds = eligibleRequests.map((r: any) => r.id);
+      const { data: responses } = await supabase
+        .from("substitute_responses")
+        .select("request_id")
+        .eq("profile_id", pid)
+        .in("request_id", requestIds);
 
-    const requestIds = eligibleRequests.map((r: any) => r.id);
-    const { data: responses } = await supabase
-      .from("substitute_responses")
-      .select("request_id")
-      .eq("profile_id", profileId)
-      .in("request_id", requestIds);
+      const respondedIds = new Set((responses || []).map((r: any) => r.request_id));
 
-    const respondedIds = new Set((responses || []).map((r: any) => r.request_id));
+      return eligibleRequests
+        .filter((r: any) => !respondedIds.has(r.id))
+        .map((r: any) => ({
+          id: r.id,
+          slot_id: r.slot_id,
+          requester_id: r.requester_id,
+          reason: r.reason,
+          status: r.status,
+          eligible_profile_ids: r.eligible_profile_ids,
+          accepted_by: r.accepted_by,
+          requester_name: r.profiles?.name || "알 수 없음",
+          slot_date: r.schedule_slots?.slot_date || "",
+          start_time: r.schedule_slots?.start_time || "",
+          end_time: r.schedule_slots?.end_time || "",
+          work_location: r.schedule_slots?.work_location || "",
+          cafe_positions: r.schedule_slots?.cafe_positions || [],
+        })) as SubstituteRequest[];
+    },
+    { dedupingInterval: 30_000, revalidateOnFocus: true }
+  );
 
-    const pendingRequests: SubstituteRequest[] = eligibleRequests
-      .filter((r: any) => !respondedIds.has(r.id))
-      .map((r: any) => ({
-        id: r.id,
-        slot_id: r.slot_id,
-        requester_id: r.requester_id,
-        reason: r.reason,
-        status: r.status,
-        eligible_profile_ids: r.eligible_profile_ids,
-        accepted_by: r.accepted_by,
-        requester_name: r.profiles?.name || "알 수 없음",
-        slot_date: r.schedule_slots?.slot_date || "",
-        start_time: r.schedule_slots?.start_time || "",
-        end_time: r.schedule_slots?.end_time || "",
-        work_location: r.schedule_slots?.work_location || "",
-        cafe_positions: r.schedule_slots?.cafe_positions || [],
-      }));
-
-    setIncomingRequests(pendingRequests);
-  }, [profileId, supabase]);
-
-  const fetchMyRequests = useCallback(async () => {
-    if (!profileId) return;
-    const { data } = await supabase
-      .from("substitute_requests")
-      .select(`
-        id, reason, status, accepted_by,
-        schedule_slots!substitute_requests_slot_id_fkey(slot_date, start_time, end_time, work_location, cafe_positions),
-        profiles!substitute_requests_accepted_by_fkey(name)
-      `)
-      .eq("requester_id", profileId)
-      .order("created_at", { ascending: false });
-    if (!data) return;
-    setMyRequests(
-      data.map((r: any) => ({
+  // 4. 내가 요청한 대타
+  const { data: myRequests = [], mutate: mutateMyRequests } = useSWR(
+    profileId ? ["substitute-my", profileId, weekStartStr] : null,
+    async ([, pid]) => {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("substitute_requests")
+        .select(`
+          id, reason, status, accepted_by,
+          schedule_slots!substitute_requests_slot_id_fkey(slot_date, start_time, end_time, work_location, cafe_positions),
+          profiles!substitute_requests_accepted_by_fkey(name)
+        `)
+        .eq("requester_id", pid)
+        .order("created_at", { ascending: false });
+      if (!data) return [];
+      return data.map((r: any) => ({
         id: r.id,
         reason: r.reason,
         status: r.status,
@@ -221,17 +213,10 @@ function SchedulePageInner() {
         end_time: r.schedule_slots?.end_time ?? "",
         work_location: r.schedule_slots?.work_location ?? "",
         cafe_positions: r.schedule_slots?.cafe_positions ?? [],
-      }))
-    );
-  }, [profileId, supabase]);
-
-  useEffect(() => {
-    if (profileId) {
-      fetchSlots();
-      fetchIncomingRequests();
-      fetchMyRequests();
-    }
-  }, [fetchSlots, fetchIncomingRequests, fetchMyRequests, profileId]);
+      })) as MySubstituteRequest[];
+    },
+    { dedupingInterval: 30_000, revalidateOnFocus: true }
+  );
 
   // URL request_id → 바텀시트 자동 오픈
   useEffect(() => {
@@ -248,6 +233,7 @@ function SchedulePageInner() {
 
   const handleAcceptSubstitute = async (req: SubstituteRequest) => {
     if (!profileId) return;
+    const supabase = createClient();
     setRespondingId(req.id);
 
     // 겹치는 기존 슬롯 검사
@@ -302,12 +288,13 @@ function SchedulePageInner() {
     toast.success("대타를 수락했어요", { description: `${slotDateLabel} 근무가 추가됐어요.` });
     setRespondingId(null);
     closeActiveRequest();
-    fetchIncomingRequests();
-    fetchSlots();
+    mutateIncoming();
+    mutateSlots();
   };
 
   const handleDeclineSubstitute = async (req: SubstituteRequest) => {
     if (!profileId) return;
+    const supabase = createClient();
     setRespondingId(req.id);
 
     const { error } = await supabase.from("substitute_responses").insert({
@@ -321,7 +308,7 @@ function SchedulePageInner() {
     } else {
       toast.success("거절했어요");
       closeActiveRequest();
-      fetchIncomingRequests();
+      mutateIncoming();
     }
     setRespondingId(null);
   };
@@ -331,6 +318,7 @@ function SchedulePageInner() {
 
   const handleSubstituteRequest = async () => {
     if (!requestTarget || !profileId) return;
+    const supabase = createClient();
     setSubmitting(true);
 
     const { data: existing } = await supabase
@@ -366,7 +354,7 @@ function SchedulePageInner() {
       toast.success("대타 요청을 보냈어요", { description: "관리자 승인 후 알림을 드려요." });
       setRequestTarget(null);
       setRequestReason("");
-      fetchMyRequests();
+      mutateMyRequests();
     }
     setSubmitting(false);
   };
@@ -444,7 +432,7 @@ function SchedulePageInner() {
             {format(selectedDay, "M월 d일 (EEE)", { locale: ko })} 근무
           </h2>
 
-          {loading ? (
+          {isLoading ? (
             <div className="space-y-3">
               {[1, 2].map((i) => (
                 <div key={i} className="bg-white rounded-[20px] p-5 h-[100px] animate-pulse border border-slate-100" />

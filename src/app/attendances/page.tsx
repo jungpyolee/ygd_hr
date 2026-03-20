@@ -1,18 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
 import {
   format,
   startOfWeek,
   startOfMonth,
-  endOfMonth,
-  eachDayOfInterval,
-  isSameDay,
   differenceInMinutes,
 } from "date-fns";
 import { ko } from "date-fns/locale";
-import { ChevronLeft, Calendar, Clock, ChevronRight } from "lucide-react";
+import { ChevronLeft, Clock, ChevronRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 // 타입 정의
@@ -26,76 +24,62 @@ interface WorkSession {
 export default function AttendancesPage() {
   const router = useRouter();
   const [viewType, setViewType] = useState<"weekly" | "monthly">("weekly");
-  const [sessions, setSessions] = useState<WorkSession[]>([]);
-  const [loading, setLoading] = useState(true);
-  const supabase = createClient();
 
-  useEffect(() => {
-    fetchLogs();
-  }, [viewType]);
+  const { data: sessions = [], isLoading: loading } = useSWR(
+    ["attendance-logs", viewType],
+    async ([, vt]) => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return [];
 
-  const fetchLogs = async () => {
-    setLoading(true);
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      setLoading(false);
-      return;
-    }
+      const now = new Date();
+      const start =
+        vt === "weekly"
+          ? startOfWeek(now, { weekStartsOn: 1 })
+          : startOfMonth(now);
 
-    // 1. 범위 설정
-    const now = new Date();
-    const start =
-      viewType === "weekly"
-        ? startOfWeek(now, { weekStartsOn: 1 })
-        : startOfMonth(now);
+      const { data: logs, error } = await supabase
+        .from("attendance_logs")
+        .select("*")
+        .eq("profile_id", user.id)
+        .gte("created_at", start.toISOString())
+        .order("created_at", { ascending: true });
 
-    const { data: logs, error } = await supabase
-      .from("attendance_logs")
-      .select("*")
-      .eq("profile_id", user.id)
-      .gte("created_at", start.toISOString())
-      .order("created_at", { ascending: true });
+      if (error || !logs) return [];
 
-    if (error || !logs) {
-      setLoading(false);
-      return;
-    }
+      // IN-OUT 페어링 가공
+      const paired: WorkSession[] = [];
+      let tempIn: any = null;
 
-    // 2. IN-OUT 페어링 가공
-    const paired: WorkSession[] = [];
-    let tempIn: any = null;
+      logs.forEach((log) => {
+        if (log.type === "IN") {
+          tempIn = log;
+        } else if (log.type === "OUT" && tempIn) {
+          const inTime = new Date(tempIn.created_at);
+          const outTime = new Date(log.created_at);
+          paired.push({
+            id: tempIn.id,
+            in: inTime,
+            out: outTime,
+            duration: differenceInMinutes(outTime, inTime),
+          });
+          tempIn = null;
+        }
+      });
 
-    logs.forEach((log) => {
-      if (log.type === "IN") {
-        tempIn = log;
-      } else if (log.type === "OUT" && tempIn) {
-        const inTime = new Date(tempIn.created_at);
-        const outTime = new Date(log.created_at);
+      if (tempIn) {
         paired.push({
           id: tempIn.id,
-          in: inTime,
-          out: outTime,
-          duration: differenceInMinutes(outTime, inTime),
+          in: new Date(tempIn.created_at),
+          out: null,
+          duration: differenceInMinutes(new Date(), new Date(tempIn.created_at)),
         });
-        tempIn = null;
       }
-    });
 
-    if (tempIn) {
-      // 현재 근무 중 처리
-      paired.push({
-        id: tempIn.id,
-        in: new Date(tempIn.created_at),
-        out: null,
-        duration: differenceInMinutes(new Date(), new Date(tempIn.created_at)),
-      });
-    }
-
-    setSessions(paired.reverse()); // 최신순
-    setLoading(false);
-  };
+      return paired.reverse(); // 최신순
+    },
+    { dedupingInterval: 30_000, revalidateOnFocus: true }
+  );
 
   // 총 근무 시간 계산
   const totalMinutes = sessions.reduce((acc, cur) => acc + cur.duration, 0);

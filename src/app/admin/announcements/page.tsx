@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
+import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { Pin, PinOff, Pencil, Trash2, Plus, Megaphone } from "lucide-react";
@@ -17,27 +18,25 @@ const TARGET_LABEL: Record<string, string> = {
 };
 
 export default function AdminAnnouncementsPage() {
-  const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
-  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  const [loading, setLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<Announcement | null>(null);
 
-  const fetchAnnouncements = async () => {
-    const { data } = await supabase
-      .from("announcements")
-      .select("*, profiles(name)")
-      .order("is_pinned", { ascending: false })
-      .order("created_at", { ascending: false });
-    setAnnouncements((data as Announcement[]) ?? []);
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    fetchAnnouncements();
-  }, []);
+  const { data: announcements = [], isLoading: loading, mutate } = useSWR(
+    "admin-announcements-list",
+    async () => {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("announcements")
+        .select("*, profiles(name)")
+        .order("is_pinned", { ascending: false })
+        .order("created_at", { ascending: false });
+      return (data as Announcement[]) ?? [];
+    },
+    { dedupingInterval: 60_000, revalidateOnFocus: false }
+  );
 
   const togglePin = async (item: Announcement) => {
+    const supabase = createClient();
     const { error } = await supabase
       .from("announcements")
       .update({ is_pinned: !item.is_pinned })
@@ -45,17 +44,18 @@ export default function AdminAnnouncementsPage() {
     if (error) {
       toast.error("고정 설정에 실패했어요", { description: "잠시 후 다시 시도해 주세요." });
     } else {
-      fetchAnnouncements();
+      mutate();
     }
   };
 
   const deleteAnnouncement = async (item: Announcement) => {
+    const supabase = createClient();
     const { error } = await supabase.from("announcements").delete().eq("id", item.id);
     if (error) {
       toast.error("삭제에 실패했어요", { description: "잠시 후 다시 시도해 주세요." });
     } else {
       toast.success("공지를 삭제했어요");
-      fetchAnnouncements();
+      mutate();
     }
     setDeleteTarget(null);
   };

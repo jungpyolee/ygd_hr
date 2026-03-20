@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useState } from "react";
+import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
 import { toast } from "sonner";
 import {
@@ -409,27 +410,15 @@ interface AttLogRow {
 
 // --------------- Main Page ---------------
 export default function AdminSchedulesPage() {
-  const supabase = useMemo(() => createClient(), []);
   const [tab, setTab] = useState<"weekly" | "daily">("weekly");
   const [weekStart, setWeekStart] = useState<Date>(() =>
     startOfWeek(new Date(), { weekStartsOn: 0 }),
   );
   const [dailyDate, setDailyDate] = useState<Date>(new Date());
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [slots, setSlots] = useState<ScheduleSlot[]>([]);
-  const [dailySlotsData, setDailySlotsData] = useState<ScheduleSlot[]>([]);
-  const [dailyWeeklySchedule, setDailyWeeklySchedule] =
-    useState<WeeklySchedule | null>(null);
   const [confirmingDay, setConfirmingDay] = useState(false);
-  const [weeklySchedule, setWeeklySchedule] = useState<WeeklySchedule | null>(
-    null,
-  );
-  const [loading, setLoading] = useState(true);
   const [confirming, setConfirming] = useState(false);
   const [copying, setCopying] = useState(false);
   const [fillingDefaults, setFillingDefaults] = useState(false);
-  const [pendingSubCount, setPendingSubCount] = useState(0);
-  const [dailyAttLogs, setDailyAttLogs] = useState<DailyAttLog[]>([]);
 
   // Bottom sheet state
   const [editSlot, setEditSlot] = useState<{
@@ -440,81 +429,105 @@ export default function AdminSchedulesPage() {
 
   const weekDates = getWeekDates(weekStart);
   const weekStartStr = format(weekStart, "yyyy-MM-dd");
+  const dailyDateStr = format(dailyDate, "yyyy-MM-dd");
 
-  const fetchAll = useCallback(async () => {
-    setLoading(true);
-    const { data: pData } = await supabase
-      .from("profiles")
-      .select("id, name, color_hex")
-      .order("name");
-    if (pData) setProfiles(pData);
+  // 주간 데이터 (profiles + weeklySchedule + slots)
+  const {
+    data: weeklyData,
+    isLoading: weeklyLoading,
+    mutate: mutateWeekly,
+  } = useSWR(
+    tab === "weekly" ? ["admin-schedules-weekly", weekStartStr] : null,
+    async ([, wss]) => {
+      const supabase = createClient();
+      const { data: pData } = await supabase
+        .from("profiles")
+        .select("id, name, color_hex")
+        .order("name");
 
-    const { data: wsData } = await supabase
-      .from("weekly_schedules")
-      .select("*")
-      .eq("week_start", weekStartStr)
-      .maybeSingle();
-    setWeeklySchedule(wsData);
-
-    if (wsData) {
-      const { data: slotData } = await supabase
-        .from("schedule_slots")
-        .select("*")
-        .eq("weekly_schedule_id", wsData.id)
-        .neq("status", "cancelled");
-      if (slotData) setSlots(slotData as ScheduleSlot[]);
-    } else {
-      setSlots([]);
-    }
-    setLoading(false);
-  }, [weekStartStr]);
-
-  const fetchPendingSubCount = useCallback(async () => {
-    const { count } = await supabase
-      .from("substitute_requests")
-      .select("*", { count: "exact", head: true })
-      .eq("status", "pending");
-    setPendingSubCount(count ?? 0);
-  }, []);
-
-  useEffect(() => {
-    fetchAll();
-    fetchPendingSubCount();
-  }, [fetchAll, fetchPendingSubCount]);
-
-  const fetchDailySlots = useCallback(async () => {
-    const dateStr = format(dailyDate, "yyyy-MM-dd");
-    const dailyWeekStartStr = format(
-      startOfWeek(dailyDate, { weekStartsOn: 0 }),
-      "yyyy-MM-dd",
-    );
-    const [{ data: slotData }, { data: wsData }] = await Promise.all([
-      supabase
-        .from("schedule_slots")
-        .select("*")
-        .eq("slot_date", dateStr)
-        .neq("status", "cancelled"),
-      supabase
+      const { data: wsData } = await supabase
         .from("weekly_schedules")
         .select("*")
-        .eq("week_start", dailyWeekStartStr)
-        .maybeSingle(),
-    ]);
-    setDailySlotsData((slotData as ScheduleSlot[]) || []);
-    setDailyWeeklySchedule(wsData);
-  }, [dailyDate, supabase]);
+        .eq("week_start", wss)
+        .maybeSingle();
 
-  // Fetch daily slots independently (for daily tab — can be a different week)
-  useEffect(() => {
-    if (tab !== "daily") return;
-    fetchDailySlots();
-  }, [dailyDate, tab, fetchDailySlots]);
+      let slotData: ScheduleSlot[] = [];
+      if (wsData) {
+        const { data: sd } = await supabase
+          .from("schedule_slots")
+          .select("*")
+          .eq("weekly_schedule_id", wsData.id)
+          .neq("status", "cancelled");
+        if (sd) slotData = sd as ScheduleSlot[];
+      }
 
-  const fetchDailyAttendance = useCallback(
-    async (date: Date) => {
-      const dateStr = format(date, "yyyy-MM-dd");
-      const start = new Date(dateStr + "T00:00:00+09:00").toISOString();
-      const end = new Date(dateStr + "T23:59:59+09:00").toISOString();
+      return {
+        profiles: (pData as Profile[]) ?? [],
+        weeklySchedule: (wsData as WeeklySchedule) ?? null,
+        slots: slotData,
+      };
+    },
+    { dedupingInterval: 30_000, revalidateOnFocus: false }
+  );
+
+  // 대기중 대타 요청 수
+  const { data: pendingSubCount = 0 } = useSWR(
+    "admin-schedules-pending-sub-count",
+    async () => {
+      const supabase = createClient();
+      const { count } = await supabase
+        .from("substitute_requests")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "pending");
+      return count ?? 0;
+    },
+    { dedupingInterval: 30_000, revalidateOnFocus: false }
+  );
+
+  // 일간 슬롯
+  const {
+    data: dailySlotsResult,
+    isLoading: dailySlotsLoading,
+    mutate: mutateDailySlots,
+  } = useSWR(
+    tab === "daily" ? ["admin-schedules-daily-slots", dailyDateStr] : null,
+    async ([, dds]) => {
+      const supabase = createClient();
+      const dailyWeekStartStr = format(
+        startOfWeek(new Date(dds + "T00:00:00"), { weekStartsOn: 0 }),
+        "yyyy-MM-dd",
+      );
+      const [{ data: slotData }, { data: wsData }] = await Promise.all([
+        supabase
+          .from("schedule_slots")
+          .select("*")
+          .eq("slot_date", dds)
+          .neq("status", "cancelled"),
+        supabase
+          .from("weekly_schedules")
+          .select("*")
+          .eq("week_start", dailyWeekStartStr)
+          .maybeSingle(),
+      ]);
+      return {
+        dailySlotsData: (slotData as ScheduleSlot[]) || [],
+        dailyWeeklySchedule: (wsData as WeeklySchedule) ?? null,
+      };
+    },
+    { dedupingInterval: 10_000, revalidateOnFocus: false }
+  );
+
+  // 일간 출근 현황
+  const {
+    data: dailyAttLogs = [],
+    isLoading: dailyAttLoading,
+    mutate: mutateDailyAtt,
+  } = useSWR(
+    tab === "daily" ? ["admin-schedules-daily-attendance", dailyDateStr] : null,
+    async ([, dds]) => {
+      const supabase = createClient();
+      const start = new Date(dds + "T00:00:00+09:00").toISOString();
+      const end = new Date(dds + "T23:59:59+09:00").toISOString();
 
       const { data } = await supabase
         .from("attendance_logs")
@@ -523,34 +536,35 @@ export default function AdminSchedulesPage() {
         .lte("created_at", end)
         .order("created_at", { ascending: true });
 
-      if (data) {
-        const map = new Map<string, DailyAttLog>();
-        (data as AttLogRow[]).forEach((log) => {
-          if (!map.has(log.profile_id)) {
-            map.set(log.profile_id, {
-              profile_id: log.profile_id,
-              clock_in: null,
-              clock_out: null,
-            });
-          }
-          const entry = map.get(log.profile_id)!;
-          if (log.type === "IN" && !entry.clock_in)
-            entry.clock_in = log.created_at;
-          if (log.type === "OUT") entry.clock_out = log.created_at;
-        });
-        setDailyAttLogs(Array.from(map.values()));
-      }
+      if (!data) return [];
+      const map = new Map<string, DailyAttLog>();
+      (data as AttLogRow[]).forEach((log) => {
+        if (!map.has(log.profile_id)) {
+          map.set(log.profile_id, {
+            profile_id: log.profile_id,
+            clock_in: null,
+            clock_out: null,
+          });
+        }
+        const entry = map.get(log.profile_id)!;
+        if (log.type === "IN" && !entry.clock_in) entry.clock_in = log.created_at;
+        if (log.type === "OUT") entry.clock_out = log.created_at;
+      });
+      return Array.from(map.values());
     },
-    [supabase],
+    { dedupingInterval: 10_000, revalidateOnFocus: false }
   );
 
-  // Fetch daily attendance logs for the attendance layer
-  useEffect(() => {
-    if (tab !== "daily") return;
-    fetchDailyAttendance(dailyDate);
-  }, [tab, dailyDate, fetchDailyAttendance]);
+  // 파생 값
+  const profiles = weeklyData?.profiles ?? [];
+  const weeklySchedule = weeklyData?.weeklySchedule ?? null;
+  const slots = weeklyData?.slots ?? [];
+  const dailySlotsData = dailySlotsResult?.dailySlotsData ?? [];
+  const dailyWeeklySchedule = dailySlotsResult?.dailyWeeklySchedule ?? null;
+  const loading = tab === "weekly" ? weeklyLoading : dailySlotsLoading || dailyAttLoading;
 
   const getOrCreateWeeklySchedule = async (): Promise<string | null> => {
+    const supabase = createClient();
     if (weeklySchedule) return weeklySchedule.id;
     const { data: existing } = await supabase
       .from("weekly_schedules")
@@ -575,6 +589,7 @@ export default function AdminSchedulesPage() {
     data: Partial<ScheduleSlot>,
     isNew: boolean,
   ) => {
+    const supabase = createClient();
     // 1. 시간 순서 검사 (bottom sheet에서도 하지만 이중 방어)
     const startMin = timeToMinutes(data.start_time!);
     const endMin = timeToMinutes(data.end_time!);
@@ -670,11 +685,12 @@ export default function AdminSchedulesPage() {
       toast.success("근무 슬롯을 수정했어요");
     }
     setEditSlot(null);
-    fetchAll();
-    fetchDailySlots();
+    mutateWeekly();
+    mutateDailySlots();
   };
 
   const handleDeleteSlot = async (id: string) => {
+    const supabase = createClient();
     const deletingSlot =
       slots.find((s) => s.id === id) ??
       dailySlotsData.find((s) => s.id === id);
@@ -703,11 +719,12 @@ export default function AdminSchedulesPage() {
     }
     toast.success("슬롯을 삭제했어요");
     setEditSlot(null);
-    fetchAll();
-    fetchDailySlots();
+    mutateWeekly();
+    mutateDailySlots();
   };
 
   const handleCopyPrevWeek = async () => {
+    const supabase = createClient();
     setCopying(true);
     const prevWeekStart = format(subWeeks(weekStart, 1), "yyyy-MM-dd");
     const { data: prevWs } = await supabase
@@ -788,12 +805,13 @@ export default function AdminSchedulesPage() {
       toast.error("복사에 실패했어요", { description: error.message });
     } else {
       toast.success(`${newSlots.length}개 슬롯을 복사했어요`);
-      fetchAll();
+      mutateWeekly();
     }
     setCopying(false);
   };
 
   const handleFillDefaults = async () => {
+    const supabase = createClient();
     setFillingDefaults(true);
 
     // 1. Fetch all active work_defaults
@@ -878,12 +896,13 @@ export default function AdminSchedulesPage() {
       });
     } else {
       toast.success(`${newSlots.length}개 슬롯을 기본 패턴으로 채웠어요`);
-      fetchAll();
+      mutateWeekly();
     }
     setFillingDefaults(false);
   };
 
   const handleConfirmSchedule = async () => {
+    const supabase = createClient();
     if (weeklySchedule?.status === "confirmed") {
       toast.error("이미 확정된 스케줄이에요", {
         description: "직원들에게 이미 알림이 전송됐어요.",
@@ -927,11 +946,12 @@ export default function AdminSchedulesPage() {
     }
 
     toast.success("스케줄을 확정했어요");
-    fetchAll();
+    mutateWeekly();
     setConfirming(false);
   };
 
   const handleConfirmDay = async () => {
+    const supabase = createClient();
     const dateStr = format(dailyDate, "yyyy-MM-dd");
     if (dailyWeeklySchedule?.confirmed_dates?.includes(dateStr)) {
       toast.error("이미 확정된 날이에요");
@@ -995,8 +1015,8 @@ export default function AdminSchedulesPage() {
     }
 
     toast.success(`${format(dailyDate, "M월 d일", { locale: ko })} 스케줄을 확정했어요`);
-    fetchDailySlots();
-    fetchAll();
+    mutateDailySlots();
+    mutateWeekly();
     setConfirmingDay(false);
   };
 
