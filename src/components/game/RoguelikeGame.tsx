@@ -79,14 +79,13 @@ export default function RoguelikeGame({ onClose, gameConfig }: Props) {
 
       game = new Phaser.Game({
         type: Phaser.AUTO,
-        width: 800,
-        height: 600,
         backgroundColor: "#1a1205",
         parent: containerRef.current!,
         scene: scene,
         scale: {
-          mode: Phaser.Scale.FIT,
-          autoCenter: Phaser.Scale.CENTER_BOTH,
+          mode: Phaser.Scale.RESIZE,
+          width: "100%",
+          height: "100%",
         },
         audio: { disableWebAudio: true },
       });

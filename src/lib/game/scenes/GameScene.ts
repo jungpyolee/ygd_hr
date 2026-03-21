@@ -317,7 +317,7 @@ export default class GameScene extends Phaser.Scene {
     this.input.on("pointerdown", (p: Phaser.Input.Pointer) => {
       if (this.joyActive) return;
       this.joyActive    = true;
-      this.joyPointerId = p.pointerId ?? 0;
+      this.joyPointerId = p.id;
       this.joyBaseX     = p.x;
       this.joyBaseY     = p.y;
       this.joyDirX      = 0;
@@ -327,7 +327,7 @@ export default class GameScene extends Phaser.Scene {
     });
 
     this.input.on("pointermove", (p: Phaser.Input.Pointer) => {
-      if (!this.joyActive || p.pointerId !== this.joyPointerId) return;
+      if (!this.joyActive || p.id !== this.joyPointerId) return;
       const dx   = p.x - this.joyBaseX;
       const dy   = p.y - this.joyBaseY;
       const dist = Math.sqrt(dx * dx + dy * dy);
@@ -348,7 +348,7 @@ export default class GameScene extends Phaser.Scene {
     });
 
     this.input.on("pointerup", (p: Phaser.Input.Pointer) => {
-      if (p.pointerId !== this.joyPointerId) return;
+      if (p.id !== this.joyPointerId) return;
       this.joyActive = false;
       this.joyDirX   = 0;
       this.joyDirY   = 0;

@@ -212,7 +212,7 @@ export default function GamePage() {
       {/* 타이틀 */}
       <div className="text-center pt-2 pb-4 px-4">
         <p className="text-4xl mb-2">🐱</p>
-        <p className="text-gray-400 text-sm">쥐떼를 막아내고 끝까지 살아남으세요</p>
+        <p className="text-gray-400 text-sm">다과를 막아내고 연경당을 지켜내세요</p>
       </div>
 
       {/* 탭 */}
