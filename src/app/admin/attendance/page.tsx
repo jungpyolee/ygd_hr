@@ -388,7 +388,7 @@ export default function AdminAttendanceCalendar() {
         <div className="grid grid-cols-7 relative">
           {loading && (
             <div className="absolute inset-0 bg-white/50 backdrop-blur-sm z-20 flex items-center justify-center">
-              <div className="w-8 h-8 border-4 border-[#3182F6] border-t-transparent rounded-full animate-spin" />
+              <div className="cat-spinner-lg" />
             </div>
           )}
           {calendarDays.map((day, idx) => {

@@ -397,7 +397,7 @@ export default function AdminEmployeesPage() {
   if (loading)
     return (
       <div className="flex justify-center items-center h-64">
-        <div className="w-8 h-8 border-4 border-[#3182F6] border-t-transparent rounded-full animate-spin" />
+        <div className="cat-spinner-lg" />
       </div>
     );
 
@@ -1040,7 +1040,7 @@ export default function AdminEmployeesPage() {
                 </h3>
                 {workDefaultsLoading ? (
                   <div className="flex justify-center py-4">
-                    <div className="w-6 h-6 border-3 border-[#3182F6] border-t-transparent rounded-full animate-spin" />
+                    <div className="cat-spinner" />
                   </div>
                 ) : (
                   <div className="space-y-2">

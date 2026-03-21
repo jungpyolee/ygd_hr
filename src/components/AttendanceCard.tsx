@@ -726,7 +726,7 @@ export default function AttendanceCard({
         {/* ── 위치 탐색 중 오버레이 ────────────────────────────── */}
         {isRetrying && (
           <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-[#F2F4F6] mb-3">
-            <Loader2 className="w-4 h-4 text-[#3182F6] animate-spin shrink-0" />
+            <div className="cat-spinner shrink-0" />
             <div>
               <p className="text-[13px] font-bold text-[#191F28]">위치를 찾고 있어요</p>
               <p className="text-[11px] text-[#8B95A1]">GPS 신호를 확인하는 중이에요</p>
@@ -744,7 +744,7 @@ export default function AttendanceCard({
           >
             {isButtonBusy ? (
               <span className="flex items-center gap-2">
-                <Loader2 className="w-5 h-5 animate-spin" /> 처리 중...
+                <div className="cat-spinner" /> 처리 중...
               </span>
             ) : "출근하기"}
           </Button>
@@ -784,7 +784,7 @@ export default function AttendanceCard({
           >
             {loading ? (
               <span className="flex items-center gap-2">
-                <Loader2 className="w-5 h-5 animate-spin" /> 처리 중...
+                <div className="cat-spinner" /> 처리 중...
               </span>
             ) : "퇴근하기"}
           </Button>

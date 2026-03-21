@@ -214,7 +214,7 @@ export default function AdminLayout({
   if (loading)
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F9FAFB]">
-        <div className="w-8 h-8 border-4 border-[#3182F6] border-t-transparent rounded-full animate-spin" />
+        <div className="cat-spinner-lg" />
       </div>
     );
   if (!isAdmin) return null;
