@@ -22,9 +22,32 @@ export default function AdminPushToggle() {
 
     fetch("/api/push/preferences")
       .then((r) => r.json())
-      .then((d) => setEnabled(d?.enabled ?? false))
+      .then((d) => {
+        const dbEnabled = d?.enabled ?? false;
+        setEnabled(dbEnabled);
+        // DB enabled=true인데 브라우저 구독이 없으면 DB 정정
+        if (dbEnabled && "serviceWorker" in navigator) {
+          syncSubscription().catch(() => {});
+        }
+      })
       .catch(() => {});
   }, []);
+
+  async function syncSubscription() {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      await fetch("/api/push/subscribe", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      setEnabled(false);
+      toast.info("알림 구독 정보가 초기화됐어요.", {
+        description: "알림을 다시 켜주세요.",
+      });
+    }
+  }
 
   async function handleToggle(next: boolean) {
     if (permissionState === "unsupported") return;
@@ -70,14 +93,13 @@ export default function AdminPushToggle() {
       } else {
         const reg = await navigator.serviceWorker.ready;
         const sub = await reg.pushManager.getSubscription();
-        if (sub) {
-          await fetch("/api/push/subscribe", {
-            method: "DELETE",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ endpoint: sub.endpoint }),
-          });
-          await sub.unsubscribe();
-        }
+        // sub 유무 관계없이 항상 API 호출 → enabled=false DB 반영 보장
+        await fetch("/api/push/subscribe", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(sub ? { endpoint: sub.endpoint } : {}),
+        });
+        if (sub) await sub.unsubscribe();
       }
 
       toast.success(next ? "푸시 알림을 켰어요." : "푸시 알림을 껐어요.");

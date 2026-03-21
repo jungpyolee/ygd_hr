@@ -58,9 +58,32 @@ export default function PushNotificationSettings() {
   async function loadPrefs() {
     try {
       const res = await fetch("/api/push/preferences");
-      if (res.ok) setPrefs(await res.json());
+      if (res.ok) {
+        const data = await res.json();
+        setPrefs(data);
+        // DB enabled=true인데 브라우저 구독이 없으면 DB 정정
+        if (data.enabled && "serviceWorker" in navigator) {
+          syncSubscription().catch(() => {});
+        }
+      }
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function syncSubscription() {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      await fetch("/api/push/subscribe", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      setPrefs((prev) => ({ ...prev, enabled: false }));
+      toast.info("알림 구독 정보가 초기화됐어요.", {
+        description: "알림을 다시 켜주세요.",
+      });
     }
   }
 
@@ -111,14 +134,13 @@ export default function PushNotificationSettings() {
         // 구독 해제
         const reg = await navigator.serviceWorker.ready;
         const sub = await reg.pushManager.getSubscription();
-        if (sub) {
-          await fetch("/api/push/subscribe", {
-            method: "DELETE",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ endpoint: sub.endpoint }),
-          });
-          await sub.unsubscribe();
-        }
+        // sub 유무 관계없이 항상 API 호출 → enabled=false DB 반영 보장
+        await fetch("/api/push/subscribe", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(sub ? { endpoint: sub.endpoint } : {}),
+        });
+        if (sub) await sub.unsubscribe();
       }
 
       toast.success(enabled ? "푸시 알림을 켰어요." : "푸시 알림을 껐어요.");
