@@ -535,7 +535,7 @@ export default function RoguelikeGame({ onClose, gameConfig }: Props) {
                               {fmtScore(entry.best_run_score)}
                             </p>
                             <p className="text-[10px] tabular-nums" style={{ color: isMe ? "rgba(245,158,11,0.6)" : "rgba(255,255,255,0.35)" }}>
-                              W{entry.highest_wave} · {fmtScore(entry.total_score)}누적
+                              {entry.highest_wave}라운드 · {fmtScore(entry.total_score)}누적
                             </p>
                           </div>
                         </div>
@@ -640,7 +640,7 @@ export default function RoguelikeGame({ onClose, gameConfig }: Props) {
                               {fmtScore(entry.best_run_score)}
                             </p>
                             <p className="text-[10px] tabular-nums" style={{ color: isMe ? "rgba(245,158,11,0.6)" : "rgba(255,255,255,0.35)" }}>
-                              W{entry.highest_wave} · {fmtScore(entry.total_score)}누적
+                              {entry.highest_wave}라운드 · {fmtScore(entry.total_score)}누적
                             </p>
                           </div>
                         </div>
