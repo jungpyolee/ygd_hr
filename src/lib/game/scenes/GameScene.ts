@@ -28,10 +28,10 @@ const AWAKENING_INFO: Record<string, { label: string; emoji: string; description
 
 // 패시브 업그레이드 옵션 (슬롯/레벨 꽉 찼을 때 제시)
 const PASSIVE_UPGRADES: UpgradeOption[] = [
-  { type: "passive", passiveId: "hp_regen",  label: "긴급 회복",  description: "즉시 HP 20% 회복",    emoji: "💚" },
-  { type: "passive", passiveId: "speed_up",  label: "질풍",       description: "이동속도 +10%",        emoji: "💨" },
-  { type: "passive", passiveId: "atk_power", label: "전투 기운",  description: "전체 공격력 +15%",     emoji: "⚔️" },
-  { type: "passive", passiveId: "exp_boost", label: "집중력",     description: "EXP 획득량 +20%",      emoji: "🌟" },
+  { type: "passive", passiveId: "hp_regen",  label: "꿀떡 한 입",   description: "HP 20% 즉시 회복해요",        emoji: "🍯" },
+  { type: "passive", passiveId: "speed_up",  label: "사뿐사뿐",     description: "이동속도 +10% 빨라져요",       emoji: "🐾" },
+  { type: "passive", passiveId: "atk_power", label: "발톱 연마",    description: "전체 무기 공격력 +15%",        emoji: "💢" },
+  { type: "passive", passiveId: "exp_boost", label: "경험치 폭식",  description: "EXP 구슬 흡수량 +20%",         emoji: "💫" },
 ];
 
 // ─── 게임 설정 (캐릭터 타입 + 상점 버프) ───────
