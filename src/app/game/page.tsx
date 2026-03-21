@@ -182,6 +182,7 @@ export default function GamePage() {
   const [gameConfig, setGameConfig]       = useState<GameConfig | null>(null);
   const [menuIdx, setMenuIdx]             = useState(0);
   const [blink, setBlink]                 = useState(true);
+  const [detailOpen, setDetailOpen]       = useState(false);
 
   // 데이터 로드
   function refreshData() {
@@ -225,24 +226,26 @@ export default function GamePage() {
     if (started || screen !== "character") return;
     const catIds = CAT_TYPES.map(c => c.id) as CatId[];
     const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { e.preventDefault(); setDetailOpen(false); return; }
       const cur = catIds.indexOf(selectedCat);
       if (e.key === "ArrowRight" || e.key === "ArrowDown") {
         e.preventDefault();
-        const next = catIds[(cur + 1) % catIds.length];
-        setSelectedCat(next);
+        setSelectedCat(catIds[(cur + 1) % catIds.length]);
+        setDetailOpen(true);
       } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
         e.preventDefault();
-        const prev = catIds[(cur - 1 + catIds.length) % catIds.length];
-        setSelectedCat(prev);
+        setSelectedCat(catIds[(cur - 1 + catIds.length) % catIds.length]);
+        setDetailOpen(true);
       } else if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
+        if (!detailOpen) { setDetailOpen(true); return; }
         if (isCatUnlocked(selectedCat)) handleStart();
       }
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [started, screen, selectedCat]);
+  }, [started, screen, selectedCat, detailOpen]);
 
   // ─── 캐릭터 해금 체크 ────────────────────
   function isCatUnlocked(catId: string): boolean {
@@ -557,207 +560,201 @@ export default function GamePage() {
   // ══════════════════════════════════════════
   if (screen === "character") {
     const selCat = CAT_TYPES.find(c => c.id === selectedCat)!;
+    const selUnlocked = isCatUnlocked(selectedCat);
+    const stats = selCat.getStatBonuses();
 
     return (
-      <div
-        className="min-h-screen flex flex-col relative overflow-hidden"
-        style={{ background: "#07071a" }}
-      >
+      <div className="h-screen flex flex-col overflow-hidden relative" style={{ background: "#07071a" }}>
         <style>{`
-          @keyframes selectGlow {
-            0%,100% { box-shadow: 0 0 0 2px #f59e0b, 0 0 16px #f59e0b44; }
-            50%      { box-shadow: 0 0 0 2px #f59e0b, 0 0 28px #f59e0baa; }
-          }
           @keyframes catFrames6 {
             from { -webkit-mask-position: 0 0; mask-position: 0 0; }
-            to   { -webkit-mask-position: 0 -${64*6}px; mask-position: 0 -${64*6}px; }
+            to   { -webkit-mask-position: 0 -${96*6}px; mask-position: 0 -${96*6}px; }
           }
-          .selected-card { animation: selectGlow 1.8s ease-in-out infinite; }
+          @keyframes slideInRight {
+            from { transform: translateX(32px); opacity: 0; }
+            to   { transform: translateX(0);    opacity: 1; }
+          }
+          @keyframes fadeUp {
+            from { transform: translateY(10px); opacity: 0; }
+            to   { transform: translateY(0);    opacity: 1; }
+          }
+          .detail-enter { animation: slideInRight 0.32s cubic-bezier(0.22,1,0.36,1) both; }
+          .fadeup       { animation: fadeUp 0.28s cubic-bezier(0.22,1,0.36,1) both; }
         `}</style>
 
         {/* 배경 그리드 */}
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            backgroundImage: "radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px)",
-            backgroundSize: "28px 28px",
-          }}
-        />
+        <div className="absolute inset-0 pointer-events-none"
+          style={{ backgroundImage: "radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px)", backgroundSize: "28px 28px" }} />
 
         {/* 헤더 */}
-        <div className="relative z-10 flex items-center justify-between px-4 pt-12 pb-4">
+        <div className="relative z-10 flex items-center justify-between px-4 pt-12 pb-3 shrink-0">
           <button
-            onClick={() => setScreen("title")}
+            onClick={() => { if (detailOpen) { setDetailOpen(false); } else { setScreen("title"); } }}
             className="font-mono text-xs tracking-widest px-3 py-1.5 rounded"
             style={{ color: "#64748b", border: "1px solid #1e293b" }}
           >
-            ← BACK
+            ← {detailOpen ? "목록" : "BACK"}
           </button>
-          <p
-            className="font-mono font-bold tracking-widest uppercase"
-            style={{ color: "#f59e0b", fontSize: "13px", letterSpacing: "0.25em" }}
-          >
+          <p className="font-mono font-bold tracking-widest uppercase"
+            style={{ color: "#f59e0b", fontSize: "13px", letterSpacing: "0.25em" }}>
             PLAYER  SELECT
           </p>
-          <div
-            className="flex items-center gap-1 px-3 py-1 rounded"
-            style={{ border: "1px solid rgba(245,158,11,0.3)", background: "rgba(245,158,11,0.06)" }}
-          >
+          <div className="flex items-center gap-1 px-3 py-1 rounded"
+            style={{ border: "1px solid rgba(245,158,11,0.3)", background: "rgba(245,158,11,0.06)" }}>
             <span className="text-xs">🪙</span>
-            <span className="font-mono font-bold text-xs tabular-nums" style={{ color: "#f59e0b" }}>
-              {profile?.coins ?? 0}
-            </span>
+            <span className="font-mono font-bold text-xs tabular-nums" style={{ color: "#f59e0b" }}>{profile?.coins ?? 0}</span>
           </div>
         </div>
 
-        {/* 캐릭터 그리드 */}
-        <div className="relative z-10 grid grid-cols-2 gap-3 px-4 mb-4">
-          {CAT_TYPES.map(cat => {
-            const unlocked = isCatUnlocked(cat.id);
-            const selected = selectedCat === cat.id;
-            return (
-              <div key={cat.id} className="flex flex-col">
-                <button
-                  onClick={() => {
-                    if (!unlocked) return;
-                    if (selectedCat === cat.id) { handleStart(); return; }
-                    setSelectedCat(cat.id as CatId);
-                  }}
-                  disabled={!unlocked}
-                  className={`rounded-xl p-4 flex flex-col items-center gap-2 transition-all duration-150 ${selected ? "selected-card" : ""}`}
-                  style={{
-                    background: selected
-                      ? "rgba(245,158,11,0.1)"
-                      : unlocked
-                      ? "rgba(255,255,255,0.04)"
-                      : "rgba(255,255,255,0.02)",
-                    border: selected
-                      ? "1px solid #f59e0b"
-                      : "1px solid rgba(255,255,255,0.08)",
-                    opacity: !unlocked ? 0.45 : 1,
-                  }}
-                >
-                  <CatSprite
-                    catId={cat.id}
-                    sheet={selected ? "Run" : "Idle"}
-                    size={64}
-                    animated={selected}
-                    grayscale={!unlocked}
-                  />
-                  <div className="text-center">
-                    <p
-                      className="font-mono font-bold text-xs tracking-wider"
-                      style={{ color: selected ? "#f59e0b" : "#94a3b8" }}
-                    >
-                      {cat.name}
-                    </p>
-                    <p className="text-[10px] mt-0.5" style={{ color: "#475569" }}>
-                      {cat.desc}
-                    </p>
-                  </div>
-                  {!unlocked && (
-                    <span
-                      className="font-mono text-[9px] tracking-wider px-2 py-0.5 rounded"
-                      style={{ background: "rgba(255,255,255,0.06)", color: "#475569" }}
-                    >
-                      🔒 {getUnlockHint(cat.id)}
-                    </span>
-                  )}
-                  {selected && (
-                    <span
-                      className="font-mono text-[9px] tracking-widest"
-                      style={{ color: "#f59e0b" }}
-                    >
-                      ── SELECTED ──
-                    </span>
-                  )}
-                </button>
+        {/* 본문 — 슬라이딩 패널 */}
+        <div className="relative z-10 flex flex-1 overflow-hidden">
 
-                {/* 아비시니안 해금 버튼 */}
-                {cat.id === "abyssinian" && !isCatUnlocked(cat.id) && (
-                  <button
-                    onClick={handleUnlockAbyssinian}
-                    disabled={buying === "cat_abyssinian" || (profile?.coins ?? 0) < 50}
-                    className="mt-1.5 py-2 rounded-lg font-mono text-xs tracking-wider disabled:opacity-30 transition-all active:scale-95"
-                    style={{
-                      background: "rgba(245,158,11,0.15)",
-                      border: "1px solid rgba(245,158,11,0.4)",
-                      color: "#f59e0b",
-                    }}
-                  >
-                    {buying === "cat_abyssinian" ? "처리 중..." : "🪙 50 UNLOCK"}
-                  </button>
-                )}
-                {/* 봄동비빔밥 해금 버튼 */}
-                {cat.id === "bomdong" && !isCatUnlocked(cat.id) && (
-                  <button
-                    onClick={handleUnlockBomdong}
-                    disabled={buying === "cat_bomdong" || (profile?.coins ?? 0) < 80}
-                    className="mt-1.5 py-2 rounded-lg font-mono text-xs tracking-wider disabled:opacity-30 transition-all active:scale-95"
-                    style={{
-                      background: "rgba(34,197,94,0.15)",
-                      border: "1px solid rgba(34,197,94,0.4)",
-                      color: "#22c55e",
-                    }}
-                  >
-                    {buying === "cat_bomdong" ? "처리 중..." : "🪙 80 UNLOCK"}
-                  </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* 선택 캐릭터 정보 패널 */}
-        <div
-          className="relative z-10 mx-4 mb-4 p-4 rounded-xl"
-          style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.2)" }}
-        >
-          <div className="flex items-center gap-3">
-            <CatSprite catId={selCat.id} sheet="Idle" size={48} animated />
-            <div className="flex-1">
-              <p className="font-mono font-bold text-sm tracking-wider" style={{ color: "#f59e0b" }}>
-                {selCat.name.toUpperCase()}
-              </p>
-              <p className="text-xs mt-0.5" style={{ color: "#94a3b8" }}>{selCat.detail}</p>
-            </div>
-            <div
-              className="font-mono text-xs px-2 py-1 rounded"
-              style={{ background: "rgba(245,158,11,0.15)", color: "#f59e0b", letterSpacing: "0.1em" }}
-            >
-              {selCat.desc}
-            </div>
-          </div>
-          {/* 조작법 */}
-          <div className="mt-3 pt-3 grid grid-cols-2 gap-x-4 gap-y-1" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-            {[
-              ["📱 드래그", "이동"],
-              ["💨 스페이스 / 버튼", "대시"],
-              ["⚔️ 자동", "공격"],
-              ["🔥 5웨이브", "보스 등장"],
-            ].map(([k, v]) => (
-              <p key={k} className="text-[10px] font-mono" style={{ color: "#475569" }}>
-                <span style={{ color: "#64748b" }}>{k} </span>{v}
-              </p>
-            ))}
-          </div>
-        </div>
-
-        {/* 하단 버튼 */}
-        <div className="relative z-10 px-4 pb-10 mt-auto">
-          <button
-            onClick={handleStart}
-            disabled={!isCatUnlocked(selectedCat)}
-            className="w-full py-4 rounded-xl font-mono font-black tracking-widest uppercase text-base disabled:opacity-30 transition-all active:scale-95"
-            style={{
-              background: "linear-gradient(135deg, #d97706, #f59e0b)",
-              color: "#07071a",
-              letterSpacing: "0.25em",
-              boxShadow: "0 0 24px rgba(245,158,11,0.35)",
-            }}
+          {/* ── 캐릭터 그리드 (좌측) ── */}
+          <div
+            className="overflow-y-auto shrink-0 transition-all duration-350 ease-[cubic-bezier(0.22,1,0.36,1)]"
+            style={{ width: detailOpen ? "42%" : "100%", paddingLeft: 16, paddingRight: detailOpen ? 8 : 16, paddingTop: 4, paddingBottom: 24 }}
           >
-            ▶  GAME  START
-          </button>
+            <div className={`grid gap-2 ${detailOpen ? "grid-cols-1" : "grid-cols-2"}`}>
+              {CAT_TYPES.map(cat => {
+                const unlocked = isCatUnlocked(cat.id);
+                const selected = selectedCat === cat.id;
+                return (
+                  <div key={cat.id} className="flex flex-col gap-1">
+                    <button
+                      onClick={() => {
+                        if (!unlocked && cat.id !== "abyssinian" && cat.id !== "bomdong") return;
+                        setSelectedCat(cat.id as CatId);
+                        setDetailOpen(true);
+                      }}
+                      className="rounded-xl transition-all duration-200 active:scale-95 flex items-center gap-2"
+                      style={{
+                        padding: detailOpen ? "8px 10px" : "12px",
+                        flexDirection: detailOpen ? "row" : "column",
+                        background: selected ? "rgba(245,158,11,0.12)" : "rgba(255,255,255,0.04)",
+                        border: selected ? "1px solid rgba(245,158,11,0.7)" : "1px solid rgba(255,255,255,0.07)",
+                        opacity: !unlocked ? 0.45 : 1,
+                        boxShadow: selected ? "0 0 12px rgba(245,158,11,0.25)" : "none",
+                      }}
+                    >
+                      <CatSprite catId={cat.id} sheet="Idle" size={detailOpen ? 32 : 56} animated={selected} grayscale={!unlocked} />
+                      {detailOpen ? (
+                        <span className="font-mono text-[11px] font-bold truncate" style={{ color: selected ? "#f59e0b" : "#94a3b8" }}>
+                          {cat.name}
+                        </span>
+                      ) : (
+                        <div className="text-center">
+                          <p className="font-mono font-bold text-xs" style={{ color: selected ? "#f59e0b" : "#94a3b8" }}>{cat.name}</p>
+                          <p className="text-[10px] mt-0.5" style={{ color: "#475569" }}>{cat.desc}</p>
+                        </div>
+                      )}
+                    </button>
+                    {/* 해금 버튼 (그리드 모드에서만) */}
+                    {!detailOpen && cat.id === "abyssinian" && !isCatUnlocked(cat.id) && (
+                      <button onClick={handleUnlockAbyssinian} disabled={buying === "cat_abyssinian" || (profile?.coins ?? 0) < 50}
+                        className="py-1.5 rounded-lg font-mono text-[10px] tracking-wider disabled:opacity-30 transition-all active:scale-95"
+                        style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.35)", color: "#f59e0b" }}>
+                        {buying === "cat_abyssinian" ? "..." : "🪙 50 UNLOCK"}
+                      </button>
+                    )}
+                    {!detailOpen && cat.id === "bomdong" && !isCatUnlocked(cat.id) && (
+                      <button onClick={handleUnlockBomdong} disabled={buying === "cat_bomdong" || (profile?.coins ?? 0) < 80}
+                        className="py-1.5 rounded-lg font-mono text-[10px] tracking-wider disabled:opacity-30 transition-all active:scale-95"
+                        style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.35)", color: "#22c55e" }}>
+                        {buying === "cat_bomdong" ? "..." : "🪙 80 UNLOCK"}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ── 디테일 패널 (우측) ── */}
+          <div
+            className="flex flex-col overflow-hidden transition-all duration-350 ease-[cubic-bezier(0.22,1,0.36,1)]"
+            style={{ width: detailOpen ? "58%" : "0%", opacity: detailOpen ? 1 : 0, paddingRight: 16 }}
+          >
+            {detailOpen && (
+              <div key={selectedCat} className="detail-enter flex flex-col h-full pt-2 pb-6">
+                {/* 캐릭터 스프라이트 */}
+                <div className="flex flex-col items-center pt-4 pb-3">
+                  <div style={{ filter: "drop-shadow(0 0 16px rgba(245,158,11,0.5))" }}>
+                    <CatSprite catId={selCat.id} sheet="Idle" size={96} animated grayscale={!selUnlocked} />
+                  </div>
+                  <p className="font-mono font-black text-sm tracking-wider mt-2" style={{ color: "#f59e0b" }}>
+                    {selCat.name}
+                  </p>
+                  <span className="font-mono text-[10px] px-2 py-0.5 rounded mt-1"
+                    style={{ background: "rgba(245,158,11,0.15)", color: "#f59e0b" }}>
+                    {selCat.desc}
+                  </span>
+                </div>
+
+                {/* 스탯 */}
+                <div className="fadeup mx-1 rounded-xl p-3 mb-3"
+                  style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", animationDelay: "0.05s" }}>
+                  <p className="text-[9px] font-mono tracking-widest mb-2" style={{ color: "#475569" }}>STATS</p>
+                  {[
+                    { label: "HP", val: stats.hpBonus, base: 100, isBonus: true },
+                    { label: "ATK", val: Math.round((stats.damageMulti - 1) * 100), base: 0, isBonus: true },
+                    { label: "SPD", val: Math.round((stats.moveSpeedMulti - 1) * 100), base: 0, isBonus: true },
+                  ].map(({ label, val }) => (
+                    <div key={label} className="flex items-center gap-2 mb-1.5">
+                      <span className="font-mono text-[9px] w-6 shrink-0" style={{ color: "#64748b" }}>{label}</span>
+                      <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.08)" }}>
+                        <div className="h-full rounded-full" style={{
+                          width: `${Math.min(100, 50 + val * 1.5)}%`,
+                          background: val > 0 ? "#22c55e" : val < 0 ? "#ef4444" : "#f59e0b",
+                          transition: "width 0.4s ease",
+                        }} />
+                      </div>
+                      <span className="font-mono text-[9px] w-8 text-right shrink-0" style={{ color: val > 0 ? "#22c55e" : val < 0 ? "#ef4444" : "#94a3b8" }}>
+                        {val > 0 ? `+${val}` : val === 0 ? "±0" : val}
+                        {label !== "HP" ? "%" : ""}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* 설명 */}
+                <p className="fadeup text-[11px] text-center mx-1 mb-3 leading-relaxed"
+                  style={{ color: "#64748b", animationDelay: "0.1s" }}>
+                  {selCat.detail}
+                </p>
+
+                {/* 해금 버튼 or START */}
+                <div className="mt-auto mx-1 fadeup" style={{ animationDelay: "0.15s" }}>
+                  {!selUnlocked ? (
+                    <>
+                      <p className="text-center text-[10px] font-mono mb-2" style={{ color: "#475569" }}>
+                        🔒 {getUnlockHint(selCat.id)}
+                      </p>
+                      {selCat.id === "abyssinian" && (
+                        <button onClick={handleUnlockAbyssinian} disabled={buying === "cat_abyssinian" || (profile?.coins ?? 0) < 50}
+                          className="w-full py-3 rounded-xl font-mono text-sm font-bold tracking-wider disabled:opacity-30 active:scale-95 transition-all"
+                          style={{ background: "rgba(245,158,11,0.2)", border: "1px solid rgba(245,158,11,0.5)", color: "#f59e0b" }}>
+                          {buying === "cat_abyssinian" ? "처리 중..." : "🪙 50 UNLOCK"}
+                        </button>
+                      )}
+                      {selCat.id === "bomdong" && (
+                        <button onClick={handleUnlockBomdong} disabled={buying === "cat_bomdong" || (profile?.coins ?? 0) < 80}
+                          className="w-full py-3 rounded-xl font-mono text-sm font-bold tracking-wider disabled:opacity-30 active:scale-95 transition-all"
+                          style={{ background: "rgba(34,197,94,0.2)", border: "1px solid rgba(34,197,94,0.5)", color: "#22c55e" }}>
+                          {buying === "cat_bomdong" ? "처리 중..." : "🪙 80 UNLOCK"}
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <button onClick={handleStart}
+                      className="w-full py-3.5 rounded-xl font-mono font-black tracking-widest uppercase text-sm active:scale-95 transition-all"
+                      style={{ background: "linear-gradient(135deg, #d97706, #f59e0b)", color: "#07071a", letterSpacing: "0.2em", boxShadow: "0 0 20px rgba(245,158,11,0.4)" }}>
+                      ▶  START
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
