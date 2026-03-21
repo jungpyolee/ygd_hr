@@ -293,7 +293,9 @@ export default class GameScene extends Phaser.Scene {
   private score = 0;
 
   // 패시브 런타임 배율 (레벨업 패시브로 누적)
-  private runtimeExpMulti = 1.0;
+  private runtimeExpMulti   = 1.0;
+  private runtimeSpeedMulti = 1.0;
+  private runtimeDamageMulti = 1.0;
 
   // 콤보
   private combo = 0;
@@ -1148,7 +1150,7 @@ export default class GameScene extends Phaser.Scene {
     for (let i = 0; i < 3; i++) {
       const target = targets[i] ?? targets[0];
       const proj = this.add.text(this.player.x, this.player.y, "🔱", { fontSize: "20px" }).setOrigin(0.5);
-      (proj as any).damage   = w.damage;
+      (proj as any).damage   = Math.round(w.damage * this.runtimeDamageMulti);
       (proj as any).targetX  = target.x;
       (proj as any).targetY  = target.y;
       (proj as any).speed    = w.projectileSpeed;
@@ -1164,7 +1166,7 @@ export default class GameScene extends Phaser.Scene {
     for (let i = 0; i < 12; i++) {
       const rad = Phaser.Math.DegToRad(i * 30);
       const proj = this.add.text(this.player.x, this.player.y, "🌀", { fontSize: "18px" }).setOrigin(0.5);
-      (proj as any).damage   = w.damage;
+      (proj as any).damage   = Math.round(w.damage * this.runtimeDamageMulti);
       (proj as any).vx       = Math.cos(rad) * 320;
       (proj as any).vy       = Math.sin(rad) * 320;
       (proj as any).type     = "piercing";
@@ -1180,7 +1182,7 @@ export default class GameScene extends Phaser.Scene {
     const target = this.getNearestEnemy();
     if (!target) return;
     const proj = this.add.text(this.player.x, this.player.y, "☢️", { fontSize: "26px" }).setOrigin(0.5);
-    (proj as any).damage       = w.damage;
+    (proj as any).damage       = Math.round(w.damage * this.runtimeDamageMulti);
     (proj as any).targetX      = target.x;
     (proj as any).targetY      = target.y;
     (proj as any).speed        = w.projectileSpeed;
@@ -1195,7 +1197,7 @@ export default class GameScene extends Phaser.Scene {
     [0, 90, 180, 270].forEach(offset => {
       const rad = Phaser.Math.DegToRad(base + offset);
       const proj = this.add.text(this.player.x, this.player.y, "✖️", { fontSize: "20px" }).setOrigin(0.5);
-      (proj as any).damage   = w.damage;
+      (proj as any).damage   = Math.round(w.damage * this.runtimeDamageMulti);
       (proj as any).vx       = Math.cos(rad) * w.projectileSpeed;
       (proj as any).vy       = Math.sin(rad) * w.projectileSpeed;
       (proj as any).type     = "piercing";
@@ -1211,7 +1213,7 @@ export default class GameScene extends Phaser.Scene {
     for (let i = 0; i < 16; i++) {
       const rad = Phaser.Math.DegToRad(i * 22.5);
       const proj = this.add.text(this.player.x, this.player.y, "📡", { fontSize: "18px" }).setOrigin(0.5);
-      (proj as any).damage    = w.damage;
+      (proj as any).damage    = Math.round(w.damage * this.runtimeDamageMulti);
       (proj as any).vx        = Math.cos(rad) * w.projectileSpeed * 1.3;
       (proj as any).vy        = Math.sin(rad) * w.projectileSpeed * 1.3;
       (proj as any).type      = "piercing";
@@ -1229,7 +1231,7 @@ export default class GameScene extends Phaser.Scene {
     (this.enemies.getChildren() as Phaser.GameObjects.Image[]).forEach(e => {
       const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, e.x, e.y);
       if (dist <= range) {
-        this.hitEnemy(e, w.damage * 4);
+        this.hitEnemy(e, Math.round(w.damage * this.runtimeDamageMulti) * 4);
         const origSpeed = (e as any).speed;
         (e as any).speed = Math.round(origSpeed * 0.25);
         e.setAlpha(0.35);
@@ -1264,7 +1266,7 @@ export default class GameScene extends Phaser.Scene {
       const proj = this.add.text(this.player.x, this.player.y, "✨", {
         fontSize: "16px",
       }).setOrigin(0.5);
-      (proj as any).damage   = w.damage;
+      (proj as any).damage   = Math.round(w.damage * this.runtimeDamageMulti);
       (proj as any).vx       = Math.cos(rad) * 300;
       (proj as any).vy       = Math.sin(rad) * 300;
       (proj as any).type     = this.config.buffs.hasPiercing ? "piercing" : "linear";
@@ -1281,7 +1283,7 @@ export default class GameScene extends Phaser.Scene {
     const proj = this.add.text(this.player.x, this.player.y, "🐟", {
       fontSize: "24px",
     }).setOrigin(0.5);
-    (proj as any).damage       = w.damage;
+    (proj as any).damage       = Math.round(w.damage * this.runtimeDamageMulti);
     (proj as any).targetX      = target.x;
     (proj as any).targetY      = target.y;
     (proj as any).speed        = w.projectileSpeed;
@@ -1312,7 +1314,7 @@ export default class GameScene extends Phaser.Scene {
       const proj = this.add.text(this.player.x, this.player.y, "💫", {
         fontSize: "18px",
       }).setOrigin(0.5);
-      (proj as any).damage   = w.damage;
+      (proj as any).damage   = Math.round(w.damage * this.runtimeDamageMulti);
       (proj as any).vx       = Math.cos(rad) * w.projectileSpeed;
       (proj as any).vy       = Math.sin(rad) * w.projectileSpeed;
       (proj as any).type     = this.config.buffs.hasPiercing ? "piercing" : "linear";
@@ -1328,7 +1330,7 @@ export default class GameScene extends Phaser.Scene {
     enemies.forEach(e => {
       const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, e.x, e.y);
       if (dist <= w.range) {
-        this.hitEnemy(e, w.damage * 0.5);
+        this.hitEnemy(e, Math.round(w.damage * this.runtimeDamageMulti) * 0.5);
         e.setAlpha(0.5);
         this.time.delayedCall(1500, () => { if (e.active) e.setAlpha(1); });
       }
@@ -1573,10 +1575,11 @@ export default class GameScene extends Phaser.Scene {
           this.playerHp = Math.min(this.playerMaxHp, this.playerHp + Math.round(this.playerMaxHp * 0.20));
           break;
         case "speed_up":
-          this.playerSpeed *= 1.10;
+          this.runtimeSpeedMulti += 0.10;
+          this.playerSpeed = PLAYER_SPEED * this.config.buffs.moveSpeedMulti * this.runtimeSpeedMulti;
           break;
         case "atk_power":
-          this.equippedWeapons.forEach(w => { w.damage = Math.round(w.damage * 1.15); });
+          this.runtimeDamageMulti += 0.15;
           break;
         case "exp_boost":
           this.runtimeExpMulti += 0.20;
