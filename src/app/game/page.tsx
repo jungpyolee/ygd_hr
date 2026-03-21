@@ -209,7 +209,8 @@ export default function GamePage() {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === "ArrowUp")   setMenuIdx(i => Math.max(0, i - 1));
       if (e.key === "ArrowDown") setMenuIdx(i => Math.min(2, i + 1));
-      if (e.key === "Enter") {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
         if (menuIdx === 0) setScreen("character");
         else if (menuIdx === 1) setScreen("shop");
         else router.back();
@@ -218,6 +219,30 @@ export default function GamePage() {
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [started, screen, menuIdx, router]);
+
+  // 캐릭터 선택 키보드 내비게이션
+  useEffect(() => {
+    if (started || screen !== "character") return;
+    const catIds = CAT_TYPES.map(c => c.id) as CatId[];
+    const handleKey = (e: KeyboardEvent) => {
+      const cur = catIds.indexOf(selectedCat);
+      if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+        e.preventDefault();
+        const next = catIds[(cur + 1) % catIds.length];
+        setSelectedCat(next);
+      } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const prev = catIds[(cur - 1 + catIds.length) % catIds.length];
+        setSelectedCat(prev);
+      } else if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        if (isCatUnlocked(selectedCat)) handleStart();
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [started, screen, selectedCat]);
 
   // ─── 캐릭터 해금 체크 ────────────────────
   function isCatUnlocked(catId: string): boolean {

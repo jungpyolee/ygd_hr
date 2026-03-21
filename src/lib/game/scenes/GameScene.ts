@@ -966,6 +966,23 @@ export default class GameScene extends Phaser.Scene {
     for (let i = 0; i < coinCount; i++) {
       this.dropCoin(boss.x + Phaser.Math.Between(-30, 30), boss.y + Phaser.Math.Between(-30, 30));
     }
+    // EXP 드랍 — 현재 레벨 기준 약 2레벨 분량
+    const expIdx = Math.min(this.level, EXP_PER_LEVEL.length - 1);
+    const totalExp = EXP_PER_LEVEL[expIdx] * 2;
+    const orbCount = 14;
+    const expPerOrb = Math.ceil(totalExp / orbCount);
+    for (let i = 0; i < orbCount; i++) {
+      const angle = (Math.PI * 2 * i) / orbCount;
+      const r = Phaser.Math.Between(30, 80);
+      const orb = this.add.image(
+        boss.x + Math.cos(angle) * r,
+        boss.y + Math.sin(angle) * r,
+        "game_exp",
+      );
+      orb.setDisplaySize(20, 20);
+      (orb as any).value = expPerOrb;
+      this.expOrbs.add(orb);
+    }
 
     this.bossHpGraphics?.destroy();
     this.bossHpGraphics = undefined;

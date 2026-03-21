@@ -42,6 +42,7 @@ export default function RoguelikeGame({ onClose, gameConfig }: Props) {
   const [countdown, setCountdown] = useState(3);
   const [stats, setStats]         = useState<GameStats | null>(null);
   const [upgradeOptions, setUpgradeOptions] = useState<UpgradeOption[]>([]);
+  const [upgradeIdx, setUpgradeIdx]         = useState(0);
   const [runResult, setRunResult] = useState<GameRunPayload | null>(null);
   const [saving, setSaving]       = useState(false);
   const [saveError, setSaveError] = useState(false);
@@ -107,6 +108,7 @@ export default function RoguelikeGame({ onClose, gameConfig }: Props) {
 
         s.events.on(GAME_EVENTS.LEVEL_UP, (opts: UpgradeOption[]) => {
           setUpgradeOptions(opts);
+          setUpgradeIdx(0);
           setLevelUpTimer(5);
           setPhase("levelup");
         });
@@ -184,6 +186,26 @@ export default function RoguelikeGame({ onClose, gameConfig }: Props) {
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, upgradeOptions]);
+
+  // ─── 레벨업 키보드 선택 ──────────────────────
+  useEffect(() => {
+    if (phase !== "levelup") return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+        e.preventDefault();
+        setUpgradeIdx(i => Math.max(0, i - 1));
+      } else if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+        e.preventDefault();
+        setUpgradeIdx(i => Math.min(upgradeOptions.length - 1, i + 1));
+      } else if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        if (upgradeOptions[upgradeIdx]) handleUpgrade(upgradeOptions[upgradeIdx]);
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, upgradeOptions, upgradeIdx]);
 
   // ─── 레벨업 선택 ───────────────────────────
   const handleUpgrade = useCallback((option: UpgradeOption) => {
@@ -440,10 +462,13 @@ export default function RoguelikeGame({ onClose, gameConfig }: Props) {
                 <button
                   key={i}
                   onClick={() => handleUpgrade(opt)}
-                  className="group flex flex-col items-center gap-2 rounded-2xl p-4 text-center border border-white/10 transition-all duration-150 active:scale-95 hover:border-[#f59e0b]/60"
+                  className="group flex flex-col items-center gap-2 rounded-2xl p-4 text-center transition-all duration-150 active:scale-95"
                   style={{
-                    background: "linear-gradient(160deg, rgba(245,158,11,0.12), rgba(245,158,11,0.04))",
-                    boxShadow: "0 4px 24px rgba(0,0,0,0.4)",
+                    background: i === upgradeIdx
+                      ? "linear-gradient(160deg, rgba(245,158,11,0.25), rgba(245,158,11,0.1))"
+                      : "linear-gradient(160deg, rgba(245,158,11,0.12), rgba(245,158,11,0.04))",
+                    border: i === upgradeIdx ? "1px solid rgba(245,158,11,0.7)" : "1px solid rgba(255,255,255,0.1)",
+                    boxShadow: i === upgradeIdx ? "0 0 16px rgba(245,158,11,0.3), 0 4px 24px rgba(0,0,0,0.4)" : "0 4px 24px rgba(0,0,0,0.4)",
                   }}
                 >
                   <div
