@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context";
 import { useRouter, useParams } from "next/navigation";
 import { ChevronLeft, Pencil, Trash2 } from "lucide-react";
 import Image from "next/image";
@@ -21,27 +22,22 @@ export default function RecipeDetailPage() {
   const router = useRouter();
   const params = useParams();
   const id = params.id as string;
+  const { user } = useAuth();
 
   useEffect(() => {
+    if (!user) return;
     const fetchData = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      let userId: string | null = null;
+      const userId = user.id;
       let isAdmin = false;
       let isFullTime = false;
 
-      if (user) {
-        userId = user.id;
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("role, employment_type")
-          .eq("id", user.id)
-          .single();
-        isAdmin = profile?.role === "admin";
-        isFullTime = profile?.employment_type === "full_time";
-      }
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role, employment_type")
+        .eq("id", userId)
+        .single();
+      isAdmin = profile?.role === "admin";
+      isFullTime = profile?.employment_type === "full_time";
 
       const [{ data: recipeData }, { data: stepsData }, { data: ingredientsData }] = await Promise.all([
         supabase
@@ -86,7 +82,7 @@ export default function RecipeDetailPage() {
     };
 
     fetchData();
-  }, [id]);
+  }, [id, user, supabase, router]);
 
   if (loading) {
     return (

@@ -3,6 +3,7 @@
 import { useState, Suspense, useEffect } from "react";
 import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
 import { ChevronLeft, ChevronRight, Calendar, MapPin, Clock, ArrowRightLeft, X, Check, UserCheck } from "lucide-react";
 import { format, addWeeks, subWeeks, startOfWeek, addDays, isSameDay, isToday } from "date-fns";
@@ -95,19 +96,11 @@ function SchedulePageInner() {
   // 대타 수락 확인 바텀시트
   const [activeRequest, setActiveRequest] = useState<SubstituteRequest | null>(null);
 
+  const { user } = useAuth();
+  const profileId = user?.id ?? null;
+
   const weekDates = getWeekDates(weekStart);
   const weekStartStr = format(weekStart, "yyyy-MM-dd");
-
-  // 1. userId SWR
-  const { data: profileId } = useSWR(
-    "current-user-id",
-    async () => {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      return user?.id ?? null;
-    },
-    { revalidateOnFocus: false, dedupingInterval: 300_000 }
-  );
 
   // 2. 내 스케줄 슬롯
   const { data: slots = [], isLoading, mutate: mutateSlots } = useSWR(

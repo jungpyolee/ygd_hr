@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
 import {
   ChevronLeft,
@@ -82,7 +83,8 @@ const LOCATION_COLORS: Record<string, string> = {
 
 export default function AdminSubstitutesPage() {
   const [tab, setTab] = useState<"pending" | "done">("pending");
-  const [currentAdminId, setCurrentAdminId] = useState<string | null>(null);
+  const { user } = useAuth();
+  const currentAdminId = user?.id ?? null;
 
   // Reject bottom sheet
   const [rejectTarget, setRejectTarget] = useState<SubstituteRequest | null>(
@@ -97,17 +99,6 @@ export default function AdminSubstitutesPage() {
   );
   const [eligibleIds, setEligibleIds] = useState<string[]>([]);
   const [approving, setApproving] = useState(false);
-
-  useEffect(() => {
-    const init = async () => {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (user) setCurrentAdminId(user.id);
-    };
-    init();
-  }, []);
 
   const { data: profiles = [] } = useSWR(
     "admin-substitutes-profiles",

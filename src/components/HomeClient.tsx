@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, useRef, useMemo } from "react";
+import { use, useEffect, useState, useRef, useMemo, Suspense } from "react";
 import { createClient } from "@/lib/supabase";
+import useSWR from "swr";
 import {
   UserCircle,
   BookOpen,
@@ -25,6 +26,16 @@ import { useRouter } from "next/navigation";
 import { useGeolocation } from "@/lib/hooks/useGeolocation";
 import type { Announcement } from "@/types/announcement";
 import type { TodaySlot, RawLogData } from "@/app/page";
+
+// 주간 스케줄 — Streaming SSR용 (use() + Suspense)
+function WeeklyScheduleSection({
+  promise,
+}: {
+  promise: Promise<ScheduleSlot[]>;
+}) {
+  const slots = use(promise);
+  return <WeeklyScheduleCard slots={slots} />;
+}
 
 const LOCATION_LABELS: Record<string, string> = {
   cafe: "카페",
@@ -58,10 +69,7 @@ interface HomeClientProps {
   stores: any[];
   logData: RawLogData | null;
   todaySlots: TodaySlot[];
-  weeklySlots: ScheduleSlot[];
-  announcements: Announcement[];
-  announcementReadIds: string[];
-  initialNotis: any[];
+  weeklySlotPromise: Promise<ScheduleSlot[]>;
 }
 
 export default function HomeClient({
@@ -70,27 +78,69 @@ export default function HomeClient({
   stores,
   logData,
   todaySlots,
-  weeklySlots,
-  announcements,
-  announcementReadIds,
-  initialNotis,
+  weeklySlotPromise,
 }: HomeClientProps) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
 
   const [showGuideRedDot, setShowGuideRedDot] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [notis, setNotis] = useState<any[]>(initialNotis);
-  const [unreadCount, setUnreadCount] = useState(
-    initialNotis.filter((n) => !n.is_read).length,
-  );
+  const [notis, setNotis] = useState<any[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [showNoti, setShowNoti] = useState(false);
   const notiRef = useRef<HTMLDivElement>(null);
 
-  const announcementReadSet = useMemo(
-    () => new Set(announcementReadIds),
-    [announcementReadIds],
+  // 알림 SWR (클라이언트 로드)
+  const { data: notisData } = useSWR(
+    profile?.id ? ["home-notis", profile.id] : null,
+    async ([, profileId]) => {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("notifications")
+        .select("id, title, content, type, source_id, is_read, created_at")
+        .eq("profile_id", profileId)
+        .order("created_at", { ascending: false })
+        .limit(15);
+      return data ?? [];
+    },
+    { dedupingInterval: 30_000, revalidateOnFocus: false },
   );
+
+  // 공지사항 + 읽음 여부 SWR (클라이언트 로드)
+  const { data: announcementsData } = useSWR(
+    profile?.id ? ["home-announcements", profile.id] : null,
+    async ([, profileId]) => {
+      const supabase = createClient();
+      const [{ data: items }, { data: reads }] = await Promise.all([
+        supabase
+          .from("announcements")
+          .select("id, title, is_pinned, created_at, content")
+          .order("is_pinned", { ascending: false })
+          .order("created_at", { ascending: false })
+          .limit(3),
+        supabase
+          .from("announcement_reads")
+          .select("announcement_id")
+          .eq("profile_id", profileId),
+      ]);
+      return {
+        announcements: (items as Announcement[]) ?? [],
+        readIds: new Set((reads ?? []).map((r: any) => r.announcement_id as string)),
+      };
+    },
+    { dedupingInterval: 300_000, revalidateOnFocus: false },
+  );
+
+  const announcements = announcementsData?.announcements ?? [];
+  const announcementReadSet = announcementsData?.readIds ?? new Set<string>();
+
+  // SWR 결과로 알림 state 초기화 (realtime 구독과 병합)
+  useEffect(() => {
+    if (notisData) {
+      setNotis(notisData);
+      setUnreadCount(notisData.filter((n) => !n.is_read).length);
+    }
+  }, [notisData]);
 
   // 클라이언트에서 타임존 변환
   const lastLog = useMemo(() => {
@@ -128,27 +178,14 @@ export default function HomeClient({
     setShowGuideRedDot(seen !== "v1.0.1");
   }, []);
 
-  const fetchNotis = async (userId: string) => {
-    const { data } = await supabase
-      .from("notifications")
-      .select("*")
-      .eq("profile_id", userId)
-      .order("created_at", { ascending: false })
-      .limit(15);
-    if (data) {
-      setNotis(data);
-      setUnreadCount(data.filter((n: any) => !n.is_read).length);
-    }
-  };
-
-  const markAllRead = async (userId: string) => {
+const markAllRead = async (userId: string) => {
     await supabase
       .from("notifications")
       .update({ is_read: true })
       .eq("profile_id", userId)
       .eq("is_read", false);
+    setNotis((prev) => prev.map((n) => ({ ...n, is_read: true })));
     setUnreadCount(0);
-    fetchNotis(userId);
   };
 
   const handleNotiClick = async (noti: any, userId: string) => {
@@ -157,7 +194,10 @@ export default function HomeClient({
         .from("notifications")
         .update({ is_read: true })
         .eq("id", noti.id);
-      fetchNotis(userId);
+      setNotis((prev) =>
+        prev.map((n) => (n.id === noti.id ? { ...n, is_read: true } : n)),
+      );
+      setUnreadCount((prev) => Math.max(0, prev - 1));
     }
     setShowNoti(false);
     switch (noti.type) {
@@ -209,7 +249,15 @@ export default function HomeClient({
           table: "notifications",
           filter: `profile_id=eq.${profile.id}`,
         },
-        () => fetchNotis(profile.id),
+        (payload) => {
+        if (payload.new) {
+          setNotis((prev) => {
+            const updated = [payload.new as any, ...prev].slice(0, 15);
+            setUnreadCount(updated.filter((n) => !n.is_read).length);
+            return updated;
+          });
+        }
+      },
       )
       .subscribe((status) => {
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
@@ -460,15 +508,23 @@ export default function HomeClient({
           </button>
         </div>
 
-        <WeeklyScheduleCard slots={weeklySlots} />
+        <Suspense
+          fallback={
+            <div className="bg-white rounded-[28px] h-[180px] animate-pulse border border-slate-100" />
+          }
+        >
+          <WeeklyScheduleSection promise={weeklySlotPromise} />
+        </Suspense>
       </main>
 
-      <MyInfoModal
-        isOpen={isEditModalOpen}
-        profile={profile}
-        onClose={() => setIsEditModalOpen(false)}
-        onUpdate={() => router.refresh()}
-      />
+      {isEditModalOpen && (
+        <MyInfoModal
+          isOpen={isEditModalOpen}
+          profile={profile}
+          onClose={() => setIsEditModalOpen(false)}
+          onUpdate={() => router.refresh()}
+        />
+      )}
     </div>
   );
 }

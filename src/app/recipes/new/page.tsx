@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import RecipeForm from "@/components/recipe/RecipeForm";
@@ -11,20 +12,13 @@ export default function RecipeNewPage() {
   const [categories, setCategories] = useState<RecipeCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [unauthorized, setUnauthorized] = useState(false);
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
+  const { user } = useAuth();
 
   useEffect(() => {
+    if (!user) return;
     const fetchData = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        router.replace("/login");
-        return;
-      }
-
       const { data: profile } = await supabase
         .from("profiles")
         .select("role, employment_type")
@@ -56,7 +50,7 @@ export default function RecipeNewPage() {
     };
 
     fetchData();
-  }, []);
+  }, [user, supabase, router]);
 
   if (loading) {
     return (

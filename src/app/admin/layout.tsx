@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useMemo } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
 import Link from "next/link";
 import { format, addDays, differenceInDays } from "date-fns";
@@ -50,6 +51,7 @@ export default function AdminLayout({
   const router = useRouter();
   const pathname = usePathname();
   const supabase = useMemo(() => createClient(), []);
+  const { user, isLoading: authLoading } = useAuth();
 
   // 🚀 외부 영역 클릭 시 알림창 닫기 로직
   useEffect(() => {
@@ -64,17 +66,15 @@ export default function AdminLayout({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showNoti]);
 
-  // 1. 관리자 권한 체크
+  // 1. 관리자 권한 체크 (getUser() 제거 — useAuth()에서 user 재사용)
   useEffect(() => {
-    const checkAdmin = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        router.replace("/login");
-        return;
-      }
+    if (authLoading) return;
+    if (!user) {
+      router.replace("/login");
+      return;
+    }
 
+    const checkAdmin = async () => {
       const { data: profile } = await supabase
         .from("profiles")
         .select("role")
@@ -94,22 +94,26 @@ export default function AdminLayout({
     };
 
     checkAdmin();
-  }, [router, supabase]);
+  }, [user, authLoading, router, supabase]);
 
-  // 2. 🚀 실시간 구독 (필터링 로직 보강)
+  // 2. 🚀 실시간 구독 — payload 직접 반영 (DB 풀 쿼리 제거)
   useEffect(() => {
     if (!isAdmin) return;
 
     const notiChannel = supabase
       .channel("admin-notifications")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: "target_role=eq.admin" }, (payload) => {
-        fetchNotis();
-        if (payload.new.type === "substitute_filled") {
+        const newNoti = payload.new as any;
+        setNotis((prev) => [newNoti, ...prev].slice(0, 15));
+        setUnreadCount((prev) => prev + 1);
+        if (newNoti.type === "substitute_filled") {
           fetchPendingSubCount();
         }
       })
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: "target_role=eq.all" }, () => {
-        fetchNotis();
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: "target_role=eq.all" }, (payload) => {
+        const newNoti = payload.new as any;
+        setNotis((prev) => [newNoti, ...prev].slice(0, 15));
+        setUnreadCount((prev) => prev + 1);
       })
       .subscribe();
 

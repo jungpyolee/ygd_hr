@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context";
 import { getDistance } from "@/lib/utils/distance";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -82,9 +83,8 @@ export default function AttendanceCard({
   const [storeSelectorType, setStoreSelectorType] = useState<"IN" | "OUT" | null>(null);
 
   const supabase = useMemo(() => createClient(), []);
-
-  // 유저 ID (draft 키 생성용)
-  const [userId, setUserId] = useState<string | null>(null);
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
 
   // 체크리스트 재개 상태
   const [pendingResume, setPendingResume] = useState<{
@@ -94,14 +94,6 @@ export default function AttendanceCard({
     totalItems: number;
   } | null>(null);
   const [checklistInitialIds, setChecklistInitialIds] = useState<string[]>([]);
-
-  useEffect(() => {
-    const loadUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) setUserId(user.id);
-    };
-    loadUser();
-  }, [supabase]);
 
   // ─── localStorage draft 헬퍼 ──────────────────────────────────────────────
   const getDraftKey = (uid: string, trigger: "check_in" | "check_out") =>
@@ -208,12 +200,9 @@ export default function AttendanceCard({
     logId: string | null,
     totalItems: number
   ) => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!userId) return;
     const { error } = await supabase.from("checklist_submissions").insert({
-      profile_id: user.id,
+      profile_id: userId,
       trigger,
       attendance_log_id: logId,
       checked_item_ids: checkedIds,
@@ -246,12 +235,8 @@ export default function AttendanceCard({
   }) => {
     setLoading(true);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
     const insertData: Record<string, any> = {
-      profile_id: user?.id,
+      profile_id: userId,
       type,
       user_lat: lat,
       user_lng: lng,

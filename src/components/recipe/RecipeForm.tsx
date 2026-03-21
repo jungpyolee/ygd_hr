@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2, ImageIcon, Video, ChevronDown, GripVertical } from "lucide-react";
 import { toast } from "sonner";
@@ -200,6 +201,7 @@ export default function RecipeForm({
 }: RecipeFormProps) {
   const isEdit = !!initialRecipe;
   const supabase = createClient();
+  const { user } = useAuth();
   const router = useRouter();
 
   // 기본 필드
@@ -539,7 +541,6 @@ export default function RecipeForm({
           .update(basePayload)
           .eq("id", recipeId));
       } else {
-        const { data: { user } } = await supabase.auth.getUser();
         ({ error: recipeError } = await supabase
           .from("recipe_items")
           .insert({ ...basePayload, created_by: user?.id ?? null }));

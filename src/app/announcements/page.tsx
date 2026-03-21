@@ -2,6 +2,7 @@
 
 import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, Megaphone, Pin } from "lucide-react";
 import { format } from "date-fns";
@@ -10,24 +11,22 @@ import type { Announcement } from "@/types/announcement";
 
 export default function AnnouncementsPage() {
   const router = useRouter();
+  const { user } = useAuth();
 
   const { data, isLoading: loading } = useSWR(
-    "announcements-list",
-    async () => {
+    user ? ["announcements-list", user.id] : null,
+    async ([, userId]) => {
       const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
       const [{ data: items }, { data: reads }] = await Promise.all([
         supabase
           .from("announcements")
           .select("*")
           .order("is_pinned", { ascending: false })
           .order("created_at", { ascending: false }),
-        user
-          ? supabase
-              .from("announcement_reads")
-              .select("announcement_id")
-              .eq("profile_id", user.id)
-          : Promise.resolve({ data: [] }),
+        supabase
+          .from("announcement_reads")
+          .select("announcement_id")
+          .eq("profile_id", userId),
       ]);
       return {
         announcements: (items as Announcement[]) ?? [],

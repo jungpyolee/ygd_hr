@@ -3,6 +3,7 @@
 import { useState } from "react";
 import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context";
 import {
   format,
   startOfWeek,
@@ -24,13 +25,12 @@ interface WorkSession {
 export default function AttendancesPage() {
   const router = useRouter();
   const [viewType, setViewType] = useState<"weekly" | "monthly">("weekly");
+  const { user } = useAuth();
 
   const { data: sessions = [], isLoading: loading } = useSWR(
-    ["attendance-logs", viewType],
-    async ([, vt]) => {
+    user ? ["attendance-logs", viewType, user.id] : null,
+    async ([, vt, userId]) => {
       const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return [];
 
       const now = new Date();
       const start =
@@ -41,7 +41,7 @@ export default function AttendancesPage() {
       const { data: logs, error } = await supabase
         .from("attendance_logs")
         .select("*")
-        .eq("profile_id", user.id)
+        .eq("profile_id", userId)
         .gte("created_at", start.toISOString())
         .order("created_at", { ascending: true });
 

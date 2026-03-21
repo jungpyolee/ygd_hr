@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
 import { format, startOfWeek, addDays } from "date-fns";
 import { createServerSupabase } from "@/lib/supabase-server";
+import { createClient } from "@supabase/supabase-js";
+import { unstable_cache } from "next/cache";
 import HomeClient from "@/components/HomeClient";
 import type { ScheduleSlot } from "@/components/WeeklyScheduleCard";
-import type { Announcement } from "@/types/announcement";
 
 export interface TodaySlot {
   id: string;
@@ -22,6 +23,19 @@ export interface RawLogData {
   store_name: string | null;
 }
 
+const getStores = unstable_cache(
+  async () => {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    );
+    const { data } = await supabase.from("stores").select("*");
+    return data ?? [];
+  },
+  ["stores"],
+  { revalidate: false },
+);
+
 export default async function HomePage() {
   const supabase = await createServerSupabase();
 
@@ -36,18 +50,15 @@ export default async function HomePage() {
   const weekStartStr = format(weekStartSun, "yyyy-MM-dd");
   const weekEndStr = format(weekEndSun, "yyyy-MM-dd");
 
+  // Critical path: 출퇴근 버튼에 필요한 데이터만 await
   const [
+    storeData,
     { data: profileData },
-    { data: storeData },
     { data: rawLogData },
     { data: todaySlotsData },
-    { data: weeklySlotsData },
-    { data: notisData },
-    { data: announcementsData },
-    { data: readsData },
   ] = await Promise.all([
+    getStores(),
     supabase.from("profiles").select("*").eq("id", user.id).single(),
-    supabase.from("stores").select("*"),
     supabase
       .from("attendance_logs")
       .select("type, created_at, attendance_type, stores!store_id(name)")
@@ -64,6 +75,10 @@ export default async function HomePage() {
       .eq("slot_date", todayStr)
       .eq("status", "active")
       .eq("weekly_schedules.status", "confirmed"),
+  ]);
+
+  // Deferred: 주간 스케줄은 await 없이 Promise로 전달 → Streaming SSR
+  const weeklySlotPromise: Promise<ScheduleSlot[]> = Promise.resolve(
     supabase
       .from("schedule_slots")
       .select(
@@ -74,24 +89,13 @@ export default async function HomePage() {
       .eq("weekly_schedules.status", "confirmed")
       .gte("slot_date", weekStartStr)
       .lte("slot_date", weekEndStr)
-      .order("slot_date"),
-    supabase
-      .from("notifications")
-      .select("*")
-      .eq("profile_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(15),
-    supabase
-      .from("announcements")
-      .select("id, title, is_pinned, created_at, content")
-      .order("is_pinned", { ascending: false })
-      .order("created_at", { ascending: false })
-      .limit(3),
-    supabase
-      .from("announcement_reads")
-      .select("announcement_id")
-      .eq("profile_id", user.id),
-  ]);
+      .order("slot_date")
+      .then(({ data }) =>
+        (
+          (data ?? []) as Array<ScheduleSlot & { weekly_schedules: unknown }>
+        ).map(({ weekly_schedules: _ws, ...rest }) => rest as ScheduleSlot),
+      ),
+  );
 
   const needsOnboarding = !profileData?.name || !profileData?.phone;
 
@@ -111,27 +115,14 @@ export default async function HomePage() {
     (todaySlotsData ?? []) as Array<TodaySlot & { weekly_schedules: unknown }>
   ).map(({ weekly_schedules: _ws, ...rest }) => rest as TodaySlot);
 
-  const weeklySlots = (
-    (weeklySlotsData ?? []) as Array<
-      ScheduleSlot & { weekly_schedules: unknown }
-    >
-  ).map(({ weekly_schedules: _ws, ...rest }) => rest as ScheduleSlot);
-
   return (
     <HomeClient
       profile={needsOnboarding ? null : profileData}
       needsOnboarding={needsOnboarding}
-      stores={(storeData ?? []).filter(
-        (s: { name: string }) => s.name !== "목동",
-      )}
+      stores={storeData}
       logData={logData}
       todaySlots={todaySlots}
-      weeklySlots={weeklySlots}
-      announcements={(announcementsData as Announcement[]) ?? []}
-      announcementReadIds={(readsData ?? []).map(
-        (r: { announcement_id: string }) => r.announcement_id,
-      )}
-      initialNotis={notisData ?? []}
+      weeklySlotPromise={weeklySlotPromise}
     />
   );
 }
