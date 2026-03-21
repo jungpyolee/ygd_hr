@@ -10,6 +10,7 @@ export default function AdminPushToggle() {
     "default" | "granted" | "denied" | "unsupported"
   >("default");
   const [saving, setSaving] = useState(false);
+  const [cooldown, setCooldown] = useState(false);
   const [showDeniedGuide, setShowDeniedGuide] = useState(false);
 
   useEffect(() => {
@@ -27,12 +28,16 @@ export default function AdminPushToggle() {
 
   async function handleToggle(next: boolean) {
     if (permissionState === "unsupported") return;
+
+    // 낙관적 업데이트 — 즉시 UI 반영
+    setEnabled(next);
     setSaving(true);
     try {
       if (next) {
         const permission = await Notification.requestPermission();
         setPermissionState(permission as "granted" | "denied" | "default");
         if (permission !== "granted") {
+          setEnabled(false);
           toast.error("알림 권한이 필요해요.", {
             description: "브라우저 설정에서 알림을 허용해주세요.",
           });
@@ -75,8 +80,10 @@ export default function AdminPushToggle() {
         }
       }
 
-      setEnabled(next);
       toast.success(next ? "푸시 알림을 켰어요." : "푸시 알림을 껐어요.");
+      // 성공 후 2초 쿨다운
+      setCooldown(true);
+      setTimeout(() => setCooldown(false), 2000);
     } catch (err) {
       console.error(err);
       // 실패 시 UI 롤백
@@ -106,7 +113,7 @@ export default function AdminPushToggle() {
           type="button"
           role="switch"
           aria-checked={enabled}
-          disabled={saving}
+          disabled={saving || cooldown}
           onClick={() => handleToggle(!enabled)}
           className={[
             "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent",

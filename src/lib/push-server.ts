@@ -145,7 +145,7 @@ async function deliverPush(
     title: payload.title,
     body: payload.body,
     icon: "/icons/icon-192x192.png",
-    badge: "/icons/icon-192x192.png",
+    badge: "/icons/badge-96x96.png",
     tag,
     url,
   });

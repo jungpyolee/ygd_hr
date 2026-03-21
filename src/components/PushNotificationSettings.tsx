@@ -43,6 +43,7 @@ export default function PushNotificationSettings() {
   >("default");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [cooldown, setCooldown] = useState(false);
   const [showDeniedGuide, setShowDeniedGuide] = useState(false);
 
   useEffect(() => {
@@ -66,6 +67,8 @@ export default function PushNotificationSettings() {
   async function handleMasterToggle(enabled: boolean) {
     if (permissionState === "unsupported") return;
 
+    // 낙관적 업데이트 — 즉시 UI 반영
+    setPrefs((prev) => ({ ...prev, enabled }));
     setSaving(true);
     try {
       if (enabled) {
@@ -73,6 +76,7 @@ export default function PushNotificationSettings() {
         const permission = await Notification.requestPermission();
         setPermissionState(permission as "granted" | "denied" | "default");
         if (permission !== "granted") {
+          setPrefs((prev) => ({ ...prev, enabled: false }));
           toast.error("알림 권한이 필요해요.", {
             description: "브라우저 설정에서 알림을 허용해주세요.",
           });
@@ -117,8 +121,10 @@ export default function PushNotificationSettings() {
         }
       }
 
-      setPrefs((prev) => ({ ...prev, enabled }));
       toast.success(enabled ? "푸시 알림을 켰어요." : "푸시 알림을 껐어요.");
+      // 성공 후 2초 쿨다운
+      setCooldown(true);
+      setTimeout(() => setCooldown(false), 2000);
     } catch (err) {
       console.error(err);
       // 실패 시 UI 롤백
@@ -149,11 +155,9 @@ export default function PushNotificationSettings() {
     }
   }
 
-  if (loading) return null;
-
   return (
     <div className="space-y-4">
-      {/* 마스터 토글 */}
+      {/* 마스터 토글 — 로딩과 무관하게 항상 렌더 */}
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-medium text-[#191F28]">푸시 알림</p>
@@ -176,7 +180,7 @@ export default function PushNotificationSettings() {
         ) : (
           <Toggle
             checked={prefs.enabled}
-            disabled={saving || permissionState === "unsupported"}
+            disabled={saving || cooldown || permissionState === "unsupported"}
             onChange={handleMasterToggle}
           />
         )}
@@ -188,20 +192,37 @@ export default function PushNotificationSettings() {
       {/* 세부 타입 설정 (enabled=true일 때만) */}
       {prefs.enabled && permissionState === "granted" && (
         <div className="space-y-4 pt-2 border-t border-[#E5E8EB]">
-          {EMPLOYEE_SETTING_GROUPS.map((group) => (
-            <div key={group.label} className="space-y-2">
-              <p className="text-xs font-medium text-[#8B95A1]">{group.label}</p>
-              {group.items.map((item) => (
-                <div key={item.key} className="flex items-center justify-between py-1">
-                  <span className="text-sm text-[#191F28]">{item.label}</span>
-                  <Toggle
-                    checked={prefs.type_settings[item.key] !== false}
-                    onChange={(v) => handleTypeToggle(item.key, v)}
-                  />
+          {loading ? (
+            /* 로딩 중 skeleton */
+            <div className="space-y-4">
+              {[4, 3, 1].map((count, gi) => (
+                <div key={gi} className="space-y-2">
+                  <div className="h-3 w-12 bg-[#E5E8EB] rounded animate-pulse" />
+                  {Array.from({ length: count }).map((_, i) => (
+                    <div key={i} className="flex items-center justify-between py-1">
+                      <div className="h-4 w-32 bg-[#E5E8EB] rounded animate-pulse" />
+                      <div className="h-6 w-11 bg-[#E5E8EB] rounded-full animate-pulse" />
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>
-          ))}
+          ) : (
+            EMPLOYEE_SETTING_GROUPS.map((group) => (
+              <div key={group.label} className="space-y-2">
+                <p className="text-xs font-medium text-[#8B95A1]">{group.label}</p>
+                {group.items.map((item) => (
+                  <div key={item.key} className="flex items-center justify-between py-1">
+                    <span className="text-sm text-[#191F28]">{item.label}</span>
+                    <Toggle
+                      checked={prefs.type_settings[item.key] !== false}
+                      onChange={(v) => handleTypeToggle(item.key, v)}
+                    />
+                  </div>
+                ))}
+              </div>
+            ))
+          )}
         </div>
       )}
     </div>

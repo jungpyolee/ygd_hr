@@ -43,7 +43,7 @@ self.addEventListener("push", (event: PushEvent) => {
     self.registration.showNotification(data.title, {
       body: data.body,
       icon: data.icon ?? "/icons/icon-192x192.png",
-      badge: data.badge ?? "/icons/icon-192x192.png",
+      badge: data.badge ?? "/icons/badge-96x96.png",
       tag: data.tag,   // 같은 tag = 이전 알림 교체 (중복 방지)
       data: { url: data.url ?? "/" },
     } as NotificationOptions)
