@@ -176,7 +176,7 @@ export default function HomeClient({
 
   useEffect(() => {
     const seen = localStorage.getItem("guide_seen_version");
-    setShowGuideRedDot(seen !== "v1.0.1");
+    setShowGuideRedDot(seen !== "v1.0.2");
   }, []);
 
 const markAllRead = async (userId: string) => {

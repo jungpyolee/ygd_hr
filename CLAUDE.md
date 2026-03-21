@@ -171,6 +171,28 @@ WHERE tablename = 'objects' AND schemaname = 'storage'
 
 ---
 
+## 5-1. 이용가이드 버전 업데이트 플로우 (반드시 준수)
+
+이용가이드 버전을 올릴 때 **두 파일을 반드시 동시에** 수정한다.
+하나라도 빠지면 레드닷이 잘못 동작한다.
+
+| 파일 | 수정 내용 |
+|------|-----------|
+| `src/app/guide/page.tsx` | `CURRENT_VERSION` 상수를 새 버전으로 변경 |
+| `src/components/HomeClient.tsx` | `seen !== "vX.X.X"` 비교 문자열을 새 버전으로 변경 |
+
+```typescript
+// src/app/guide/page.tsx
+const CURRENT_VERSION = "v1.0.X"; // ← 새 버전
+
+// src/components/HomeClient.tsx
+setShowGuideRedDot(seen !== "v1.0.X"); // ← 동일한 새 버전
+```
+
+> ⚠️ 비교 문자열을 이전 버전으로 두면, 이전 버전까지 읽은 사람에게 레드닷이 뜨지 않는 버그 발생.
+
+---
+
 ## 6. 이슈 문서 템플릿
 
 ### 코드 이슈 (`docs/issues/NNN-제목.md`)
