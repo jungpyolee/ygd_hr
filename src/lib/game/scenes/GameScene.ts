@@ -375,7 +375,7 @@ export default class GameScene extends Phaser.Scene {
       this.anims.create({ key: "cat_run",    frames: this.anims.generateFrameNumbers("cat_run",    { start: 0, end: 5  }), frameRate: 12, repeat: -1 });
       this.anims.create({ key: "cat_damage", frames: this.anims.generateFrameNumbers("cat_damage", { start: 0, end: 3  }), frameRate: 10, repeat: 0  });
       this.anims.create({ key: "cat_die",    frames: this.anims.generateFrameNumbers("cat_die",    { start: 0, end: 6  }), frameRate: 8,  repeat: 0  });
-      this.anims.create({ key: "cat_rush",   frames: this.anims.generateFrameNumbers("cat_rush",   { start: 0, end: 25 }), frameRate: 24, repeat: 0  });
+      this.anims.create({ key: "cat_rush",   frames: this.anims.generateFrameNumbers("cat_rush",   { start: 0, end: 7  }), frameRate: 24, repeat: 0  });
       this.anims.create({ key: "coin_spin",  frames: [
         { key: "coin_f1" }, { key: "coin_f2" }, { key: "coin_f3" }, { key: "coin_f4" },
       ], frameRate: 8, repeat: -1 });
@@ -1651,6 +1651,8 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private triggerGameClear() {
+    this.playerAnim = "idle";
+    this.player.play("cat_idle");
     this.paused = true;
     this.spawnTimer?.destroy();
     this.bossWizardTimer?.destroy();
@@ -1956,7 +1958,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private collectCoins() {
-    const coins = this.coinOrbs.getChildren() as Phaser.GameObjects.Image[];
+    const coins = this.coinOrbs.getChildren() as Phaser.GameObjects.Sprite[];
     const pickupRange = this.config.buffs.coinPickupRange;
     coins.forEach(coin => {
       const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, coin.x, coin.y);
