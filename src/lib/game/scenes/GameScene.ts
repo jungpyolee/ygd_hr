@@ -217,7 +217,8 @@ export default class GameScene extends Phaser.Scene {
   private config: GameConfig;
 
   // 플레이어
-  private player!: Phaser.GameObjects.Text;
+  private player!: Phaser.GameObjects.Sprite;
+  private playerAnim: "idle" | "run" | "damage" | "die" | "rush" = "idle";
   private playerHp = PLAYER_MAX_HP;
   private playerMaxHp = PLAYER_MAX_HP;
   private playerSpeed = PLAYER_SPEED;
@@ -328,23 +329,24 @@ export default class GameScene extends Phaser.Scene {
     this.load.svg("daegwa_tteok",    "/daegwa/13-tteok.svg");
     this.load.svg("game_coin",       "/game/coin.svg");
     this.load.svg("game_exp",        "/game/exp-orb.svg");
+    // 고양이 스프라이트 (32×32 프레임, 세로 스트립)
+    const catFrameConfig = { frameWidth: 32, frameHeight: 32 };
+    this.load.spritesheet("cat_idle",   "/game/WhiteCatIdle.png",   catFrameConfig);
+    this.load.spritesheet("cat_run",    "/game/WhiteCatRun.png",    catFrameConfig);
+    this.load.spritesheet("cat_damage", "/game/WhiteCatDamage.png", catFrameConfig);
+    this.load.spritesheet("cat_die",    "/game/WhiteCatDie.png",    catFrameConfig);
+    this.load.spritesheet("cat_rush",   "/game/WhiteCatRush.png",   catFrameConfig);
+    // 코인 애니메이션 프레임
+    this.load.image("coin_f1", "/game/coin1.png");
+    this.load.image("coin_f2", "/game/coin2.png");
+    this.load.image("coin_f3", "/game/coin3.png");
+    this.load.image("coin_f4", "/game/coin4.png");
   }
 
   create() {
     this.startTime = this.time.now;
     this.cameras.main.setBackgroundColor("#c8935a");
     this.cameras.main.setBounds(-100000, -100000, 200000, 200000);
-
-    // config 기반 초기화
-    const catEmojis: Record<GameConfig["catType"], string> = {
-      persian:     "🐱",
-      scottish:    "😺",
-      abyssinian:  "😸",
-      munchkin:    "🐈",
-      doujeonku:   "🍘",
-      bomdong:     "🥗",
-      buttertteok: "🧈",
-    };
 
     // 배경 레이어
     this.drawFloor();
@@ -367,11 +369,50 @@ export default class GameScene extends Phaser.Scene {
     // 부활 초기화
     this.reviveUsed = false;
 
+    // 고양이 애니메이션 등록
+    if (!this.anims.exists("cat_idle")) {
+      this.anims.create({ key: "cat_idle",   frames: this.anims.generateFrameNumbers("cat_idle",   { start: 0, end: 5  }), frameRate: 8,  repeat: -1 });
+      this.anims.create({ key: "cat_run",    frames: this.anims.generateFrameNumbers("cat_run",    { start: 0, end: 5  }), frameRate: 12, repeat: -1 });
+      this.anims.create({ key: "cat_damage", frames: this.anims.generateFrameNumbers("cat_damage", { start: 0, end: 3  }), frameRate: 10, repeat: 0  });
+      this.anims.create({ key: "cat_die",    frames: this.anims.generateFrameNumbers("cat_die",    { start: 0, end: 6  }), frameRate: 8,  repeat: 0  });
+      this.anims.create({ key: "cat_rush",   frames: this.anims.generateFrameNumbers("cat_rush",   { start: 0, end: 25 }), frameRate: 24, repeat: 0  });
+      this.anims.create({ key: "coin_spin",  frames: [
+        { key: "coin_f1" }, { key: "coin_f2" }, { key: "coin_f3" }, { key: "coin_f4" },
+      ], frameRate: 8, repeat: -1 });
+    }
+
+    // 캐릭터별 tint + scale
+    const catTint: Record<GameConfig["catType"], number> = {
+      persian:     0xffffff,
+      scottish:    0xaabbcc,
+      abyssinian:  0xd4884a,
+      munchkin:    0xfff0dd,
+      doujeonku:   0x3d2b1f,
+      bomdong:     0x7db249,
+      buttertteok: 0xfff4a3,
+    };
+    const catScale: Record<GameConfig["catType"], number> = {
+      persian:     2.0,
+      scottish:    2.0,
+      abyssinian:  2.0,
+      munchkin:    1.7,
+      doujeonku:   2.2,
+      bomdong:     2.0,
+      buttertteok: 2.3,
+    };
+
     // 플레이어 생성
-    this.player = this.add.text(0, 0, catEmojis[this.config.catType], {
-      fontSize: "36px",
-      padding: { x: 2, y: 8 },
-    }).setOrigin(0.5);
+    this.player = this.add.sprite(0, 0, "cat_idle")
+      .setOrigin(0.5)
+      .setScale(catScale[this.config.catType])
+      .setTint(catTint[this.config.catType]);
+    this.player.play("cat_idle");
+    this.player.on("animationcomplete", (anim: Phaser.Animations.Animation) => {
+      if (anim.key === "cat_damage" || anim.key === "cat_rush") {
+        this.playerAnim = "idle";
+        this.player.play("cat_idle");
+      }
+    });
 
     // 카메라 추적
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
@@ -1039,11 +1080,17 @@ export default class GameScene extends Phaser.Scene {
     this.dashCooldownRemain = this.DASH_COOLDOWN_SEC;
 
     // 잔상 이펙트
-    const afterImg = this.add.text(this.player.x, this.player.y, this.player.text, {
-      fontSize: this.player.style.fontSize as string,
-    }).setOrigin(0.5).setAlpha(0.6).setDepth(this.player.depth - 1);
+    const afterImg = this.add.sprite(this.player.x, this.player.y, "cat_rush")
+      .setOrigin(0.5)
+      .setScale(this.player.scaleX)
+      .setTint(this.player.tintTopLeft)
+      .setFlipX(this.player.flipX)
+      .setAlpha(0.5)
+      .setDepth(this.player.depth - 1);
     this.tweens.add({ targets: afterImg, alpha: 0, duration: 250, onComplete: () => afterImg.destroy() });
 
+    this.playerAnim = "rush";
+    this.player.play("cat_rush");
     this.tweens.add({
       targets: this.player,
       x: this.player.x + dx * this.DASH_DISTANCE,
@@ -1292,8 +1339,9 @@ export default class GameScene extends Phaser.Scene {
 
   // ─── 코인 드랍 ────────────────────────────
   private dropCoin(x: number, y: number) {
-    const coin = this.add.image(x, y, "game_coin");
+    const coin = this.add.sprite(x, y, "coin_f1");
     coin.setDisplaySize(22, 22);
+    coin.play("coin_spin");
     this.coinOrbs.add(coin);
   }
 
@@ -1545,6 +1593,9 @@ export default class GameScene extends Phaser.Scene {
     this.playerHp = Math.floor(this.playerHp - damage);
     this.invincible = true;
     this.time.delayedCall(250, () => { this.invincible = false; });
+    // 피격 애니
+    this.playerAnim = "damage";
+    this.player.play("cat_damage");
     // 피격 시 콤보 초기화
     if (this.combo > 0) {
       this.combo = 0;
@@ -1576,6 +1627,8 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private triggerGameOver() {
+    this.playerAnim = "die";
+    this.player.play("cat_die");
     this.paused = true;
     this.spawnTimer?.destroy();
     this.bossWizardTimer?.destroy();
@@ -1651,9 +1704,23 @@ export default class GameScene extends Phaser.Scene {
       vy = this.joyDirY;
     }
     const len = Math.sqrt(vx * vx + vy * vy);
-    if (len > 0) { vx /= len; vy /= len; }
+    const moving = len > 0;
+    if (moving) { vx /= len; vy /= len; }
     this.player.x += vx * this.playerSpeed * dt;
     this.player.y += vy * this.playerSpeed * dt;
+
+    // 좌우 반전
+    if (vx < 0) this.player.setFlipX(true);
+    else if (vx > 0) this.player.setFlipX(false);
+
+    // 이동/정지 애니 전환 (피격·대시 중엔 유지)
+    if (this.playerAnim === "idle" || this.playerAnim === "run") {
+      const target = moving ? "run" : "idle";
+      if (this.playerAnim !== target) {
+        this.playerAnim = target;
+        this.player.play(`cat_${target}`);
+      }
+    }
   }
 
   private moveEnemies(dt: number) {
