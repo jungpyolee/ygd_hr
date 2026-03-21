@@ -3,6 +3,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
+import { after } from "next/server";
 import { sendPushToProfile, sendPushToRole } from "@/lib/push-server";
 
 export type NotificationType =
@@ -30,7 +31,7 @@ export type NotificationType =
 
 const adminSupabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
 interface CreateNotificationParams {
@@ -60,7 +61,7 @@ export const createNotification = async ({
   const caller = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { get: (name) => cookieStore.get(name)?.value } }
+    { cookies: { get: (name) => cookieStore.get(name)?.value } },
   );
   const {
     data: { user },
@@ -76,10 +77,20 @@ export const createNotification = async ({
 
   if (error) return { error: new Error(error.message) };
 
-  // ✅ push는 fire-and-forget — DB INSERT 완료 즉시 반환하여 UI 블로킹 방지
+  // ✅ after()로 응답 반환 후에도 Vercel 함수가 push 완료까지 살아있음
   // target_role이 수신자 역할을 이미 명시하므로 checkIsAdmin 쿼리 불필요
   const notificationId = inserted?.id as string | undefined;
-  void dispatchPush({ profile_id, target_role, type, title, content, source_id, notificationId });
+  after(() =>
+    dispatchPush({
+      profile_id,
+      target_role,
+      type,
+      title,
+      content,
+      source_id,
+      notificationId,
+    })
+  );
 
   return { error: null };
 };
@@ -101,7 +112,7 @@ async function dispatchPush({
         type,
         sourceId: source_id,
         notificationId,
-        isAdmin: target_role === "admin",  // ✅ DB 조회 없이 target_role로 판단
+        isAdmin: target_role === "admin", // ✅ DB 조회 없이 target_role로 판단
       });
     } else {
       await sendPushToRole(target_role, {

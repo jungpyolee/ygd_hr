@@ -23,10 +23,38 @@ export default function PushPromptModal() {
   useEffect(() => {
     // 지원 여부 확인
     if (!("Notification" in window) || !("serviceWorker" in navigator)) return;
-    // 이미 권한 결정됨
-    if (Notification.permission !== "default") return;
 
-    // 최근 7일 내 닫은 경우 표시 안 함
+    // 권한이 이미 허용됨 → 현재 subscription을 DB에 자동 동기화 (재설치/갱신 대응)
+    if (Notification.permission === "granted") {
+      navigator.serviceWorker.ready
+        .then(async (reg) => {
+          let sub = await reg.pushManager.getSubscription();
+          // subscription이 없으면 새로 생성 (권한이 있으므로 사용자 동작 불필요)
+          if (!sub) {
+            sub = await reg.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: urlBase64ToUint8Array(
+                process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
+              ) as unknown as BufferSource,
+            });
+          }
+          const subJson = sub.toJSON() as {
+            endpoint?: string;
+            keys?: { p256dh: string; auth: string };
+          };
+          if (!subJson.endpoint || !subJson.keys?.p256dh || !subJson.keys?.auth) return;
+          // 조용히 upsert (endpoint가 같으면 중복 없음, 바뀌었으면 새 row)
+          await fetch("/api/push/subscribe", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(subJson),
+          });
+        })
+        .catch(() => {/* 실패해도 UX에 영향 없음 */});
+      return;
+    }
+
+    // permission === "default" → 모달 표시 여부 결정
     const dismissedAt = localStorage.getItem(DISMISSED_KEY);
     if (dismissedAt && Date.now() - Number(dismissedAt) < DISMISS_DURATION_MS) return;
 
