@@ -270,6 +270,27 @@ function Badge({
 function UpdateHistory() {
   return (
     <div className="space-y-4">
+      {/* v1.0.2 */}
+      <div className="bg-white rounded-[24px] p-5 border border-slate-100 shadow-sm">
+        <div className="flex items-center gap-3 mb-4">
+          <span className="px-3 py-1 bg-[#3182F6] text-white text-[13px] font-bold rounded-full">
+            v1.0.2
+          </span>
+          <span className="text-[13px] text-[#8B95A1] font-medium">
+            2026. 3. 21. · 푸시 알림 + 버그 수정
+          </span>
+        </div>
+        <div className="space-y-3">
+          <UpdateItem emoji="🔔" title="푸시 알림 추가">
+            출퇴근 기록, 대타 요청·수락·거절, 스케줄 발행, 공지사항 등 주요
+            알림을 기기 알림으로 받을 수 있어요.
+          </UpdateItem>
+          <UpdateItem emoji="🔄" title="대타 수락 처리 개선">
+            여러 슬롯이 겹칠 때도 대타 수락이 올바르게 동작해요.
+          </UpdateItem>
+        </div>
+      </div>
+
       {/* v1.0.1 */}
       <div className="bg-white rounded-[24px] p-5 border border-slate-100 shadow-sm">
         <div className="flex items-center gap-3 mb-4">
@@ -472,12 +493,27 @@ const SEARCH_INDEX = [
     title: "내 정보 수정",
     keywords: ["정보 수정", "이름", "연락처", "프로필"],
   },
+  {
+    id: "push",
+    emoji: "🔔",
+    title: "알림 설정",
+    keywords: [
+      "알림",
+      "푸시 알림",
+      "알림 설정",
+      "대타 알림",
+      "스케줄 알림",
+      "공지 알림",
+      "알림 켜기",
+      "알림 끄기",
+    ],
+  },
 ];
 
 /* ─────────────────────────────────────────────
    메인 페이지
 ───────────────────────────────────────────── */
-const CURRENT_VERSION = "v1.0.1";
+const CURRENT_VERSION = "v1.0.2";
 
 export default function GuidePage() {
   const router = useRouter();
@@ -595,10 +631,10 @@ export default function GuidePage() {
                 연경당 HR
               </p>
               <span className="inline-block px-3 py-1 bg-[#E8F3FF] text-[#3182F6] text-[13px] font-bold rounded-full">
-                v1.0.1
+                v1.0.2
               </span>
             </div>
-            <span className="text-[12px] text-[#8B95A1]">2026. 3. 20.</span>
+            <span className="text-[12px] text-[#8B95A1]">2026. 3. 21.</span>
           </div>
           <p className="mt-3 text-[14px] text-[#4E5968] leading-relaxed">
             근무 기록부터 스케줄 확인까지,
@@ -1148,6 +1184,70 @@ export default function GuidePage() {
                 />
                 <Step num={3} text="'저장하기'를 탭하면 바로 반영돼요." />
               </div>
+            </Section>
+
+            {/* 알림 설정 */}
+            <Section
+              id="push"
+              emoji="🔔"
+              title="알림 설정"
+              open={open === "push"}
+              highlighted={highlighted === "push"}
+              onToggle={toggle}
+            >
+              <p className="text-[14px] text-[#4E5968] leading-relaxed mt-3">
+                주요 소식을 기기 알림으로 받을 수 있어요. 받고 싶은 알림 유형을
+                직접 골라서 설정할 수 있어요.
+              </p>
+              <Sub>받을 수 있는 알림</Sub>
+              <div className="space-y-2 mt-1">
+                <div className="p-3 bg-[#F9FAFB] rounded-[16px]">
+                  <p className="text-[13px] font-bold text-[#191F28] mb-1">
+                    🔄 스케줄
+                  </p>
+                  <p className="text-[13px] text-[#4E5968] leading-relaxed">
+                    대타 요청 승인·거절, 대타 자리가 채워졌을 때, 스케줄 변경·확정 알림이 와요.
+                  </p>
+                </div>
+                <div className="p-3 bg-[#F9FAFB] rounded-[16px]">
+                  <p className="text-[13px] font-bold text-[#191F28] mb-1">
+                    📖 레시피
+                  </p>
+                  <p className="text-[13px] text-[#4E5968] leading-relaxed">
+                    내가 댓글을 단 레시피에 새 댓글이나 대댓글이 달리거나, @멘션을 받으면 알림이 와요.
+                  </p>
+                </div>
+                <div className="p-3 bg-[#F9FAFB] rounded-[16px]">
+                  <p className="text-[13px] font-bold text-[#191F28] mb-1">
+                    📢 공지사항
+                  </p>
+                  <p className="text-[13px] text-[#4E5968] leading-relaxed">
+                    관리자가 새 공지를 올리면 알림이 와요.
+                  </p>
+                </div>
+              </div>
+              <Sub>알림 켜는 방법</Sub>
+              <div className="space-y-3">
+                <Step
+                  num={1}
+                  text="홈 화면 우측 상단 프로필 아이콘을 탭해요."
+                />
+                <Step
+                  num={2}
+                  text="'내 정보' 화면 하단 '푸시 알림' 토글을 켜요."
+                />
+                <Step
+                  num={3}
+                  text="브라우저 알림 허용 팝업이 나오면 '허용'을 탭해요."
+                />
+                <Step
+                  num={4}
+                  text="알림 유형별로 받고 싶은 항목만 골라서 켜고 끌 수 있어요."
+                />
+              </div>
+              <Tip>
+                알림이 오지 않으면 기기 설정에서 브라우저 알림 권한을 확인해요.
+              </Tip>
             </Section>
           </div>
         ) : (
