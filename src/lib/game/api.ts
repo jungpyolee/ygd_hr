@@ -191,6 +191,49 @@ export async function unlockCatWithCoins(cost: number, itemId = "cat_abyssinian"
   return { ok: true };
 }
 
+// ─── HR 통계 (캐릭터 해금 조건용) ──────────────
+export interface HRStats {
+  total_checkins: number;   // 총 출근 횟수 (IN 기록)
+  total_work_hours: number; // 총 근무 시간 (IN→OUT 합산)
+}
+
+/** 내 HR 출근 통계 조회 */
+export async function getMyHRStats(): Promise<HRStats> {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { total_checkins: 0, total_work_hours: 0 };
+
+  const { data } = await supabase
+    .from("attendance_logs")
+    .select("type, created_at")
+    .eq("profile_id", user.id)
+    .order("created_at", { ascending: true });
+
+  if (!data || data.length === 0) {
+    return { total_checkins: 0, total_work_hours: 0 };
+  }
+
+  let total_checkins = 0;
+  let total_work_ms = 0;
+  let lastInMs: number | null = null;
+
+  for (const row of data) {
+    if (row.type === "IN") {
+      total_checkins++;
+      lastInMs = new Date(row.created_at).getTime();
+    } else if (row.type === "OUT" && lastInMs !== null) {
+      const ms = new Date(row.created_at).getTime() - lastInMs;
+      if (ms > 0 && ms < 24 * 3600 * 1000) total_work_ms += ms;
+      lastInMs = null;
+    }
+  }
+
+  return {
+    total_checkins,
+    total_work_hours: Math.round(total_work_ms / 3600000 * 10) / 10,
+  };
+}
+
 /** 전체 누적 리더보드 TOP 10 */
 export async function getLeaderboard() {
   const supabase = createClient();

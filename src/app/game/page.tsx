@@ -10,8 +10,10 @@ import {
   buyShopUpgrade,
   getUpgradeCost,
   unlockCatWithCoins,
+  getMyHRStats,
   SHOP_ITEMS,
   type GameProfileData,
+  type HRStats,
 } from "@/lib/game/api";
 import type { GameConfig } from "@/lib/game/scenes/GameScene";
 import { toast } from "sonner";
@@ -30,7 +32,11 @@ const CAT_TYPES = [
     svg: "/cats/persian.svg",
     desc: "균형형",
     detail: "기본 스탯 · 무난한 시작",
-    unlockCondition: "always" as const,
+    unlockType: "always" as const,
+    unlockTarget: 0,
+    unlockUnit: "",
+    unlockIcon: "",
+    unlockTitle: "",
     getStatBonuses: () => ({ hpBonus: 0, damageMulti: 1.0, moveSpeedMulti: 1.0 }),
   },
   {
@@ -40,7 +46,11 @@ const CAT_TYPES = [
     svg: "/cats/scottish.svg",
     desc: "탱커형",
     detail: "HP +40 · 이동속도 -10%",
-    unlockCondition: "play5" as const,
+    unlockType: "hr_checkins" as const,
+    unlockTarget: 10,
+    unlockUnit: "회 출근",
+    unlockIcon: "🏢",
+    unlockTitle: "총 출근 10회",
     getStatBonuses: () => ({ hpBonus: 40, damageMulti: 1.0, moveSpeedMulti: 0.9 }),
   },
   {
@@ -50,7 +60,11 @@ const CAT_TYPES = [
     svg: "/cats/abyssinian.svg",
     desc: "스피드형",
     detail: "이동속도 +20% · HP -20",
-    unlockCondition: "coins50" as const,
+    unlockType: "coins" as const,
+    unlockTarget: 50,
+    unlockUnit: "코인",
+    unlockIcon: "🪙",
+    unlockTitle: "코인 50개",
     getStatBonuses: () => ({ hpBonus: -20, damageMulti: 1.0, moveSpeedMulti: 1.2 }),
   },
   {
@@ -60,7 +74,11 @@ const CAT_TYPES = [
     svg: "/cats/munchkin.svg",
     desc: "서포터형",
     detail: "EXP +30% · 투사체 2개",
-    unlockCondition: "wave30" as const,
+    unlockType: "hr_checkins" as const,
+    unlockTarget: 30,
+    unlockUnit: "회 출근",
+    unlockIcon: "📅",
+    unlockTitle: "총 출근 30회",
     getStatBonuses: () => ({ hpBonus: 0, damageMulti: 1.0, moveSpeedMulti: 1.0 }),
   },
   {
@@ -70,7 +88,11 @@ const CAT_TYPES = [
     svg: "/cats/doujeonku.svg",
     desc: "탱커반격형",
     detail: "HP +50 · 피해 누적 시 자동 반격",
-    unlockCondition: "play15" as const,
+    unlockType: "hr_hours" as const,
+    unlockTarget: 30,
+    unlockUnit: "시간 근무",
+    unlockIcon: "⏱️",
+    unlockTitle: "총 근무 30시간",
     getStatBonuses: () => ({ hpBonus: 50, damageMulti: 1.1, moveSpeedMulti: 0.85 }),
   },
   {
@@ -80,7 +102,11 @@ const CAT_TYPES = [
     svg: "/cats/bomdong.svg",
     desc: "시너지형",
     detail: "무기 슬롯 +1 · 2종 무기로 시작",
-    unlockCondition: "weapons4" as const,
+    unlockType: "coins" as const,
+    unlockTarget: 80,
+    unlockUnit: "코인",
+    unlockIcon: "🪙",
+    unlockTitle: "코인 80개",
     getStatBonuses: () => ({ hpBonus: 0, damageMulti: 1.0, moveSpeedMulti: 1.0 }),
   },
   {
@@ -90,7 +116,11 @@ const CAT_TYPES = [
     svg: "/cats/buttertteok.svg",
     desc: "글래스캐논형",
     detail: "속도 +25% · 공격력 +25% · HP -30",
-    unlockCondition: "score50k" as const,
+    unlockType: "hr_hours" as const,
+    unlockTarget: 100,
+    unlockUnit: "시간 근무",
+    unlockIcon: "🔥",
+    unlockTitle: "총 근무 100시간",
     getStatBonuses: () => ({ hpBonus: -30, damageMulti: 1.25, moveSpeedMulti: 1.25 }),
   },
 ] as const;
@@ -183,8 +213,9 @@ export default function GamePage() {
   const [menuIdx, setMenuIdx]             = useState(0);
   const [blink, setBlink]                 = useState(true);
   const [detailOpen, setDetailOpen]       = useState(false);
+  const [hrStats, setHrStats]             = useState<HRStats | null>(null);
 
-  // 데이터 로드
+  // 데이터 로드 (게임/상점용 — HR 통계 제외)
   function refreshData() {
     return Promise.all([getMyGameProfile(), getMyPurchases(), getMyUpgradeLevels()])
       .then(([prof, purch, upgrades]) => {
@@ -193,6 +224,12 @@ export default function GamePage() {
         setUpgradeLevels(upgrades);
       });
   }
+
+  // HR 통계 — 캐릭터 선택 화면 진입 시 최초 1회만 로드
+  useEffect(() => {
+    if (screen !== "character" || hrStats !== null) return;
+    getMyHRStats().then(setHrStats);
+  }, [screen, hrStats]);
 
   useEffect(() => {
     refreshData().finally(() => setLoading(false));
@@ -250,23 +287,24 @@ export default function GamePage() {
   // ─── 캐릭터 해금 체크 ────────────────────
   function isCatUnlocked(catId: string): boolean {
     if (catId === "persian")     return true;
-    if (catId === "scottish")    return (profile?.play_count ?? 0) >= 5;
+    if (catId === "scottish")    return (hrStats?.total_checkins ?? 0) >= 10;
     if (catId === "abyssinian")  return purchases.includes("cat_abyssinian");
-    if (catId === "munchkin")    return (profile?.highest_wave ?? 0) >= 30;
-    if (catId === "doujeonku")   return (profile?.play_count ?? 0) >= 15;
+    if (catId === "munchkin")    return (hrStats?.total_checkins ?? 0) >= 30;
+    if (catId === "doujeonku")   return (hrStats?.total_work_hours ?? 0) >= 30;
     if (catId === "bomdong")     return purchases.includes("cat_bomdong");
-    if (catId === "buttertteok") return (profile?.best_run_score ?? 0) >= 200000;
+    if (catId === "buttertteok") return (hrStats?.total_work_hours ?? 0) >= 100;
     return false;
   }
 
-  function getUnlockHint(catId: string): string {
-    if (catId === "scottish")    return `플레이 ${profile?.play_count ?? 0}/5판`;
-    if (catId === "abyssinian")  return "🪙 50코인";
-    if (catId === "munchkin")    return `최고 웨이브 ${profile?.highest_wave ?? 0}/30`;
-    if (catId === "doujeonku")   return `플레이 ${profile?.play_count ?? 0}/15판`;
-    if (catId === "bomdong")     return "🪙 80코인";
-    if (catId === "buttertteok") return `최고 점수 ${(profile?.best_run_score ?? 0).toLocaleString()}/200,000`;
-    return "";
+  // ─── 해금 진행도 ─────────────────────────
+  function getUnlockProgress(catId: string): { current: number; target: number; unit: string } {
+    if (catId === "scottish")    return { current: hrStats?.total_checkins ?? 0,                      target: 10,  unit: "회 출근" };
+    if (catId === "abyssinian")  return { current: profile?.coins ?? 0,                               target: 50,  unit: "코인" };
+    if (catId === "munchkin")    return { current: hrStats?.total_checkins ?? 0,                      target: 30,  unit: "회 출근" };
+    if (catId === "doujeonku")   return { current: Math.floor(hrStats?.total_work_hours ?? 0),        target: 30,  unit: "시간 근무" };
+    if (catId === "bomdong")     return { current: profile?.coins ?? 0,                               target: 80,  unit: "코인" };
+    if (catId === "buttertteok") return { current: Math.floor(hrStats?.total_work_hours ?? 0),        target: 100, unit: "시간 근무" };
+    return { current: 0, target: 1, unit: "" };
   }
 
   // ─── 아비시니안 해금 ─────────────────────
@@ -612,58 +650,51 @@ export default function GamePage() {
           {/* ── 캐릭터 그리드 (좌측) ── */}
           <div
             className="overflow-y-auto shrink-0 transition-all duration-350 ease-[cubic-bezier(0.22,1,0.36,1)]"
-            style={{ width: detailOpen ? "42%" : "100%", paddingLeft: 16, paddingRight: detailOpen ? 8 : 16, paddingTop: 4, paddingBottom: 24 }}
+            style={{ width: detailOpen ? "40%" : "100%", paddingLeft: 16, paddingRight: detailOpen ? 8 : 16, paddingTop: 4, paddingBottom: 24 }}
           >
-            <div className={`grid gap-2 ${detailOpen ? "grid-cols-1" : "grid-cols-2"}`}>
+            <div className={`grid gap-2 ${detailOpen ? "grid-cols-1" : "grid-cols-3"}`}>
               {CAT_TYPES.map(cat => {
                 const unlocked = isCatUnlocked(cat.id);
                 const selected = selectedCat === cat.id;
                 return (
-                  <div key={cat.id} className="flex flex-col gap-1">
-                    <button
-                      onClick={() => {
-                        if (!unlocked && cat.id !== "abyssinian" && cat.id !== "bomdong") return;
-                        setSelectedCat(cat.id as CatId);
-                        setDetailOpen(true);
-                      }}
-                      className="rounded-xl transition-all duration-200 active:scale-95 flex items-center gap-2"
-                      style={{
-                        padding: detailOpen ? "8px 10px" : "12px",
-                        flexDirection: detailOpen ? "row" : "column",
-                        background: selected ? "rgba(245,158,11,0.12)" : "rgba(255,255,255,0.04)",
-                        border: selected ? "1px solid rgba(245,158,11,0.7)" : "1px solid rgba(255,255,255,0.07)",
-                        opacity: !unlocked ? 0.45 : 1,
-                        boxShadow: selected ? "0 0 12px rgba(245,158,11,0.25)" : "none",
-                      }}
-                    >
-                      <CatSprite catId={cat.id} sheet="Idle" size={detailOpen ? 32 : 56} animated={selected} grayscale={!unlocked} />
-                      {detailOpen ? (
-                        <span className="font-mono text-[11px] font-bold truncate" style={{ color: selected ? "#f59e0b" : "#94a3b8" }}>
+                  <button
+                    key={cat.id}
+                    onClick={() => { setSelectedCat(cat.id as CatId); setDetailOpen(true); }}
+                    className="relative rounded-xl transition-all duration-200 active:scale-95 flex items-center gap-2"
+                    style={{
+                      padding: detailOpen ? "8px 10px" : "10px 8px",
+                      flexDirection: detailOpen ? "row" : "column",
+                      background: selected ? "rgba(245,158,11,0.12)" : "rgba(255,255,255,0.04)",
+                      border: selected
+                        ? "1px solid rgba(245,158,11,0.7)"
+                        : unlocked
+                        ? "1px solid rgba(255,255,255,0.07)"
+                        : "1px solid rgba(255,255,255,0.04)",
+                      boxShadow: selected ? "0 0 12px rgba(245,158,11,0.25)" : "none",
+                    }}
+                  >
+                    <div style={{ opacity: unlocked ? 1 : 0.35 }}>
+                      <CatSprite catId={cat.id} sheet="Idle" size={detailOpen ? 32 : 48} animated={selected} grayscale={!unlocked} />
+                    </div>
+                    {/* 자물쇠 오버레이 */}
+                    {!unlocked && (
+                      <span className="absolute top-1.5 right-1.5 text-[10px]" style={{ opacity: 0.7 }}>🔒</span>
+                    )}
+                    {detailOpen ? (
+                      <span className="font-mono text-[11px] font-bold truncate" style={{ color: selected ? "#f59e0b" : unlocked ? "#94a3b8" : "#475569" }}>
+                        {cat.name}
+                      </span>
+                    ) : (
+                      <div className="text-center w-full">
+                        <p className="font-mono font-bold text-[10px] leading-tight" style={{ color: selected ? "#f59e0b" : unlocked ? "#94a3b8" : "#475569" }}>
                           {cat.name}
-                        </span>
-                      ) : (
-                        <div className="text-center">
-                          <p className="font-mono font-bold text-xs" style={{ color: selected ? "#f59e0b" : "#94a3b8" }}>{cat.name}</p>
-                          <p className="text-[10px] mt-0.5" style={{ color: "#475569" }}>{cat.desc}</p>
-                        </div>
-                      )}
-                    </button>
-                    {/* 해금 버튼 (그리드 모드에서만) */}
-                    {!detailOpen && cat.id === "abyssinian" && !isCatUnlocked(cat.id) && (
-                      <button onClick={handleUnlockAbyssinian} disabled={buying === "cat_abyssinian" || (profile?.coins ?? 0) < 50}
-                        className="py-1.5 rounded-lg font-mono text-[10px] tracking-wider disabled:opacity-30 transition-all active:scale-95"
-                        style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.35)", color: "#f59e0b" }}>
-                        {buying === "cat_abyssinian" ? "..." : "🪙 50 UNLOCK"}
-                      </button>
+                        </p>
+                        {!detailOpen && (
+                          <p className="text-[9px] mt-0.5" style={{ color: "#334155" }}>{cat.desc}</p>
+                        )}
+                      </div>
                     )}
-                    {!detailOpen && cat.id === "bomdong" && !isCatUnlocked(cat.id) && (
-                      <button onClick={handleUnlockBomdong} disabled={buying === "cat_bomdong" || (profile?.coins ?? 0) < 80}
-                        className="py-1.5 rounded-lg font-mono text-[10px] tracking-wider disabled:opacity-30 transition-all active:scale-95"
-                        style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.35)", color: "#22c55e" }}>
-                        {buying === "cat_bomdong" ? "..." : "🪙 80 UNLOCK"}
-                      </button>
-                    )}
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -672,86 +703,120 @@ export default function GamePage() {
           {/* ── 디테일 패널 (우측) ── */}
           <div
             className="flex flex-col overflow-hidden transition-all duration-350 ease-[cubic-bezier(0.22,1,0.36,1)]"
-            style={{ width: detailOpen ? "58%" : "0%", opacity: detailOpen ? 1 : 0, paddingRight: 16 }}
+            style={{ width: detailOpen ? "60%" : "0%", opacity: detailOpen ? 1 : 0, paddingRight: 16 }}
           >
             {detailOpen && (
               <div key={selectedCat} className="detail-enter flex flex-col h-full pt-2 pb-6">
                 {/* 캐릭터 스프라이트 */}
                 <div className="flex flex-col items-center pt-4 pb-3">
-                  <div style={{ filter: "drop-shadow(0 0 16px rgba(245,158,11,0.5))" }}>
-                    <CatSprite catId={selCat.id} sheet="Idle" size={96} animated grayscale={!selUnlocked} />
+                  <div style={{ filter: selUnlocked ? "drop-shadow(0 0 16px rgba(245,158,11,0.5))" : "none", opacity: selUnlocked ? 1 : 0.4 }}>
+                    <CatSprite catId={selCat.id} sheet="Idle" size={96} animated={selUnlocked} grayscale={!selUnlocked} />
                   </div>
-                  <p className="font-mono font-black text-sm tracking-wider mt-2" style={{ color: "#f59e0b" }}>
+                  <p className="font-mono font-black text-sm tracking-wider mt-2" style={{ color: selUnlocked ? "#f59e0b" : "#475569" }}>
                     {selCat.name}
                   </p>
                   <span className="font-mono text-[10px] px-2 py-0.5 rounded mt-1"
-                    style={{ background: "rgba(245,158,11,0.15)", color: "#f59e0b" }}>
+                    style={{ background: selUnlocked ? "rgba(245,158,11,0.15)" : "rgba(255,255,255,0.05)", color: selUnlocked ? "#f59e0b" : "#475569" }}>
                     {selCat.desc}
                   </span>
                 </div>
 
-                {/* 스탯 */}
-                <div className="fadeup mx-1 rounded-xl p-3 mb-3"
-                  style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", animationDelay: "0.05s" }}>
-                  <p className="text-[9px] font-mono tracking-widest mb-2" style={{ color: "#475569" }}>STATS</p>
-                  {[
-                    { label: "HP", val: stats.hpBonus, base: 100, isBonus: true },
-                    { label: "ATK", val: Math.round((stats.damageMulti - 1) * 100), base: 0, isBonus: true },
-                    { label: "SPD", val: Math.round((stats.moveSpeedMulti - 1) * 100), base: 0, isBonus: true },
-                  ].map(({ label, val }) => (
-                    <div key={label} className="flex items-center gap-2 mb-1.5">
-                      <span className="font-mono text-[9px] w-6 shrink-0" style={{ color: "#64748b" }}>{label}</span>
-                      <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.08)" }}>
-                        <div className="h-full rounded-full" style={{
-                          width: `${Math.min(100, 50 + val * 1.5)}%`,
-                          background: val > 0 ? "#22c55e" : val < 0 ? "#ef4444" : "#f59e0b",
-                          transition: "width 0.4s ease",
-                        }} />
-                      </div>
-                      <span className="font-mono text-[9px] w-8 text-right shrink-0" style={{ color: val > 0 ? "#22c55e" : val < 0 ? "#ef4444" : "#94a3b8" }}>
-                        {val > 0 ? `+${val}` : val === 0 ? "±0" : val}
-                        {label !== "HP" ? "%" : ""}
-                      </span>
+                {selUnlocked ? (
+                  <>
+                    {/* 스탯 */}
+                    <div className="fadeup mx-1 rounded-xl p-3 mb-3"
+                      style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", animationDelay: "0.05s" }}>
+                      <p className="text-[9px] font-mono tracking-widest mb-2" style={{ color: "#475569" }}>STATS</p>
+                      {[
+                        { label: "HP",  val: stats.hpBonus },
+                        { label: "ATK", val: Math.round((stats.damageMulti - 1) * 100) },
+                        { label: "SPD", val: Math.round((stats.moveSpeedMulti - 1) * 100) },
+                      ].map(({ label, val }) => (
+                        <div key={label} className="flex items-center gap-2 mb-1.5">
+                          <span className="font-mono text-[9px] w-6 shrink-0" style={{ color: "#64748b" }}>{label}</span>
+                          <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.08)" }}>
+                            <div className="h-full rounded-full" style={{
+                              width: `${Math.min(100, 50 + val * 1.5)}%`,
+                              background: val > 0 ? "#22c55e" : val < 0 ? "#ef4444" : "#f59e0b",
+                              transition: "width 0.4s ease",
+                            }} />
+                          </div>
+                          <span className="font-mono text-[9px] w-8 text-right shrink-0" style={{ color: val > 0 ? "#22c55e" : val < 0 ? "#ef4444" : "#94a3b8" }}>
+                            {val > 0 ? `+${val}` : val === 0 ? "±0" : val}{label !== "HP" ? "%" : ""}
+                          </span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
 
-                {/* 설명 */}
-                <p className="fadeup text-[11px] text-center mx-1 mb-3 leading-relaxed"
-                  style={{ color: "#64748b", animationDelay: "0.1s" }}>
-                  {selCat.detail}
-                </p>
+                    {/* 특성 설명 */}
+                    <p className="fadeup text-[11px] text-center mx-1 mb-3 leading-relaxed"
+                      style={{ color: "#64748b", animationDelay: "0.1s" }}>
+                      {selCat.detail}
+                    </p>
 
-                {/* 해금 버튼 or START */}
-                <div className="mt-auto mx-1 fadeup" style={{ animationDelay: "0.15s" }}>
-                  {!selUnlocked ? (
-                    <>
-                      <p className="text-center text-[10px] font-mono mb-2" style={{ color: "#475569" }}>
-                        🔒 {getUnlockHint(selCat.id)}
-                      </p>
-                      {selCat.id === "abyssinian" && (
-                        <button onClick={handleUnlockAbyssinian} disabled={buying === "cat_abyssinian" || (profile?.coins ?? 0) < 50}
-                          className="w-full py-3 rounded-xl font-mono text-sm font-bold tracking-wider disabled:opacity-30 active:scale-95 transition-all"
-                          style={{ background: "rgba(245,158,11,0.2)", border: "1px solid rgba(245,158,11,0.5)", color: "#f59e0b" }}>
-                          {buying === "cat_abyssinian" ? "처리 중..." : "🪙 50 UNLOCK"}
-                        </button>
-                      )}
-                      {selCat.id === "bomdong" && (
-                        <button onClick={handleUnlockBomdong} disabled={buying === "cat_bomdong" || (profile?.coins ?? 0) < 80}
-                          className="w-full py-3 rounded-xl font-mono text-sm font-bold tracking-wider disabled:opacity-30 active:scale-95 transition-all"
-                          style={{ background: "rgba(34,197,94,0.2)", border: "1px solid rgba(34,197,94,0.5)", color: "#22c55e" }}>
-                          {buying === "cat_bomdong" ? "처리 중..." : "🪙 80 UNLOCK"}
-                        </button>
-                      )}
-                    </>
-                  ) : (
-                    <button onClick={handleStart}
-                      className="w-full py-3.5 rounded-xl font-mono font-black tracking-widest uppercase text-sm active:scale-95 transition-all"
-                      style={{ background: "linear-gradient(135deg, #d97706, #f59e0b)", color: "#07071a", letterSpacing: "0.2em", boxShadow: "0 0 20px rgba(245,158,11,0.4)" }}>
-                      ▶  START
-                    </button>
-                  )}
-                </div>
+                    {/* START */}
+                    <div className="mt-auto mx-1 fadeup" style={{ animationDelay: "0.15s" }}>
+                      <button onClick={handleStart}
+                        className="w-full py-3.5 rounded-xl font-mono font-black tracking-widest uppercase text-sm active:scale-95 transition-all"
+                        style={{ background: "linear-gradient(135deg, #d97706, #f59e0b)", color: "#07071a", letterSpacing: "0.2em", boxShadow: "0 0 20px rgba(245,158,11,0.4)" }}>
+                        ▶  START
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  /* ── 잠긴 캐릭터 — 해금 조건 패널 ── */
+                  (() => {
+                    const prog = getUnlockProgress(selCat.id);
+                    const pct  = Math.min(100, Math.round((prog.current / prog.target) * 100));
+                    const isCoins = selCat.unlockType === "coins";
+                    return (
+                      <div className="fadeup mx-1 flex flex-col gap-3 mt-2" style={{ animationDelay: "0.05s" }}>
+                        {/* 해금 조건 카드 */}
+                        <div className="rounded-xl p-4"
+                          style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="text-base">{selCat.unlockIcon}</span>
+                            <div>
+                              <p className="font-mono text-[9px] tracking-widest mb-0.5" style={{ color: "#475569" }}>UNLOCK CONDITION</p>
+                              <p className="font-mono font-bold text-xs" style={{ color: "#94a3b8" }}>{selCat.unlockTitle}</p>
+                            </div>
+                          </div>
+                          {/* 진행 바 */}
+                          <div className="h-2 rounded-full overflow-hidden mb-2" style={{ background: "rgba(255,255,255,0.07)" }}>
+                            <div className="h-full rounded-full transition-all duration-500"
+                              style={{ width: `${pct}%`, background: isCoins ? "linear-gradient(90deg, #d97706, #f59e0b)" : "linear-gradient(90deg, #3b82f6, #60a5fa)" }} />
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="font-mono text-[10px]" style={{ color: "#475569" }}>
+                              {prog.current} / {prog.target} {prog.unit}
+                            </span>
+                            <span className="font-mono text-[10px] font-bold" style={{ color: pct >= 100 ? "#22c55e" : "#475569" }}>
+                              {pct}%
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* 코인 구매 버튼 */}
+                        {selCat.id === "abyssinian" && (
+                          <button onClick={handleUnlockAbyssinian}
+                            disabled={buying === "cat_abyssinian" || (profile?.coins ?? 0) < 50}
+                            className="w-full py-3 rounded-xl font-mono text-sm font-bold tracking-wider disabled:opacity-30 active:scale-95 transition-all"
+                            style={{ background: "rgba(245,158,11,0.2)", border: "1px solid rgba(245,158,11,0.5)", color: "#f59e0b" }}>
+                            {buying === "cat_abyssinian" ? "처리 중..." : "🪙 50 UNLOCK"}
+                          </button>
+                        )}
+                        {selCat.id === "bomdong" && (
+                          <button onClick={handleUnlockBomdong}
+                            disabled={buying === "cat_bomdong" || (profile?.coins ?? 0) < 80}
+                            className="w-full py-3 rounded-xl font-mono text-sm font-bold tracking-wider disabled:opacity-30 active:scale-95 transition-all"
+                            style={{ background: "rgba(34,197,94,0.2)", border: "1px solid rgba(34,197,94,0.5)", color: "#22c55e" }}>
+                            {buying === "cat_bomdong" ? "처리 중..." : "🪙 80 UNLOCK"}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()
+                )}
               </div>
             )}
           </div>
