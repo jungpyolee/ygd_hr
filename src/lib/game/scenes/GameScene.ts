@@ -1579,7 +1579,7 @@ export default class GameScene extends Phaser.Scene {
           this.equippedWeapons.forEach(w => { w.damage = Math.round(w.damage * 1.15); });
           break;
         case "exp_boost":
-          this.runtimeExpMulti *= 1.20;
+          this.runtimeExpMulti += 0.20;
           break;
       }
     }
