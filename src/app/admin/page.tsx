@@ -382,6 +382,23 @@ export default function AdminDashboardPage() {
           <ArrowRight className="w-4 h-4 text-[#D1D6DB] group-hover:text-[#3182F6]" />
         </button>
       </div>
+
+      {/* 테스트용 게임 진입 */}
+      <div className="mt-6">
+        <button
+          onClick={() => router.push("/game")}
+          className="w-full flex items-center justify-between p-4 bg-[#1a1a2e] rounded-[20px]"
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">🐱</span>
+            <div className="text-left">
+              <p className="text-white text-[14px] font-bold">냥냥 서바이벌</p>
+              <p className="text-white/40 text-[11px]">테스트 전용</p>
+            </div>
+          </div>
+          <ArrowRight className="w-4 h-4 text-white/30" />
+        </button>
+      </div>
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { X, UploadCloud, LogOut, LayoutDashboard } from "lucide-react";
 import { toast } from "sonner";
 import { DatePicker } from "@/components/ui/date-picker";
 import { sendNotification } from "@/lib/notifications";
+import PushNotificationSettings from "@/components/PushNotificationSettings";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
 
 interface MyInfoModalProps {
@@ -335,6 +336,16 @@ export default function MyInfoModal({
           </button>
 
           <div className="h-[1px] bg-slate-100 mt-4" />
+
+          {/* 푸시 알림 설정 (직원 전용 — 세부 타입 토글) */}
+          {profile?.role !== "admin" && (
+            <div className="space-y-3 py-2">
+              <h3 className="text-[14px] font-bold text-[#191F28] px-1">알림 설정</h3>
+              <PushNotificationSettings />
+            </div>
+          )}
+
+          <div className="h-[1px] bg-slate-100" />
 
           {profile?.role === "admin" && (
             <button

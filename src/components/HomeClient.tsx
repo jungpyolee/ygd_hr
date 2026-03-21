@@ -25,6 +25,7 @@ import { useRouter } from "next/navigation";
 import { useGeolocation } from "@/lib/hooks/useGeolocation";
 import type { Announcement } from "@/types/announcement";
 import type { TodaySlot, RawLogData } from "@/app/page";
+import PushPromptModal from "@/components/PushPromptModal";
 
 const LOCATION_LABELS: Record<string, string> = {
   cafe: "카페",
@@ -227,6 +228,7 @@ export default function HomeClient({
 
   return (
     <div className="flex min-h-screen flex-col bg-[#F2F4F6] font-pretendard">
+      <PushPromptModal />
       {/* Navbar */}
       <nav className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-[#F2F4F6]/80 backdrop-blur-md">
         <span className="text-xl font-bold text-[#333D4B]">연경당 HR</span>
