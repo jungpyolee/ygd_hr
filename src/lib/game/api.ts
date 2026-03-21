@@ -136,7 +136,8 @@ export async function getLeaderboard() {
   const supabase = createClient();
   const { data: scores } = await supabase
     .from("game_profiles")
-    .select("id, total_score, best_run_score, play_count")
+    .select("id, total_score, best_run_score")
+    .gt("play_count", 0)
     .order("total_score", { ascending: false })
     .limit(10);
 
@@ -153,11 +154,10 @@ export async function getLeaderboard() {
   );
 
   return {
-    scores: scores.map((s: { id: string; total_score: number; best_run_score: number; play_count: number }) => ({
+    scores: scores.map((s: { id: string; total_score: number; best_run_score: number }) => ({
       user_id: s.id,
       total_score: s.total_score,
       best_run_score: s.best_run_score,
-      play_count: s.play_count,
       profiles: profileMap.get(s.id) ?? { name: "알 수 없음", color_hex: null },
     })),
   };

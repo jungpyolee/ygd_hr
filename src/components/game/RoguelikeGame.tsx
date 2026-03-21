@@ -18,7 +18,6 @@ interface LeaderboardEntry {
   user_id: string;
   total_score: number;
   best_run_score: number;
-  play_count: number;
   profiles: { name: string; color_hex: string | null };
 }
 interface LeaderboardData {
@@ -412,7 +411,6 @@ export default function RoguelikeGame({ onClose, gameConfig }: Props) {
                             <p className={`text-sm font-bold tabular-nums ${isMe ? "text-[#f59e0b]" : "text-white"}`}>
                               {entry.total_score.toLocaleString()}
                             </p>
-                            <p className="text-white/30 text-[10px] tabular-nums">{entry.play_count}판</p>
                           </div>
                         </div>
                       );
