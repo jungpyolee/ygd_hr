@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import { getDistance } from "@/lib/utils/distance";
@@ -85,6 +85,7 @@ export default function AttendanceCard({
   const supabase = useMemo(() => createClient(), []);
   const { user } = useAuth();
   const userId = user?.id ?? null;
+  const isProcessingRef = useRef(false);
 
   // 체크리스트 재개 상태
   const [pendingResume, setPendingResume] = useState<{
@@ -499,70 +500,76 @@ export default function AttendanceCard({
 
   // ─── 출퇴근 버튼 탭 ────────────────────────────────────────────────────────
   const handleAttendance = async (type: "IN" | "OUT") => {
-    // 퇴근: 체크리스트 먼저 확인
-    if (type === "OUT") {
-      const items = await fetchChecklistItems("check_out");
-      if (items.length > 0) {
-        // 이탈 후 재개: 기존 draft 있으면 체크 상태 복원
-        const outDraft = userId ? loadDraft(userId, "check_out") : null;
-        const initialIds = outDraft?.checkedIds ?? [];
-        setChecklistItems(items);
-        setChecklistTrigger("check_out");
-        setChecklistInitialIds(initialIds);
-        setShowChecklist(true);
-        // 신규 시작이면 draft 생성
-        if (!outDraft && userId) {
-          saveDraft(userId, {
-            userId,
-            date: new Date().toISOString().slice(0, 10),
-            trigger: "check_out",
-            attendanceLogId: null,
-            checkedIds: [],
-            totalItems: items.length,
-          });
-        }
-        return;
-      }
-      // 체크리스트 없으면 바로 퇴근 흐름
-      await runCheckoutFlow();
-      return;
-    }
-
-    setIsRetrying(true);
-    setPendingType(type);
-
+    if (isProcessingRef.current) return; // 중복 클릭 방지
+    isProcessingRef.current = true;
     try {
-      // 출퇴근 기록은 항상 10초 캐시 기준으로 신선한 위치 사용
-      const result = await onFetchForAttendance();
-
-      if (result.status === "ready") {
-        setPendingType(null);
-        await proceedWithCoordinates(type, result.lat!, result.lng!);
+      // 퇴근: 체크리스트 먼저 확인
+      if (type === "OUT") {
+        const items = await fetchChecklistItems("check_out");
+        if (items.length > 0) {
+          // 이탈 후 재개: 기존 draft 있으면 체크 상태 복원
+          const outDraft = userId ? loadDraft(userId, "check_out") : null;
+          const initialIds = outDraft?.checkedIds ?? [];
+          setChecklistItems(items);
+          setChecklistTrigger("check_out");
+          setChecklistInitialIds(initialIds);
+          setShowChecklist(true);
+          // 신규 시작이면 draft 생성
+          if (!outDraft && userId) {
+            saveDraft(userId, {
+              userId,
+              date: new Date().toISOString().slice(0, 10),
+              trigger: "check_out",
+              attendanceLogId: null,
+              checkedIds: [],
+              totalItems: items.length,
+            });
+          }
+          return;
+        }
+        // 체크리스트 없으면 바로 퇴근 흐름
+        await runCheckoutFlow();
         return;
       }
 
-      if (result.status === "denied") {
-        setShowPermissionGuide(true);
-        return;
-      }
+      setIsRetrying(true);
+      setPendingType(type);
 
-      // timeout / unavailable → 권한은 있으나 GPS 응답 없음, onRetryLocation으로 재시도
-      const retryResult = await onRetryLocation();
-      if (retryResult.status === "ready") {
-        setPendingType(null);
-        await proceedWithCoordinates(type, retryResult.lat!, retryResult.lng!);
-        return;
-      }
+      try {
+        // 출퇴근 기록은 항상 10초 캐시 기준으로 신선한 위치 사용
+        const result = await onFetchForAttendance();
 
-      if (retryResult.status === "denied") {
-        setShowPermissionGuide(true);
-        return;
-      }
+        if (result.status === "ready") {
+          setPendingType(null);
+          await proceedWithCoordinates(type, result.lat!, result.lng!);
+          return;
+        }
 
-      // GPS 재시도까지 실패 → 매장 수동 선택 fallback
-      openStoreFallback(type);
+        if (result.status === "denied") {
+          setShowPermissionGuide(true);
+          return;
+        }
+
+        // timeout / unavailable → 권한은 있으나 GPS 응답 없음, onRetryLocation으로 재시도
+        const retryResult = await onRetryLocation();
+        if (retryResult.status === "ready") {
+          setPendingType(null);
+          await proceedWithCoordinates(type, retryResult.lat!, retryResult.lng!);
+          return;
+        }
+
+        if (retryResult.status === "denied") {
+          setShowPermissionGuide(true);
+          return;
+        }
+
+        // GPS 재시도까지 실패 → 매장 수동 선택 fallback
+        openStoreFallback(type);
+      } finally {
+        setIsRetrying(false);
+      }
     } finally {
-      setIsRetrying(false);
+      isProcessingRef.current = false;
     }
   };
 
