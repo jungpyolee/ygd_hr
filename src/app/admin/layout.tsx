@@ -8,6 +8,8 @@ import { toast } from "sonner";
 import Link from "next/link";
 import { format, addDays, differenceInDays } from "date-fns";
 import { sendNotification } from "@/lib/notifications";
+import AdminPushToggle from "@/components/AdminPushToggle";
+import PushPromptModal from "@/components/PushPromptModal";
 import {
   Users,
   Clock,
@@ -319,6 +321,7 @@ export default function AdminLayout({
 
   return (
     <div className="flex min-h-screen bg-[#F9FAFB] relative font-pretendard overflow-x-hidden">
+      <PushPromptModal />
       {/* 💻 Desktop Sidebar */}
       <aside className="hidden md:flex w-64 bg-white border-r border-slate-100 p-6 flex-col shrink-0 sticky top-0 h-screen">
         <h1 className="text-xl font-bold text-[#191F28] mb-10 tracking-tight">
@@ -420,6 +423,9 @@ export default function AdminLayout({
                       </button>
                     ))
                   )}
+                </div>
+                <div className="border-t border-slate-100">
+                  <AdminPushToggle />
                 </div>
               </div>
             )}
