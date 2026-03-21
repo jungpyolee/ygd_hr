@@ -315,7 +315,7 @@ export default function GamePage() {
     if (catId === "abyssinian")  return { current: profile?.coins ?? 0,                               target: 50,  unit: "코인" };
     if (catId === "munchkin")    return { current: hrStats?.total_checkins ?? 0,                      target: 30,  unit: "회 출근" };
     if (catId === "doujeonku")   return { current: Math.floor(hrStats?.total_work_hours ?? 0),        target: 30,  unit: "시간 근무" };
-    if (catId === "bomdong")     return { current: profile?.coins ?? 0,                               target: 80,  unit: "코인" };
+    if (catId === "bomdong")     return { current: profile?.coins ?? 0,                               target: 800, unit: "코인" };
     if (catId === "buttertteok") return { current: Math.floor(hrStats?.total_work_hours ?? 0),        target: 100, unit: "시간 근무" };
     return { current: 0, target: 1, unit: "" };
   }
@@ -341,10 +341,10 @@ export default function GamePage() {
   async function handleUnlockBomdong() {
     if (!profile) return;
     setBuying("cat_bomdong");
-    const result = await unlockCatWithCoins(80, "cat_bomdong");
+    const result = await unlockCatWithCoins(800, "cat_bomdong");
     if (result.ok) {
       setPurchases(p => [...p, "cat_bomdong"]);
-      setProfile(prev => prev ? { ...prev, coins: prev.coins - 80 } : prev);
+      setProfile(prev => prev ? { ...prev, coins: prev.coins - 800 } : prev);
       toast.success("봄동비빔밥이 해금됐어요! 🥗");
     } else if (result.reason === "코인 부족") {
       toast.error("코인이 부족해요.");
@@ -822,10 +822,10 @@ export default function GamePage() {
                         )}
                         {selCat.id === "bomdong" && (
                           <button onClick={handleUnlockBomdong}
-                            disabled={buying === "cat_bomdong" || (profile?.coins ?? 0) < 80}
+                            disabled={buying === "cat_bomdong" || (profile?.coins ?? 0) < 800}
                             className="w-full py-3 rounded-xl font-mono text-sm font-bold tracking-wider disabled:opacity-30 active:scale-95 transition-all"
                             style={{ background: "rgba(34,197,94,0.2)", border: "1px solid rgba(34,197,94,0.5)", color: "#22c55e" }}>
-                            {buying === "cat_bomdong" ? "처리 중..." : "🪙 80 UNLOCK"}
+                            {buying === "cat_bomdong" ? "처리 중..." : "🪙 800 UNLOCK"}
                           </button>
                         )}
                       </div>
