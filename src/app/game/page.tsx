@@ -102,6 +102,58 @@ const CATEGORY_LABEL: Record<string, string> = {
   hp: "체력", attack: "공격", util: "유틸", special: "특수",
 };
 
+// 캐릭터별 tint 색상 (WhiteCat 스프라이트 마스크 적용)
+const CAT_TINT: Record<string, string> = {
+  persian:     "#ffffff",
+  scottish:    "#aabbcc",
+  abyssinian:  "#d4884a",
+  munchkin:    "#fff0dd",
+  doujeonku:   "#3d2b1f",
+  bomdong:     "#7db249",
+  buttertteok: "#fff4a3",
+};
+
+// 고양이 스프라이트 (mask-image 기법으로 tint 적용)
+function CatSprite({
+  catId,
+  sheet = "Idle",
+  size = 64,
+  frame = 0,
+  animated = false,
+  grayscale = false,
+}: {
+  catId: string;
+  sheet?: "Idle" | "Run";
+  size?: number;
+  frame?: number;
+  animated?: boolean;
+  grayscale?: boolean;
+}) {
+  const frames = sheet === "Run" ? 6 : 6;
+  const animStyle = animated
+    ? { animation: `catFrames${frames} ${sheet === "Run" ? "0.6s" : "0.8s"} steps(${frames}) infinite` }
+    : {};
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        maskImage: `url('/game/WhiteCat${sheet}.png')`,
+        WebkitMaskImage: `url('/game/WhiteCat${sheet}.png')`,
+        maskSize: `${size}px ${size * frames}px`,
+        WebkitMaskSize: `${size}px ${size * frames}px`,
+        maskRepeat: "no-repeat",
+        WebkitMaskRepeat: "no-repeat",
+        maskPosition: animated ? `0 0` : `0 ${-size * frame}px`,
+        WebkitMaskPosition: animated ? `0 0` : `0 ${-size * frame}px`,
+        backgroundColor: grayscale ? "#555" : (CAT_TINT[catId] ?? "#ffffff"),
+        imageRendering: "pixelated",
+        ...animStyle,
+      }}
+    />
+  );
+}
+
 // 타이틀 화면 배경 장식 (결정적 위치 — SSR 안전)
 const BG_DECOS = [
   { emoji: "🍊", x: 7,  y: 8,  size: 28, rot: -20, op: 0.09 },
@@ -319,8 +371,20 @@ export default function GamePage() {
             0%,100% { transform: translateY(0px) rotate(var(--rot)); }
             50%      { transform: translateY(-8px) rotate(var(--rot)); }
           }
+          @keyframes catFrames6 {
+            from { -webkit-mask-position: 0 0; mask-position: 0 0; }
+            to   { -webkit-mask-position: 0 -${96*6}px; mask-position: 0 -${96*6}px; }
+          }
+          @keyframes catWalk {
+            0%   { transform: translateX(-50px) scaleX(1); }
+            48%  { transform: translateX(50px) scaleX(1); }
+            50%  { transform: translateX(50px) scaleX(-1); }
+            98%  { transform: translateX(-50px) scaleX(-1); }
+            100% { transform: translateX(-50px) scaleX(1); }
+          }
           .title-pulse { animation: titlePulse 2.4s ease-in-out infinite; }
           .bg-deco     { animation: floatY 4s ease-in-out infinite; }
+          .cat-walk    { animation: catWalk 3s linear infinite; }
         `}</style>
 
         {/* 배경 도트 그리드 */}
@@ -367,9 +431,9 @@ export default function GamePage() {
 
         {/* 메인 타이틀 영역 */}
         <div className="flex flex-col items-center mb-10">
-          {/* 고양이 */}
-          <div className="text-6xl mb-4" style={{ filter: "drop-shadow(0 0 16px rgba(245,158,11,0.5))" }}>
-            🐱
+          {/* 걷는 고양이 */}
+          <div className="mb-4 cat-walk" style={{ filter: "drop-shadow(0 0 12px rgba(245,158,11,0.5))" }}>
+            <CatSprite catId={selectedCat} sheet="Run" size={96} animated />
           </div>
 
           {/* 게임 타이틀 */}
@@ -479,6 +543,10 @@ export default function GamePage() {
             0%,100% { box-shadow: 0 0 0 2px #f59e0b, 0 0 16px #f59e0b44; }
             50%      { box-shadow: 0 0 0 2px #f59e0b, 0 0 28px #f59e0baa; }
           }
+          @keyframes catFrames6 {
+            from { -webkit-mask-position: 0 0; mask-position: 0 0; }
+            to   { -webkit-mask-position: 0 -${64*6}px; mask-position: 0 -${64*6}px; }
+          }
           .selected-card { animation: selectGlow 1.8s ease-in-out infinite; }
         `}</style>
 
@@ -525,7 +593,11 @@ export default function GamePage() {
             return (
               <div key={cat.id} className="flex flex-col">
                 <button
-                  onClick={() => unlocked && setSelectedCat(cat.id as CatId)}
+                  onClick={() => {
+                    if (!unlocked) return;
+                    if (selectedCat === cat.id) { handleStart(); return; }
+                    setSelectedCat(cat.id as CatId);
+                  }}
                   disabled={!unlocked}
                   className={`rounded-xl p-4 flex flex-col items-center gap-2 transition-all duration-150 ${selected ? "selected-card" : ""}`}
                   style={{
@@ -540,13 +612,12 @@ export default function GamePage() {
                     opacity: !unlocked ? 0.45 : 1,
                   }}
                 >
-                  <img
-                    src={cat.svg}
-                    alt={cat.name}
-                    width={64}
-                    height={64}
-                    className={!unlocked ? "grayscale opacity-60" : ""}
-                    style={{ imageRendering: "auto" }}
+                  <CatSprite
+                    catId={cat.id}
+                    sheet={selected ? "Run" : "Idle"}
+                    size={64}
+                    animated={selected}
+                    grayscale={!unlocked}
                   />
                   <div className="text-center">
                     <p
@@ -618,7 +689,7 @@ export default function GamePage() {
           style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.2)" }}
         >
           <div className="flex items-center gap-3">
-            <img src={selCat.svg} alt={selCat.name} width={48} height={48} />
+            <CatSprite catId={selCat.id} sheet="Idle" size={48} animated />
             <div className="flex-1">
               <p className="font-mono font-bold text-sm tracking-wider" style={{ color: "#f59e0b" }}>
                 {selCat.name.toUpperCase()}

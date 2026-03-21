@@ -217,7 +217,6 @@ export default function RoguelikeGame({ onClose, gameConfig }: Props) {
       {phase === "countdown" && (
         <div className="absolute inset-0 flex items-center justify-center z-10">
           <div className="text-center">
-            <div className="text-5xl mb-6">🐱</div>
             <p className="text-white/50 text-sm mb-3 tracking-widest uppercase">Get Ready</p>
             <p className="text-[#f59e0b] font-black" style={{ fontSize: "7rem", lineHeight: 1 }}>
               {countdown === 0 ? "GO!" : countdown}
