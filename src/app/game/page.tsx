@@ -6,7 +6,9 @@ import { useRouter } from "next/navigation";
 import {
   getMyGameProfile,
   getMyPurchases,
-  buyShopItem,
+  getMyUpgradeLevels,
+  buyShopUpgrade,
+  getUpgradeCost,
   unlockCatWithCoins,
   SHOP_ITEMS,
   type GameProfileData,
@@ -117,22 +119,30 @@ const BG_DECOS = [
 export default function GamePage() {
   const router = useRouter();
 
-  const [screen, setScreen]           = useState<Screen>("title");
-  const [profile, setProfile]         = useState<GameProfileData | null>(null);
-  const [purchases, setPurchases]     = useState<string[]>([]);
-  const [selectedCat, setSelectedCat] = useState<CatId>("persian");
-  const [started, setStarted]         = useState(false);
-  const [loading, setLoading]         = useState(true);
-  const [buying, setBuying]           = useState<string | null>(null);
-  const [gameConfig, setGameConfig]   = useState<GameConfig | null>(null);
-  const [menuIdx, setMenuIdx]         = useState(0);
-  const [blink, setBlink]             = useState(true);
+  const [screen, setScreen]               = useState<Screen>("title");
+  const [profile, setProfile]             = useState<GameProfileData | null>(null);
+  const [purchases, setPurchases]         = useState<string[]>([]);        // 캐릭터 해금
+  const [upgradeLevels, setUpgradeLevels] = useState<Record<string, number>>({}); // 상점 강화
+  const [selectedCat, setSelectedCat]     = useState<CatId>("persian");
+  const [started, setStarted]             = useState(false);
+  const [loading, setLoading]             = useState(true);
+  const [buying, setBuying]               = useState<string | null>(null);
+  const [gameConfig, setGameConfig]       = useState<GameConfig | null>(null);
+  const [menuIdx, setMenuIdx]             = useState(0);
+  const [blink, setBlink]                 = useState(true);
 
   // 데이터 로드
+  function refreshData() {
+    return Promise.all([getMyGameProfile(), getMyPurchases(), getMyUpgradeLevels()])
+      .then(([prof, purch, upgrades]) => {
+        setProfile(prof);
+        setPurchases(purch);
+        setUpgradeLevels(upgrades);
+      });
+  }
+
   useEffect(() => {
-    Promise.all([getMyGameProfile(), getMyPurchases()])
-      .then(([prof, purch]) => { setProfile(prof); setPurchases(purch); })
-      .finally(() => setLoading(false));
+    refreshData().finally(() => setLoading(false));
   }, []);
 
   // 블링크 애니메이션
@@ -213,45 +223,49 @@ export default function GamePage() {
     setBuying(null);
   }
 
-  // ─── 상점 아이템 구매 ─────────────────────
-  async function handleBuyItem(itemId: string, cost: number) {
+  // ─── 상점 아이템 강화 ─────────────────────
+  async function handleUpgradeItem(itemId: string) {
+    const item = SHOP_ITEMS.find(i => i.id === itemId);
+    if (!item) return;
+    const currentLevel = upgradeLevels[itemId] ?? 0;
+    if (currentLevel >= item.maxLevel) return;
+    const cost = getUpgradeCost(item, currentLevel);
+
     setBuying(itemId);
-    const result = await buyShopItem(itemId, cost);
+    const result = await buyShopUpgrade(itemId, currentLevel, cost);
     if (result.ok) {
-      setPurchases(p => [...p, itemId]);
+      setUpgradeLevels(prev => ({ ...prev, [itemId]: currentLevel + 1 }));
       setProfile(prev => prev ? { ...prev, coins: prev.coins - cost } : prev);
-      const item = SHOP_ITEMS.find(i => i.id === itemId);
-      toast.success(`${item?.name ?? "아이템"} 구매 완료!`);
+      const nextLv = currentLevel + 1;
+      toast.success(`${item.name} Lv.${nextLv} 강화 완료!`);
     } else if (result.reason === "코인 부족") {
       toast.error("코인이 부족해요.");
     } else {
-      toast.error(`구매 실패: ${result.reason}`);
+      toast.error(`강화 실패: ${result.reason}`);
     }
     setBuying(null);
   }
 
-  // ─── GameConfig 빌드 ─────────────────────
+  // ─── GameConfig 빌드 (레벨 기반 누적) ────────
   function buildGameConfig(): GameConfig {
-    const catDef  = CAT_TYPES.find(c => c.id === selectedCat);
+    const catDef   = CAT_TYPES.find(c => c.id === selectedCat);
     const catBonus = catDef?.getStatBonuses() ?? { hpBonus: 0, damageMulti: 1.0, moveSpeedMulti: 1.0 };
+    const lv = (id: string) => upgradeLevels[id] ?? 0;
+
     return {
       catType: selectedCat as GameConfig["catType"],
       buffs: {
-        hpBonus:          (catBonus.hpBonus ?? 0)
-                          + (purchases.includes("hp_up_1") ? 20 : 0)
-                          + (purchases.includes("hp_up_2") ? 40 : 0),
-        damageMulti:      (catBonus.damageMulti ?? 1.0)
-                          * (purchases.includes("atk_up") ? 1.15 : 1.0),
-        attackSpeedMulti: purchases.includes("atkspd_up") ? 1.2 : 1.0,
-        moveSpeedMulti:   (catBonus.moveSpeedMulti ?? 1.0)
-                          * (purchases.includes("move_up") ? 1.15 : 1.0),
+        hpBonus:          catBonus.hpBonus + lv("hp_up") * 20,
+        damageMulti:      catBonus.damageMulti * Math.pow(1.15, lv("atk_up")),
+        attackSpeedMulti: Math.pow(1.12, lv("atkspd_up")),
+        moveSpeedMulti:   catBonus.moveSpeedMulti * Math.pow(1.12, lv("move_up")),
         expMulti:         selectedCat === "munchkin" ? 1.3 : 1.0,
-        coinPickupRange:  purchases.includes("coin_magnet") ? 120 : 60,
-        coinDropBonus:    purchases.includes("luck") ? 0.15 : 0.0,
-        hasRevive:        purchases.includes("revive"),
-        hasPiercing:      purchases.includes("pierce"),
+        coinPickupRange:  60 * (1 + lv("coin_magnet") * 0.4),
+        coinDropBonus:    Math.min(lv("luck") * 0.10, 0.6),
+        hasRevive:        lv("revive") >= 1,
+        hasPiercing:      lv("pierce") >= 1,
         startProjectiles: selectedCat === "munchkin" ? 2 : 1,
-        healMulti:        purchases.includes("heal_boost") ? 1.5 : 1.0,
+        healMulti:        Math.pow(1.25, lv("heal_boost")),
         extraWeaponSlot:  selectedCat === "bomdong",
         counterShockwave: selectedCat === "doujeonku",
       },
@@ -273,9 +287,7 @@ export default function GamePage() {
     setStarted(false);
     setGameConfig(null);
     setScreen("title");
-    Promise.all([getMyGameProfile(), getMyPurchases()])
-      .then(([prof, purch]) => { setProfile(prof); setPurchases(purch); })
-      .catch(() => {});
+    refreshData().catch(() => {});
   };
 
   // ─── 게임 중 ──────────────────────────────
@@ -691,7 +703,7 @@ export default function GamePage() {
           className="font-mono font-bold tracking-widest"
           style={{ color: "#f59e0b", fontSize: "15px", letterSpacing: "0.3em" }}
         >
-          S H O P
+          U P G R A D E
         </p>
         <div
           className="flex items-center gap-1.5 px-3 py-1.5 rounded"
@@ -720,10 +732,7 @@ export default function GamePage() {
                   {/* 카테고리 구분선 */}
                   <div className="flex items-center gap-2 mb-2">
                     <div className="h-px flex-1" style={{ background: "rgba(255,255,255,0.06)" }} />
-                    <p
-                      className="font-mono text-[10px] tracking-widest uppercase"
-                      style={{ color: "#475569" }}
-                    >
+                    <p className="font-mono text-[10px] tracking-widest uppercase" style={{ color: "#475569" }}>
                       {CATEGORY_LABEL[cat]}
                     </p>
                     <div className="h-px flex-1" style={{ background: "rgba(255,255,255,0.06)" }} />
@@ -731,65 +740,107 @@ export default function GamePage() {
 
                   <div className="space-y-2">
                     {items.map(item => {
-                      const bought   = purchases.includes(item.id);
-                      const locked   = !!item.requires && !purchases.includes(item.requires);
-                      const noCoins  = (profile?.coins ?? 0) < item.cost;
-                      const disabled = bought || locked || buying === item.id;
+                      const currentLv = upgradeLevels[item.id] ?? 0;
+                      const maxed     = currentLv >= item.maxLevel;
+                      const cost      = getUpgradeCost(item, currentLv);
+                      const noCoins   = (profile?.coins ?? 0) < cost;
+                      const isLoading = buying === item.id;
+
+                      // 레벨 바 (최대 5칸 표시, maxLevel=1은 1칸)
+                      const barCells  = Math.min(item.maxLevel, 5);
+                      const filledCells = Math.min(currentLv, barCells);
 
                       return (
                         <div
                           key={item.id}
                           className="flex items-center gap-3 px-3 py-3 rounded-xl"
                           style={{
-                            background: bought
+                            background: maxed
                               ? "rgba(52,211,153,0.05)"
+                              : currentLv > 0
+                              ? "rgba(245,158,11,0.05)"
                               : "rgba(255,255,255,0.03)",
-                            border: bought
-                              ? "1px solid rgba(52,211,153,0.2)"
+                            border: maxed
+                              ? "1px solid rgba(52,211,153,0.25)"
+                              : currentLv > 0
+                              ? "1px solid rgba(245,158,11,0.2)"
                               : "1px solid rgba(255,255,255,0.06)",
-                            opacity: locked ? 0.45 : 1,
                           }}
                         >
+                          {/* 이모지 */}
                           <div
                             className="w-10 h-10 rounded-lg flex items-center justify-center text-xl shrink-0"
                             style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
                           >
                             {item.emoji}
                           </div>
+
+                          {/* 이름 + 효과 + 레벨바 */}
                           <div className="flex-1 min-w-0">
-                            <p className="font-mono font-bold text-xs tracking-wider" style={{ color: "#cbd5e1" }}>
-                              {item.name}
-                            </p>
-                            <p className="text-[10px] mt-0.5" style={{ color: "#475569" }}>
-                              {item.description}
-                            </p>
-                            {locked && (
-                              <p className="font-mono text-[9px] mt-0.5" style={{ color: "#92400e" }}>
-                                선행 구매 필요: {SHOP_ITEMS.find(i => i.id === item.requires)?.name}
+                            <div className="flex items-center gap-2">
+                              <p className="font-mono font-bold text-xs tracking-wider" style={{ color: "#cbd5e1" }}>
+                                {item.name}
                               </p>
+                              {currentLv > 0 && (
+                                <span
+                                  className="font-mono text-[9px] px-1.5 py-0.5 rounded"
+                                  style={{
+                                    background: maxed ? "rgba(52,211,153,0.15)" : "rgba(245,158,11,0.15)",
+                                    color: maxed ? "#34d399" : "#f59e0b",
+                                  }}
+                                >
+                                  Lv.{currentLv}{maxed && item.maxLevel <= 5 ? " MAX" : ""}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[10px] mt-0.5" style={{ color: "#475569" }}>
+                              {item.effectPerLevel}
+                              {item.maxLevel > 1 && currentLv > 0 && (
+                                <span style={{ color: "#f59e0b" }}> (×{currentLv} 적용 중)</span>
+                              )}
+                            </p>
+                            {/* 레벨 바 (maxLevel <= 5인 경우만 표시) */}
+                            {item.maxLevel <= 5 && (
+                              <div className="flex gap-1 mt-1.5">
+                                {Array.from({ length: barCells }).map((_, i) => (
+                                  <div
+                                    key={i}
+                                    className="h-1 rounded-full flex-1"
+                                    style={{
+                                      background: i < filledCells
+                                        ? (maxed ? "#34d399" : "#f59e0b")
+                                        : "rgba(255,255,255,0.1)",
+                                    }}
+                                  />
+                                ))}
+                              </div>
                             )}
                           </div>
+
+                          {/* 강화 버튼 */}
                           <div className="shrink-0">
-                            {bought ? (
+                            {maxed ? (
                               <span className="font-mono text-xs tracking-wider" style={{ color: "#34d399" }}>
-                                ✓ OK
+                                ✓ MAX
                               </span>
                             ) : (
                               <button
-                                onClick={() => handleBuyItem(item.id, item.cost)}
-                                disabled={disabled || noCoins}
-                                className="px-3 py-1.5 rounded-lg font-mono text-xs font-bold tracking-wider disabled:opacity-30 transition-all active:scale-95"
+                                onClick={() => handleUpgradeItem(item.id)}
+                                disabled={isLoading || noCoins}
+                                className="flex flex-col items-center px-3 py-1.5 rounded-lg font-mono font-bold tracking-wider disabled:opacity-30 transition-all active:scale-95"
                                 style={{
-                                  background: locked || noCoins
-                                    ? "rgba(255,255,255,0.05)"
-                                    : "rgba(245,158,11,0.2)",
-                                  border: locked || noCoins
-                                    ? "1px solid rgba(255,255,255,0.08)"
-                                    : "1px solid rgba(245,158,11,0.5)",
-                                  color: locked || noCoins ? "#374151" : "#f59e0b",
+                                  background: noCoins ? "rgba(255,255,255,0.05)" : "rgba(245,158,11,0.2)",
+                                  border: noCoins ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(245,158,11,0.5)",
+                                  color: noCoins ? "#374151" : "#f59e0b",
+                                  minWidth: "52px",
                                 }}
                               >
-                                {buying === item.id ? "..." : `🪙${item.cost}`}
+                                <span className="text-[9px] opacity-60">
+                                  {currentLv === 0 ? "구매" : "강화"}
+                                </span>
+                                <span className="text-xs">
+                                  {isLoading ? "..." : `🪙${cost}`}
+                                </span>
                               </button>
                             )}
                           </div>

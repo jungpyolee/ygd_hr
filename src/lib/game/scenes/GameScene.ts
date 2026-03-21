@@ -187,6 +187,7 @@ export interface UpgradeOption {
 export const GAME_EVENTS = {
   LEVEL_UP:     "levelup",
   GAME_OVER:    "gameover",
+  GAME_CLEAR:   "gameclear",
   STATS_UPDATE: "statsupdate",
   BOSS_START:   "bossstart",
   BOSS_END:     "bossend",
@@ -960,10 +961,15 @@ export default class GameScene extends Phaser.Scene {
     if (!this.waveClearing && this.waveKills >= this.waveKillsNeeded) {
       this.waveClearing = true;
       this.coinsThisRun += coinCount;
-      this.time.delayedCall(1500, () => {
-        this.wave++;
-        this.startWave(this.wave);
-      });
+      // 30웨이브 보스 처치 → 게임 클리어
+      if (this.wave === 30) {
+        this.time.delayedCall(1000, () => this.triggerGameClear());
+      } else {
+        this.time.delayedCall(1500, () => {
+          this.wave++;
+          this.startWave(this.wave);
+        });
+      }
     }
   }
 

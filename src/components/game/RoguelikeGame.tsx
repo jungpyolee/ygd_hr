@@ -203,10 +203,11 @@ export default function RoguelikeGame({ onClose, gameConfig }: Props) {
 
       {/* HUD */}
       {(phase === "playing" || phase === "levelup") && stats && (
-        <div className="absolute top-0 left-0 right-0 z-10 px-3 pt-2 pointer-events-none">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-sm">❤️</span>
-            <div className="flex-1 h-2.5 bg-black/40 rounded-full overflow-hidden">
+        <div className="absolute top-2 left-2 z-10 pointer-events-none space-y-1">
+          {/* HP 바 */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs leading-none">❤️</span>
+            <div className="w-32 h-2 bg-black/40 rounded-full overflow-hidden">
               <div
                 className="h-full rounded-full transition-all duration-300"
                 style={{
@@ -219,24 +220,26 @@ export default function RoguelikeGame({ onClose, gameConfig }: Props) {
                 }}
               />
             </div>
-            <span className="text-white/70 text-xs tabular-nums">{stats.hp}/{stats.maxHp}</span>
+            <span className="text-white/60 text-[10px] tabular-nums">{stats.hp}/{stats.maxHp}</span>
           </div>
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-[#f59e0b] text-xs font-bold w-10">Lv.{stats.level}</span>
-            <div className="flex-1 h-1.5 bg-black/40 rounded-full overflow-hidden">
+          {/* EXP 바 */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[#f59e0b] text-[10px] font-bold w-7 shrink-0">Lv.{stats.level}</span>
+            <div className="w-32 h-1.5 bg-black/40 rounded-full overflow-hidden">
               <div
                 className="h-full bg-[#f59e0b] rounded-full transition-all duration-300"
                 style={{ width: `${(stats.exp / stats.expNext) * 100}%` }}
               />
             </div>
-            {/* 다음 보스까지 */}
-            {!stats.boss && stats.nextBossIn > 0 && (
-              <span className="text-red-400/70 text-[10px] tabular-nums shrink-0">
-                🔥 {stats.nextBossIn}웨이브 후 보스
-              </span>
-            )}
           </div>
-          <div className="flex justify-between">
+          {/* 다음 보스까지 */}
+          {!stats.boss && stats.nextBossIn > 0 && (
+            <div className="text-red-400/80 text-[9px] tabular-nums font-medium">
+              🔥 {stats.nextBossIn}웨이브 후 보스
+            </div>
+          )}
+          {/* 스탯 */}
+          <div className="grid grid-cols-2 gap-0.5 pt-0.5">
             {[
               { icon: "🌊", label: `웨이브 ${stats.wave}` },
               { icon: "💀", label: `${stats.kills}킬` },
@@ -244,9 +247,9 @@ export default function RoguelikeGame({ onClose, gameConfig }: Props) {
               { icon: "🏆", label: stats.score.toLocaleString() },
               { icon: "🪙", label: `${stats.coins}` },
             ].map(({ icon, label }) => (
-              <div key={icon} className="flex items-center gap-1 bg-black/50 rounded-lg px-2 py-0.5">
-                <span className="text-xs">{icon}</span>
-                <span className="text-white text-xs font-medium tabular-nums">{label}</span>
+              <div key={icon} className="flex items-center gap-0.5 bg-black/50 rounded px-1.5 py-0.5">
+                <span className="text-[10px] leading-none">{icon}</span>
+                <span className="text-white text-[10px] font-medium tabular-nums">{label}</span>
               </div>
             ))}
           </div>
@@ -255,7 +258,7 @@ export default function RoguelikeGame({ onClose, gameConfig }: Props) {
 
       {/* 콤보 카운터 */}
       {(phase === "playing" || phase === "levelup") && stats && stats.combo >= 3 && (
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-10 pointer-events-none text-center">
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none text-center">
           <p
             className="font-black tabular-nums tracking-tight"
             style={{
@@ -272,9 +275,9 @@ export default function RoguelikeGame({ onClose, gameConfig }: Props) {
       {/* 대시 버튼 (모바일) */}
       {(phase === "playing") && (
         <button
-          className="absolute right-4 z-20 w-14 h-14 rounded-full flex flex-col items-center justify-center select-none"
+          className="absolute right-8 z-20 w-14 h-14 rounded-full flex flex-col items-center justify-center select-none"
           style={{
-            bottom: "88px",
+            bottom: "110px",
             background: (stats?.dashCooldown ?? 0) > 0
               ? "rgba(255,255,255,0.08)"
               : "rgba(59,130,246,0.55)",
