@@ -15,6 +15,7 @@ interface OnboardingProps {
 export default function OnboardingFunnel({ onComplete }: OnboardingProps) {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
+  const isSubmittingRef = useRef(false);
   const supabase = createClient();
 
   // 폼 상태
@@ -67,6 +68,8 @@ export default function OnboardingFunnel({ onComplete }: OnboardingProps) {
   };
 
   const handleSubmit = async () => {
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
     setLoading(true);
     const {
       data: { user },
@@ -105,11 +108,13 @@ export default function OnboardingFunnel({ onComplete }: OnboardingProps) {
         toast.error("저장에 실패했어요", {
           description: "잠시 후 다시 시도해 주세요.",
         });
+        isSubmittingRef.current = false;
         setLoading(false);
         return;
       }
     }
 
+    isSubmittingRef.current = false;
     setLoading(false);
     onComplete();
   };
