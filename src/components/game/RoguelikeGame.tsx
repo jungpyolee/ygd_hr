@@ -253,9 +253,63 @@ export default function RoguelikeGame({ onClose, gameConfig }: Props) {
         </div>
       )}
 
+      {/* 무기 슬롯 HUD */}
+      {(phase === "playing" || phase === "levelup") && stats && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-end gap-1.5 pointer-events-none">
+          {Array.from({ length: 4 }).map((_, i) => {
+            const w = stats.weapons[i];
+            return (
+              <div
+                key={i}
+                className="flex flex-col items-center gap-0.5"
+                style={{ opacity: w ? 1 : 0.25 }}
+              >
+                {/* 레벨 바 (5칸) */}
+                <div className="flex gap-[2px]">
+                  {Array.from({ length: 5 }).map((_, lv) => (
+                    <div
+                      key={lv}
+                      className="w-3 h-1 rounded-sm"
+                      style={{
+                        background: w && lv < w.level
+                          ? w.awakened ? "#fbbf24" : "#3b82f6"
+                          : "rgba(255,255,255,0.15)",
+                        boxShadow: w?.awakened && lv < (w?.level ?? 0) ? "0 0 4px #fbbf24" : undefined,
+                      }}
+                    />
+                  ))}
+                </div>
+                {/* 무기 아이콘 */}
+                <div
+                  className="w-10 h-10 rounded-xl flex items-center justify-center text-xl"
+                  style={{
+                    background: w?.awakened
+                      ? "linear-gradient(135deg, rgba(251,191,36,0.3), rgba(245,158,11,0.15))"
+                      : "rgba(0,0,0,0.55)",
+                    border: w?.awakened ? "1px solid rgba(251,191,36,0.6)" : "1px solid rgba(255,255,255,0.12)",
+                    boxShadow: w?.awakened ? "0 0 8px rgba(251,191,36,0.4)" : undefined,
+                  }}
+                >
+                  {w ? w.emoji : <span className="text-white/20 text-sm">+</span>}
+                </div>
+                {/* 레벨 텍스트 */}
+                {w && (
+                  <span
+                    className="text-[9px] font-bold tabular-nums"
+                    style={{ color: w.awakened ? "#fbbf24" : "rgba(255,255,255,0.5)" }}
+                  >
+                    {w.awakened ? "각성" : `Lv.${w.level}`}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* 보스 HP 바 */}
       {(phase === "playing" || phase === "levelup") && stats?.boss && (
-        <div className="absolute bottom-16 left-4 right-4 z-10 pointer-events-none">
+        <div className="absolute bottom-24 left-4 right-4 z-10 pointer-events-none">
           <div className="flex items-center gap-2 mb-1">
             <span className="text-lg">{stats.boss.emoji}</span>
             <span className="text-white font-black text-sm">{stats.boss.name}</span>

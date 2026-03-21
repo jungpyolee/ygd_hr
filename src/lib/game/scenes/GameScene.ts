@@ -13,6 +13,27 @@ const PLAYER_MAX_HP = 100;
 
 const EXP_PER_LEVEL = [0, 15, 35, 65, 105, 160, 230, 320, 430, 560, 720];
 
+const MAX_WEAPON_SLOTS = 4;  // 장착 가능한 최대 무기 종류
+const MAX_WEAPON_LEVEL = 5;  // 무기 최대 레벨 (이 레벨에서 각성)
+
+// 각성 정보: 레벨 5 도달 시 적용되는 스킬 이름 / 설명
+const AWAKENING_INFO: Record<string, { label: string; emoji: string; description: string }> = {
+  hairball: { label: "삼중 추적탄", emoji: "🔱", description: "가장 가까운 적 3마리 동시 추적" },
+  scratch:  { label: "폭풍 파동",   emoji: "🌀", description: "360도 12방향 전방위 발사" },
+  fishbomb: { label: "핵 연어",     emoji: "☢️", description: "폭발 범위 3배, 연쇄 충격" },
+  whisker:  { label: "X자 레이저",  emoji: "✖️", description: "4방향 동시 관통 빔" },
+  meow:     { label: "초음파 포효", emoji: "📡", description: "16방향 + 이동속도 감소" },
+  nap:      { label: "마취 장판",   emoji: "😴", description: "범위 3배 + 강력한 지속 데미지" },
+};
+
+// 패시브 업그레이드 옵션 (슬롯/레벨 꽉 찼을 때 제시)
+const PASSIVE_UPGRADES: UpgradeOption[] = [
+  { type: "passive", passiveId: "hp_regen",  label: "긴급 회복",  description: "즉시 HP 20% 회복",    emoji: "💚" },
+  { type: "passive", passiveId: "speed_up",  label: "질풍",       description: "이동속도 +10%",        emoji: "💨" },
+  { type: "passive", passiveId: "atk_power", label: "전투 기운",  description: "전체 공격력 +15%",     emoji: "⚔️" },
+  { type: "passive", passiveId: "exp_boost", label: "집중력",     description: "EXP 획득량 +20%",      emoji: "🌟" },
+];
+
 // ─── 게임 설정 (캐릭터 타입 + 상점 버프) ───────
 export interface GameConfig {
   catType: "persian" | "scottish" | "abyssinian" | "munchkin";
@@ -120,9 +141,19 @@ export interface WeaponConfig {
   range: number;
   projectileSpeed: number;
   level: number;
+  awakened: boolean; // 레벨 5 도달 시 true
 }
 
-const BASE_WEAPONS: Omit<WeaponConfig, "level">[] = [
+// HUD 표시용 무기 상태
+export interface WeaponStatusInfo {
+  id: string;
+  name: string;
+  emoji: string;
+  level: number;
+  awakened: boolean;
+}
+
+const BASE_WEAPONS: Omit<WeaponConfig, "level" | "awakened">[] = [
   { id: "hairball",  name: "헤어볼",      emoji: "🐾", description: "가장 가까운 적 추적", damage: 20, cooldown: 800,  range: 300, projectileSpeed: 220 },
   { id: "scratch",   name: "발톱 파동",   emoji: "✨", description: "부채꼴 근거리 공격", damage: 15, cooldown: 600,  range: 140, projectileSpeed: 0   },
   { id: "fishbomb",  name: "생선 폭탄",   emoji: "🐟", description: "AoE 폭발",           damage: 35, cooldown: 2000, range: 400, projectileSpeed: 180 },
@@ -163,6 +194,7 @@ export interface GameStats {
   coins: number;
   nextBossIn: number; // 다음 보스까지 남은 웨이브 수
   boss: BossStatus | null;
+  weapons: WeaponStatusInfo[]; // 장착 무기 슬롯
 }
 
 // ─── GameScene ───────────────────────────────
@@ -235,6 +267,9 @@ export default class GameScene extends Phaser.Scene {
   private startTime = 0;
   private elapsed = 0;
   private score = 0;
+
+  // 패시브 런타임 배율 (레벨업 패시브로 누적)
+  private runtimeExpMulti = 1.0;
 
   // 일시정지 (레벨업 모달 중)
   private paused = false;
@@ -677,10 +712,9 @@ export default class GameScene extends Phaser.Scene {
   private equipWeapon(id: string) {
     const base = BASE_WEAPONS.find(w => w.id === id);
     if (!base) return;
-    // 버프 적용
-    const damage  = Math.round(base.damage * this.config.buffs.damageMulti);
+    const damage   = Math.round(base.damage * this.config.buffs.damageMulti);
     const cooldown = Math.round(base.cooldown / this.config.buffs.attackSpeedMulti);
-    const weapon: WeaponConfig = { ...base, damage, cooldown, level: 1 };
+    const weapon: WeaponConfig = { ...base, damage, cooldown, level: 1, awakened: false };
     this.equippedWeapons.push(weapon);
     this.startWeaponTimer(weapon);
   }
@@ -698,6 +732,10 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private fireWeapon(weapon: WeaponConfig) {
+    if (weapon.awakened) {
+      this.fireAwakenedWeapon(weapon);
+      return;
+    }
     switch (weapon.id) {
       case "hairball":  this.fireTracking(weapon);  break;
       case "scratch":   this.fireFan(weapon);        break;
@@ -706,6 +744,124 @@ export default class GameScene extends Phaser.Scene {
       case "meow":      this.firePulse(weapon);      break;
       case "nap":       this.fireAura(weapon);       break;
     }
+  }
+
+  // ─── 각성 발사 ────────────────────────────
+
+  private fireAwakenedWeapon(weapon: WeaponConfig) {
+    switch (weapon.id) {
+      case "hairball":  this.fireAwakenedHairball(weapon); break;
+      case "scratch":   this.fireAwakenedScratch(weapon);  break;
+      case "fishbomb":  this.fireAwakenedFishbomb(weapon); break;
+      case "whisker":   this.fireAwakenedWhisker(weapon);  break;
+      case "meow":      this.fireAwakenedMeow(weapon);     break;
+      case "nap":       this.fireAwakenedNap(weapon);      break;
+    }
+  }
+
+  /** 삼중 추적탄: 가장 가까운 적 최대 3마리 동시 추적 */
+  private fireAwakenedHairball(w: WeaponConfig) {
+    const sorted = (this.enemies.getChildren() as Phaser.GameObjects.Image[])
+      .slice()
+      .sort((a, b) =>
+        Phaser.Math.Distance.Between(this.player.x, this.player.y, a.x, a.y) -
+        Phaser.Math.Distance.Between(this.player.x, this.player.y, b.x, b.y)
+      );
+    const targets = sorted.slice(0, 3);
+    if (targets.length === 0) return;
+    for (let i = 0; i < 3; i++) {
+      const target = targets[i] ?? targets[0];
+      const proj = this.add.text(this.player.x, this.player.y, "🔱", { fontSize: "20px" }).setOrigin(0.5);
+      (proj as any).damage   = w.damage;
+      (proj as any).targetX  = target.x;
+      (proj as any).targetY  = target.y;
+      (proj as any).speed    = w.projectileSpeed;
+      (proj as any).type     = "tracking";
+      (proj as any).piercing = true;
+      (proj as any).hit      = new Set();
+      this.projectiles.add(proj);
+    }
+  }
+
+  /** 폭풍 파동: 360도 12방향 발사 */
+  private fireAwakenedScratch(w: WeaponConfig) {
+    for (let i = 0; i < 12; i++) {
+      const rad = Phaser.Math.DegToRad(i * 30);
+      const proj = this.add.text(this.player.x, this.player.y, "🌀", { fontSize: "18px" }).setOrigin(0.5);
+      (proj as any).damage   = w.damage;
+      (proj as any).vx       = Math.cos(rad) * 320;
+      (proj as any).vy       = Math.sin(rad) * 320;
+      (proj as any).type     = "piercing";
+      (proj as any).maxDist  = w.range * 1.6;
+      (proj as any).traveled = 0;
+      (proj as any).hit      = new Set();
+      this.projectiles.add(proj);
+    }
+  }
+
+  /** 핵 연어: 폭발 범위 3배 */
+  private fireAwakenedFishbomb(w: WeaponConfig) {
+    const target = this.getNearestEnemy();
+    if (!target) return;
+    const proj = this.add.text(this.player.x, this.player.y, "☢️", { fontSize: "26px" }).setOrigin(0.5);
+    (proj as any).damage       = w.damage;
+    (proj as any).targetX      = target.x;
+    (proj as any).targetY      = target.y;
+    (proj as any).speed        = w.projectileSpeed;
+    (proj as any).type         = "bomb";
+    (proj as any).explodeRange = 240;
+    this.projectiles.add(proj);
+  }
+
+  /** X자 레이저: 4방향 동시 관통 빔 */
+  private fireAwakenedWhisker(w: WeaponConfig) {
+    const base = this.getAngleToNearest() ?? 0;
+    [0, 90, 180, 270].forEach(offset => {
+      const rad = Phaser.Math.DegToRad(base + offset);
+      const proj = this.add.text(this.player.x, this.player.y, "✖️", { fontSize: "20px" }).setOrigin(0.5);
+      (proj as any).damage   = w.damage;
+      (proj as any).vx       = Math.cos(rad) * w.projectileSpeed;
+      (proj as any).vy       = Math.sin(rad) * w.projectileSpeed;
+      (proj as any).type     = "piercing";
+      (proj as any).maxDist  = w.range;
+      (proj as any).traveled = 0;
+      (proj as any).hit      = new Set();
+      this.projectiles.add(proj);
+    });
+  }
+
+  /** 초음파 포효: 16방향 발사 + 이동속도 감소 */
+  private fireAwakenedMeow(w: WeaponConfig) {
+    for (let i = 0; i < 16; i++) {
+      const rad = Phaser.Math.DegToRad(i * 22.5);
+      const proj = this.add.text(this.player.x, this.player.y, "📡", { fontSize: "18px" }).setOrigin(0.5);
+      (proj as any).damage    = w.damage;
+      (proj as any).vx        = Math.cos(rad) * w.projectileSpeed * 1.3;
+      (proj as any).vy        = Math.sin(rad) * w.projectileSpeed * 1.3;
+      (proj as any).type      = "piercing";
+      (proj as any).maxDist   = w.range * 1.5;
+      (proj as any).traveled  = 0;
+      (proj as any).hit       = new Set();
+      (proj as any).slowOnHit = true;
+      this.projectiles.add(proj);
+    }
+  }
+
+  /** 마취 장판: 범위 3배 + 강한 지속 데미지 */
+  private fireAwakenedNap(w: WeaponConfig) {
+    const range = w.range * 3;
+    (this.enemies.getChildren() as Phaser.GameObjects.Image[]).forEach(e => {
+      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, e.x, e.y);
+      if (dist <= range) {
+        this.hitEnemy(e, w.damage * 4);
+        const origSpeed = (e as any).speed;
+        (e as any).speed = Math.round(origSpeed * 0.25);
+        e.setAlpha(0.35);
+        this.time.delayedCall(2500, () => {
+          if (e.active) { (e as any).speed = origSpeed; e.setAlpha(1); }
+        });
+      }
+    });
   }
 
   private fireTracking(w: WeaponConfig) {
@@ -902,7 +1058,7 @@ export default class GameScene extends Phaser.Scene {
 
   // ─── 경험치 / 레벨업 ─────────────────────
   private gainExp(amount: number) {
-    this.exp += Math.round(amount * this.config.buffs.expMulti);
+    this.exp += Math.round(amount * this.config.buffs.expMulti * this.runtimeExpMulti);
     const nextExp = EXP_PER_LEVEL[Math.min(this.level, EXP_PER_LEVEL.length - 1)];
     if (this.exp >= nextExp) {
       this.exp -= nextExp;
@@ -930,27 +1086,37 @@ export default class GameScene extends Phaser.Scene {
     const opts: UpgradeOption[] = [];
     const equipped = new Set(this.equippedWeapons.map(w => w.id));
 
-    const newWeapons = BASE_WEAPONS.filter(w => !equipped.has(w.id));
-    const pick = Phaser.Utils.Array.Shuffle([...newWeapons]).slice(0, 2);
-    pick.forEach(w => {
-      opts.push({
-        type: "weapon_new",
-        weaponId: w.id,
-        label: w.name,
-        description: w.description,
-        emoji: w.emoji,
+    // ① 신규 무기 (슬롯 여유가 있을 때만)
+    if (this.equippedWeapons.length < MAX_WEAPON_SLOTS) {
+      const newWeapons = BASE_WEAPONS.filter(w => !equipped.has(w.id));
+      const picks = Phaser.Utils.Array.Shuffle([...newWeapons]).slice(0, 2);
+      picks.forEach(w => {
+        opts.push({ type: "weapon_new", weaponId: w.id, label: w.name, description: w.description, emoji: w.emoji });
       });
-    });
+    }
 
-    if (this.equippedWeapons.length > 0) {
-      const upgrade = Phaser.Utils.Array.GetRandom(this.equippedWeapons);
+    // ② 강화 가능 무기 (레벨 < MAX인 것 중 랜덤 1개)
+    const upgradable = this.equippedWeapons.filter(w => w.level < MAX_WEAPON_LEVEL);
+    if (upgradable.length > 0) {
+      const upgrade = Phaser.Utils.Array.GetRandom(upgradable);
+      const toAwaken = upgrade.level === MAX_WEAPON_LEVEL - 1;
+      const awakInfo = AWAKENING_INFO[upgrade.id];
       opts.push({
         type: "weapon_up",
         weaponId: upgrade.id,
-        label: `${upgrade.name} 강화`,
-        description: `데미지 +25%, 쿨다운 -10%`,
-        emoji: upgrade.emoji,
+        label: toAwaken ? `✨ ${awakInfo?.label ?? upgrade.name} 각성` : `${upgrade.name} Lv.${upgrade.level + 1}`,
+        description: toAwaken
+          ? `각성: ${awakInfo?.description ?? "스킬이 강력해져요!"}`
+          : `데미지 +25%, 쿨다운 -10%`,
+        emoji: toAwaken ? (awakInfo?.emoji ?? "💥") : upgrade.emoji,
       });
+    }
+
+    // ③ 패시브 (옵션이 3개 미만이면 보충)
+    const passivePool = Phaser.Utils.Array.Shuffle([...PASSIVE_UPGRADES]);
+    let pIdx = 0;
+    while (opts.length < 3 && pIdx < passivePool.length) {
+      opts.push(passivePool[pIdx++]);
     }
 
     return Phaser.Utils.Array.Shuffle(opts).slice(0, 3);
@@ -960,15 +1126,55 @@ export default class GameScene extends Phaser.Scene {
   public applyUpgrade(option: UpgradeOption) {
     if (option.type === "weapon_new" && option.weaponId) {
       this.equipWeapon(option.weaponId);
+
     } else if (option.type === "weapon_up" && option.weaponId) {
       const w = this.equippedWeapons.find(x => x.id === option.weaponId);
-      if (w) {
+      if (w && w.level < MAX_WEAPON_LEVEL) {
         w.damage   = Math.round(w.damage * 1.25);
         w.cooldown = Math.round(w.cooldown * 0.9);
+        w.level++;
+        if (w.level >= MAX_WEAPON_LEVEL) {
+          w.awakened = true;
+          this.triggerAwakening(w);
+        }
         this.startWeaponTimer(w);
+      }
+
+    } else if (option.type === "passive" && option.passiveId) {
+      switch (option.passiveId) {
+        case "hp_regen":
+          this.playerHp = Math.min(this.playerMaxHp, this.playerHp + Math.round(this.playerMaxHp * 0.20));
+          break;
+        case "speed_up":
+          this.playerSpeed *= 1.10;
+          break;
+        case "atk_power":
+          this.equippedWeapons.forEach(w => { w.damage = Math.round(w.damage * 1.15); });
+          break;
+        case "exp_boost":
+          this.runtimeExpMulti *= 1.20;
+          break;
       }
     }
     this.paused = false;
+  }
+
+  /** 각성 연출 */
+  private triggerAwakening(weapon: WeaponConfig) {
+    this.cameras.main.flash(600, 255, 200, 0);
+    const info = AWAKENING_INFO[weapon.id];
+    const label = this.add.text(
+      this.player.x, this.player.y - 70,
+      `✨ ${info?.label ?? weapon.name} 각성!`,
+      { fontSize: "20px", color: "#fbbf24", fontStyle: "bold", stroke: "#000000", strokeThickness: 4 },
+    ).setOrigin(0.5).setDepth(100);
+    this.tweens.add({
+      targets: label,
+      y: label.y - 90,
+      alpha: 0,
+      duration: 2200,
+      onComplete: () => label.destroy(),
+    });
   }
 
   // ─── 플레이어 피격 ────────────────────────
@@ -1216,6 +1422,12 @@ export default class GameScene extends Phaser.Scene {
       const dist = Phaser.Math.Distance.Between(proj.x, proj.y, e.x, e.y);
       if (dist < 28) {
         this.hitEnemy(e, (proj as any).damage);
+        // 초음파 포효 각성: 적 이동속도 감소
+        if ((proj as any).slowOnHit && e.active) {
+          const origSpeed = (e as any).speed;
+          (e as any).speed = Math.round(origSpeed * 0.5);
+          this.time.delayedCall(1500, () => { if (e.active) (e as any).speed = origSpeed; });
+        }
         if (!piercing) {
           if (proj.active) { proj.destroy(); this.projectiles.remove(proj); }
         } else {
@@ -1332,6 +1544,9 @@ export default class GameScene extends Phaser.Scene {
       coins:      this.coinsThisRun,
       nextBossIn: this.isBossWave ? 0 : nextBoss,
       boss:       this.bossStatus,
+      weapons:    this.equippedWeapons.map(w => ({
+        id: w.id, name: w.name, emoji: w.emoji, level: w.level, awakened: w.awakened,
+      })),
     } satisfies GameStats);
   }
 }
