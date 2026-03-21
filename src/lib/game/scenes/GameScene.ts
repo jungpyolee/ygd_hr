@@ -36,7 +36,7 @@ const PASSIVE_UPGRADES: UpgradeOption[] = [
 
 // ─── 게임 설정 (캐릭터 타입 + 상점 버프) ───────
 export interface GameConfig {
-  catType: "persian" | "scottish" | "abyssinian" | "munchkin";
+  catType: "persian" | "scottish" | "abyssinian" | "munchkin" | "doujeonku" | "bomdong" | "buttertteok";
   buffs: {
     hpBonus: number;           // 시작 HP 추가량 (기본 0)
     damageMulti: number;       // 공격력 배율 (기본 1.0)
@@ -49,6 +49,8 @@ export interface GameConfig {
     hasPiercing: boolean;      // 관통력
     startProjectiles: number;  // 시작 투사체 수 (기본 1, 먼치킨 2)
     healMulti: number;         // 레벨업 회복 배율 (기본 1.0)
+    extraWeaponSlot: boolean;  // 봄동비빔밥: 무기 슬롯 +1
+    counterShockwave: boolean; // 두쫀쿠: 피해 누적 시 반격 충격파
   };
 }
 
@@ -66,12 +68,14 @@ const DEFAULT_CONFIG: GameConfig = {
     hasPiercing: false,
     startProjectiles: 1,
     healMulti: 1.0,
+    extraWeaponSlot: false,
+    counterShockwave: false,
   },
 };
 
 // ─── 적 타입 ────────────────────────────────
-type EnemyType = "rat" | "fast_rat" | "fat_rat" | "ranged_rat" | "ghost_rat";
-type BossType  = "boss_king" | "boss_wizard" | "boss_twins";
+type EnemyType = "rat" | "fast_rat" | "fat_rat" | "ranged_rat" | "ghost_rat" | "mini_gangjeong";
+type BossType  = "boss_king" | "boss_wizard" | "boss_twins" | "boss_gangjeong" | "boss_sikhye" | "boss_tteok";
 
 // 보스 상태 (React에 전달)
 export interface BossStatus {
@@ -83,18 +87,22 @@ export interface BossStatus {
 
 // 일반 적 스펙 — 다과의 습격
 const ENEMY_SPECS: Record<EnemyType, { textureKey: string; name: string; hp: number; speed: number; damage: number; scale: number }> = {
-  rat:        { textureKey: "daegwa_yakgwa",   name: "약과",     hp: 18,  speed: 70,  damage: 4,  scale: 1.0 },
-  fast_rat:   { textureKey: "daegwa_omija",    name: "오미자청", hp: 12,  speed: 130, damage: 3,  scale: 0.8 },
-  fat_rat:    { textureKey: "daegwa_yanggang", name: "왕양갱",   hp: 55,  speed: 45,  damage: 6,  scale: 1.3 },
-  ranged_rat: { textureKey: "daegwa_jujube",   name: "대추탄",   hp: 20,  speed: 50,  damage: 4,  scale: 0.9 },
-  ghost_rat:  { textureKey: "daegwa_juak",     name: "유령주악", hp: 25,  speed: 90,  damage: 5,  scale: 1.0 },
+  rat:           { textureKey: "daegwa_yakgwa",    name: "약과",      hp: 18,  speed: 70,  damage: 4,  scale: 1.0 },
+  fast_rat:      { textureKey: "daegwa_omija",     name: "오미자청",  hp: 12,  speed: 130, damage: 3,  scale: 0.8 },
+  fat_rat:       { textureKey: "daegwa_yanggang",  name: "왕양갱",    hp: 55,  speed: 45,  damage: 6,  scale: 1.3 },
+  ranged_rat:    { textureKey: "daegwa_jujube",    name: "대추탄",    hp: 20,  speed: 50,  damage: 4,  scale: 0.9 },
+  ghost_rat:     { textureKey: "daegwa_juak",      name: "유령주악",  hp: 25,  speed: 90,  damage: 5,  scale: 1.0 },
+  mini_gangjeong:{ textureKey: "daegwa_gangjeong", name: "미니 강정", hp: 60,  speed: 110, damage: 5,  scale: 0.8 },
 };
 
 // 보스 스펙
 const BOSS_SPECS: Record<BossType, { textureKey: string; name: string; hp: number; speed: number; damage: number; scale: number }> = {
-  boss_king:   { textureKey: "daegwa_kumquat",  name: "금귤 대왕",       hp: 800, speed: 60,  damage: 8,  scale: 2.5 },
-  boss_wizard: { textureKey: "daegwa_dasik",    name: "다식 술사",       hp: 700, speed: 50,  damage: 7,  scale: 2.0 },
-  boss_twins:  { textureKey: "daegwa_pecan",    name: "피칸&호두 쌍둥이", hp: 500, speed: 80,  damage: 7,  scale: 1.8 },
+  boss_king:      { textureKey: "daegwa_kumquat",   name: "금귤 대왕",       hp: 800,  speed: 60,  damage: 8,  scale: 2.5 },
+  boss_wizard:    { textureKey: "daegwa_dasik",     name: "다식 술사",       hp: 700,  speed: 50,  damage: 7,  scale: 2.0 },
+  boss_twins:     { textureKey: "daegwa_pecan",     name: "피칸&호두 쌍둥이", hp: 500,  speed: 80,  damage: 7,  scale: 1.8 },
+  boss_gangjeong: { textureKey: "daegwa_gangjeong", name: "강정 군주",       hp: 1200, speed: 55,  damage: 9,  scale: 2.4 },
+  boss_sikhye:    { textureKey: "daegwa_sikhye",    name: "식혜 대마법사",   hp: 1100, speed: 45,  damage: 8,  scale: 2.1 },
+  boss_tteok:     { textureKey: "daegwa_tteok",     name: "떡 거인",         hp: 1800, speed: 35,  damage: 12, scale: 3.0 },
 };
 const BOSS_TWINS_TEXTURE2 = "daegwa_walnut";
 
@@ -107,6 +115,9 @@ function getEnemyTypesForWave(wave: number): EnemyType[] {
   if (wave >= 10) types.push("ghost_rat");
   return types;
 }
+
+// 미니 강정 스펙 (강정 군주 사망 후 소환)
+const MINI_GANGJEONG_SPEC = { textureKey: "daegwa_gangjeong", name: "미니 강정", hp: 60, speed: 110, damage: 5, scale: 0.8 };
 
 // 웨이브 스케일링 계수
 function getWaveScale(wave: number): number {
@@ -234,8 +245,17 @@ export default class GameScene extends Phaser.Scene {
   private bossCharging = false;
   private bossChargeTimer?: Phaser.Time.TimerEvent;
   private bossWizardTimer?: Phaser.Time.TimerEvent;
+  private bossSikhyeTimer?: Phaser.Time.TimerEvent;
+  private bossTteokTimer?: Phaser.Time.TimerEvent;
   private bossStatus: BossStatus | null = null;
   private bossHpGraphics?: Phaser.GameObjects.Graphics;
+
+  // 식혜 보스 — 독 웅덩이
+  private poisonPuddles!: Phaser.GameObjects.Group;
+
+  // 두쫀쿠 — 반격 피해 누적
+  private counterDmgAccum = 0;
+  private readonly COUNTER_THRESHOLD = 30;
 
   // 코인
   private coinsThisRun = 0;
@@ -302,6 +322,9 @@ export default class GameScene extends Phaser.Scene {
     this.load.svg("daegwa_dasik",    "/daegwa/06-dasik.svg");
     this.load.svg("daegwa_pecan",    "/daegwa/04-pecan.svg");
     this.load.svg("daegwa_walnut",   "/daegwa/05-walnut.svg");
+    this.load.svg("daegwa_gangjeong", "/daegwa/11-gangjeong.svg");
+    this.load.svg("daegwa_sikhye",   "/daegwa/12-sikhye.svg");
+    this.load.svg("daegwa_tteok",    "/daegwa/13-tteok.svg");
     this.load.svg("game_coin",       "/game/coin.svg");
     this.load.svg("game_exp",        "/game/exp-orb.svg");
   }
@@ -313,10 +336,13 @@ export default class GameScene extends Phaser.Scene {
 
     // config 기반 초기화
     const catEmojis: Record<GameConfig["catType"], string> = {
-      persian:    "🐱",
-      scottish:   "😺",
-      abyssinian: "😸",
-      munchkin:   "🐈",
+      persian:     "🐱",
+      scottish:    "😺",
+      abyssinian:  "😸",
+      munchkin:    "🐈",
+      doujeonku:   "🍘",
+      bomdong:     "🥗",
+      buttertteok: "🧈",
     };
 
     // 배경 레이어
@@ -324,10 +350,11 @@ export default class GameScene extends Phaser.Scene {
     this.drawDecorations();
 
     // 그룹 초기화
-    this.enemies     = this.add.group();
-    this.projectiles = this.add.group();
-    this.expOrbs     = this.add.group();
-    this.coinOrbs    = this.add.group();
+    this.enemies      = this.add.group();
+    this.projectiles  = this.add.group();
+    this.expOrbs      = this.add.group();
+    this.coinOrbs     = this.add.group();
+    this.poisonPuddles = this.add.group();
 
     // HP 설정
     this.playerMaxHp = PLAYER_MAX_HP + this.config.buffs.hpBonus;
@@ -352,6 +379,10 @@ export default class GameScene extends Phaser.Scene {
     this.equipWeapon("hairball");
     // 먼치킨: 투사체 2개 (scratch 추가 장착으로 표현)
     if (this.config.catType === "munchkin" && this.config.buffs.startProjectiles >= 2) {
+      this.equipWeapon("scratch");
+    }
+    // 봄동비빔밥: 두 번째 랜덤 무기로 시작
+    if (this.config.catType === "bomdong") {
       this.equipWeapon("scratch");
     }
 
@@ -586,7 +617,14 @@ export default class GameScene extends Phaser.Scene {
 
   // ─── 보스 스폰 ───────────────────────────
   private spawnBoss(waveNum: number) {
-    const bossTypes: BossType[] = ["boss_king", "boss_wizard", "boss_twins"];
+    const bossTypes: BossType[] = [
+      "boss_king",      // wave 5
+      "boss_wizard",    // wave 10
+      "boss_twins",     // wave 15
+      "boss_gangjeong", // wave 20
+      "boss_sikhye",    // wave 25
+      "boss_tteok",     // wave 30+
+    ];
     const bossIdx = Math.floor((waveNum / 5 - 1) % bossTypes.length);
     const bossType = bossTypes[bossIdx];
     const spec = BOSS_SPECS[bossType];
@@ -612,9 +650,12 @@ export default class GameScene extends Phaser.Scene {
     this.bossMaxHp  = this.bossHp;
     this.bossPhase2 = false;
     const bossEmoji: Record<BossType, string> = {
-      boss_king:   "🍊",
-      boss_wizard: "🍡",
-      boss_twins:  "🥜",
+      boss_king:      "🍊",
+      boss_wizard:    "🍡",
+      boss_twins:     "🥜",
+      boss_gangjeong: "🌰",
+      boss_sikhye:    "🍵",
+      boss_tteok:     "🏯",
     };
     this.bossStatus = {
       name:  spec.name,
@@ -649,7 +690,6 @@ export default class GameScene extends Phaser.Scene {
         loop: true,
         callback: () => {
           if (!this.paused && this.currentBoss && !this.bossPhase2) {
-            // HP 50% 이하 시 phase2
             if (this.bossHp <= this.bossMaxHp * 0.5) {
               this.bossPhase2 = true;
             }
@@ -657,6 +697,30 @@ export default class GameScene extends Phaser.Scene {
           if (!this.paused && this.currentBoss && this.bossPhase2) {
             this.startBossCharge();
           }
+        },
+      });
+    }
+
+    // 식혜 기믹: 3.5초마다 독 웅덩이
+    if (bossType === "boss_sikhye") {
+      this.bossSikhyeTimer?.destroy();
+      this.bossSikhyeTimer = this.time.addEvent({
+        delay: 3500,
+        loop: true,
+        callback: () => {
+          if (!this.paused && this.currentBoss) this.bossSikhyeAttack();
+        },
+      });
+    }
+
+    // 떡 기믹: 4초마다 충격파
+    if (bossType === "boss_tteok") {
+      this.bossTteokTimer?.destroy();
+      this.bossTteokTimer = this.time.addEvent({
+        delay: 4000,
+        loop: true,
+        callback: () => {
+          if (!this.paused && this.currentBoss) this.bossTteokShockwave();
         },
       });
     }
@@ -710,6 +774,150 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  // ─── 강정 군주: 미니 강정 소환 ───────────────
+  private spawnMiniGangjeong(x: number, y: number) {
+    const spec = MINI_GANGJEONG_SPEC;
+    const enemy = this.add.image(x, y, spec.textureKey);
+    enemy.setDisplaySize(Math.round(60 * spec.scale), Math.round(60 * spec.scale));
+    enemy.setTint(0xffd700);
+    (enemy as any).hp       = spec.hp;
+    (enemy as any).maxHp    = spec.hp;
+    (enemy as any).speed    = spec.speed;
+    (enemy as any).damage   = spec.damage;
+    (enemy as any).type     = "mini_gangjeong";
+    (enemy as any).isBoss   = false;
+    (enemy as any).isElite  = true;
+    this.enemies.add(enemy);
+  }
+
+  // ─── 식혜 대마법사: 독 웅덩이 생성 ───────────
+  private bossSikhyeAttack() {
+    // 플레이어 위치에 독 웅덩이 생성
+    const puddle = this.add.graphics().setDepth(3);
+    puddle.fillStyle(0x22cc44, 0.45);
+    puddle.fillCircle(0, 0, 55);
+    puddle.setPosition(this.player.x, this.player.y);
+    (puddle as any).lifeRemain = 6; // 6초간 유지
+    this.poisonPuddles.add(puddle);
+
+    // 생성 연출
+    puddle.setAlpha(0);
+    this.tweens.add({ targets: puddle, alpha: 1, duration: 400 });
+
+    // 6초 후 페이드 아웃 후 제거
+    this.time.delayedCall(5600, () => {
+      if (!puddle.active) return;
+      this.tweens.add({
+        targets: puddle, alpha: 0, duration: 400,
+        onComplete: () => {
+          this.poisonPuddles.remove(puddle);
+          puddle.destroy();
+        },
+      });
+    });
+  }
+
+  // ─── 독 웅덩이 피해 체크 (update에서 호출) ────
+  private checkPoisonPuddles() {
+    const puddles = this.poisonPuddles.getChildren() as Phaser.GameObjects.Graphics[];
+    puddles.forEach(p => {
+      const dist = Phaser.Math.Distance.Between(p.x, p.y, this.player.x, this.player.y);
+      if (dist < 55) {
+        // 초당 8 피해 (update당 delta 기반으로 누적)
+        (p as any).dmgAccum = ((p as any).dmgAccum ?? 0) + 1;
+        if ((p as any).dmgAccum >= 8) {
+          (p as any).dmgAccum = 0;
+          this.takeDamage(8);
+        }
+      }
+    });
+  }
+
+  // ─── 떡 거인: 충격파 + 넉백 ─────────────────
+  private bossTteokShockwave() {
+    if (!this.currentBoss) return;
+    const bx = this.currentBoss.x;
+    const by = this.currentBoss.y;
+
+    // 충격파 시각 효과
+    const ring = this.add.graphics().setDepth(10);
+    ring.lineStyle(6, 0xff4400, 0.9);
+    ring.strokeCircle(bx, by, 10);
+
+    this.tweens.add({
+      targets: { r: 10 },
+      r: 280,
+      duration: 600,
+      onUpdate: (tween) => {
+        const r = (tween.targets[0] as any).r as number;
+        ring.clear();
+        ring.lineStyle(6, 0xff4400, 1 - r / 280);
+        ring.strokeCircle(bx, by, r);
+      },
+      onComplete: () => ring.destroy(),
+    });
+
+    // 플레이어가 범위(280px) 안이면 피해 + 넉백
+    const dist = Phaser.Math.Distance.Between(bx, by, this.player.x, this.player.y);
+    if (dist < 280) {
+      this.takeDamage(BOSS_SPECS.boss_tteok.damage);
+      // 넉백
+      const angle = Math.atan2(this.player.y - by, this.player.x - bx);
+      const knockDist = 120;
+      this.tweens.add({
+        targets: this.player,
+        x: this.player.x + Math.cos(angle) * knockDist,
+        y: this.player.y + Math.sin(angle) * knockDist,
+        duration: 200,
+        ease: "Power2",
+      });
+    }
+
+    // 화면 흔들기
+    this.cameras.main.shake(300, 0.012);
+  }
+
+  // ─── 두쫀쿠 반격 충격파 ──────────────────────
+  private triggerCounterShockwave() {
+    // 주변 160px 내 모든 적에게 피해
+    const enemies = this.enemies.getChildren() as Phaser.GameObjects.Image[];
+    let hitCount = 0;
+    enemies.forEach(e => {
+      const dist = Phaser.Math.Distance.Between(e.x, e.y, this.player.x, this.player.y);
+      if (dist < 160) {
+        const dmg = 40;
+        if ((e as any).isBoss) {
+          this.bossHp -= dmg;
+          if (this.bossHp < 0) this.bossHp = 0;
+          if (this.bossHp <= 0) this.killBoss(e);
+        } else {
+          (e as any).hp -= dmg;
+          if ((e as any).hp <= 0) this.killEnemy(e);
+        }
+        hitCount++;
+      }
+    });
+
+    // 시각 효과
+    const ring = this.add.graphics().setDepth(12);
+    this.tweens.add({
+      targets: { r: 0 },
+      r: 160,
+      duration: 350,
+      onUpdate: (tween) => {
+        const r = (tween.targets[0] as any).r as number;
+        ring.clear();
+        ring.lineStyle(5, 0xffa500, 1 - r / 160);
+        ring.strokeCircle(this.player.x, this.player.y, r);
+      },
+      onComplete: () => ring.destroy(),
+    });
+
+    if (hitCount > 0) {
+      this.showFloatingText(this.player.x, this.player.y - 30, `🔥 반격! ×${hitCount}`, "#ff8800", "18px");
+    }
+  }
+
   private killBoss(boss: Phaser.GameObjects.Image) {
     // 코인 3~5 드랍
     const coinCount = Phaser.Math.Between(3, 5);
@@ -721,6 +929,11 @@ export default class GameScene extends Phaser.Scene {
     this.bossHpGraphics = undefined;
     this.bossWizardTimer?.destroy();
     this.bossChargeTimer?.destroy();
+    this.bossSikhyeTimer?.destroy();
+    this.bossTteokTimer?.destroy();
+
+    // 독 웅덩이 정리 (식혜 보스 종료 시)
+    const killedType = this.bossType;
     this.currentBoss = null;
     this.bossStatus  = null;
 
@@ -728,6 +941,19 @@ export default class GameScene extends Phaser.Scene {
     boss.destroy();
 
     this.events.emit(GAME_EVENTS.BOSS_END);
+
+    // 강정 군주 사망 → 미니 강정 3마리 소환
+    if (killedType === "boss_gangjeong") {
+      this.time.delayedCall(400, () => {
+        for (let i = 0; i < 3; i++) {
+          const a = (Math.PI * 2 * i) / 3;
+          this.spawnMiniGangjeong(
+            boss.x + Math.cos(a) * 60,
+            boss.y + Math.sin(a) * 60,
+          );
+        }
+      });
+    }
 
     // waveKills 처리
     this.waveKills++;
@@ -1213,8 +1439,11 @@ export default class GameScene extends Phaser.Scene {
     const opts: UpgradeOption[] = [];
     const equipped = new Set(this.equippedWeapons.map(w => w.id));
 
+    // 봄동비빔밥: 무기 슬롯 +1
+    const maxSlots = MAX_WEAPON_SLOTS + (this.config.buffs.extraWeaponSlot ? 1 : 0);
+
     // ① 신규 무기 (슬롯 여유가 있을 때만)
-    if (this.equippedWeapons.length < MAX_WEAPON_SLOTS) {
+    if (this.equippedWeapons.length < maxSlots) {
       const newWeapons = BASE_WEAPONS.filter(w => !equipped.has(w.id));
       const picks = Phaser.Utils.Array.Shuffle([...newWeapons]).slice(0, 2);
       picks.forEach(w => {
@@ -1317,6 +1546,15 @@ export default class GameScene extends Phaser.Scene {
     }
     this.cameras.main.shake(150, 0.005);
 
+    // 두쫀쿠 — 반격 충격파 (피해 누적 후 자동 발동)
+    if (this.config.buffs.counterShockwave) {
+      this.counterDmgAccum += damage;
+      if (this.counterDmgAccum >= this.COUNTER_THRESHOLD) {
+        this.counterDmgAccum = 0;
+        this.triggerCounterShockwave();
+      }
+    }
+
     if (this.playerHp <= 0) {
       // 부활 목걸이 처리
       if (this.config.buffs.hasRevive && !this.reviveUsed) {
@@ -1336,7 +1574,12 @@ export default class GameScene extends Phaser.Scene {
     this.spawnTimer?.destroy();
     this.bossWizardTimer?.destroy();
     this.bossChargeTimer?.destroy();
+    this.bossSikhyeTimer?.destroy();
+    this.bossTteokTimer?.destroy();
     this.comboTimer?.destroy();
+    // 독 웅덩이 전부 제거
+    this.poisonPuddles.getChildren().forEach(p => p.destroy());
+    this.poisonPuddles.clear(true, true);
     this.weaponTimers.forEach(t => t.destroy());
     this.events.emit(GAME_EVENTS.GAME_OVER, {
       score: this.score,
@@ -1366,6 +1609,7 @@ export default class GameScene extends Phaser.Scene {
     this.collectOrbs();
     this.collectCoins();
     this.checkEnemyPlayerCollision();
+    if (this.bossType === "boss_sikhye") this.checkPoisonPuddles();
     this.emitStats();
   }
 

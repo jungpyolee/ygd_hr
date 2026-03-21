@@ -122,8 +122,8 @@ export async function buyShopItem(itemId: string, cost: number): Promise<{ ok: b
   return { ok: true };
 }
 
-/** 아비시니안 코인 해금 */
-export async function unlockCatWithCoins(cost: number): Promise<{ ok: boolean; reason?: string }> {
+/** 코인으로 캐릭터 해금 (범용) */
+export async function unlockCatWithCoins(cost: number, itemId = "cat_abyssinian"): Promise<{ ok: boolean; reason?: string }> {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, reason: "로그인 필요" };
@@ -139,7 +139,7 @@ export async function unlockCatWithCoins(cost: number): Promise<{ ok: boolean; r
   // game_purchases에 기록 (새로고침 후에도 해금 유지)
   const { error: insertError } = await supabase
     .from("game_purchases")
-    .insert({ user_id: user.id, item_id: "cat_abyssinian" });
+    .insert({ user_id: user.id, item_id: itemId });
   // 이미 해금된 경우(중복) 무시
   if (insertError && !insertError.message.includes("duplicate")) {
     return { ok: false, reason: "해금 저장 실패" };

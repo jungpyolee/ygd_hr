@@ -57,6 +57,33 @@ const CAT_TYPES = [
     unlockCondition: "wave30" as const,
     getStatBonuses: () => ({ hpBonus: 0, damageMulti: 1.0, moveSpeedMulti: 1.0 }),
   },
+  {
+    id: "doujeonku",
+    name: "두쫀쿠",
+    emoji: "🍘",
+    desc: "탱커반격형",
+    detail: "HP +50 · 피해 누적 시 자동 반격",
+    unlockCondition: "play15" as const,
+    getStatBonuses: () => ({ hpBonus: 50, damageMulti: 1.1, moveSpeedMulti: 0.85 }),
+  },
+  {
+    id: "bomdong",
+    name: "봄동비빔밥",
+    emoji: "🥗",
+    desc: "시너지형",
+    detail: "무기 슬롯 +1 · 2종 무기로 시작",
+    unlockCondition: "weapons4" as const,
+    getStatBonuses: () => ({ hpBonus: 0, damageMulti: 1.0, moveSpeedMulti: 1.0 }),
+  },
+  {
+    id: "buttertteok",
+    name: "버터떡",
+    emoji: "🧈",
+    desc: "글래스캐논형",
+    detail: "속도 +25% · 공격력 +25% · HP -30",
+    unlockCondition: "score50k" as const,
+    getStatBonuses: () => ({ hpBonus: -30, damageMulti: 1.25, moveSpeedMulti: 1.25 }),
+  },
 ] as const;
 
 type CatId = (typeof CAT_TYPES)[number]["id"];
@@ -125,17 +152,23 @@ export default function GamePage() {
 
   // ─── 캐릭터 해금 체크 ────────────────────
   function isCatUnlocked(catId: string): boolean {
-    if (catId === "persian")    return true;
-    if (catId === "scottish")   return (profile?.play_count ?? 0) >= 5;
-    if (catId === "abyssinian") return purchases.includes("cat_abyssinian");
-    if (catId === "munchkin")   return (profile?.highest_wave ?? 0) >= 30;
+    if (catId === "persian")     return true;
+    if (catId === "scottish")    return (profile?.play_count ?? 0) >= 5;
+    if (catId === "abyssinian")  return purchases.includes("cat_abyssinian");
+    if (catId === "munchkin")    return (profile?.highest_wave ?? 0) >= 30;
+    if (catId === "doujeonku")   return (profile?.play_count ?? 0) >= 15;
+    if (catId === "bomdong")     return purchases.includes("cat_bomdong");
+    if (catId === "buttertteok") return (profile?.best_run_score ?? 0) >= 50000;
     return false;
   }
 
   function getUnlockHint(catId: string): string {
-    if (catId === "scottish")   return `플레이 ${profile?.play_count ?? 0}/5판`;
-    if (catId === "abyssinian") return "🪙 50코인";
-    if (catId === "munchkin")   return `최고 웨이브 ${profile?.highest_wave ?? 0}/30`;
+    if (catId === "scottish")    return `플레이 ${profile?.play_count ?? 0}/5판`;
+    if (catId === "abyssinian")  return "🪙 50코인";
+    if (catId === "munchkin")    return `최고 웨이브 ${profile?.highest_wave ?? 0}/30`;
+    if (catId === "doujeonku")   return `플레이 ${profile?.play_count ?? 0}/15판`;
+    if (catId === "bomdong")     return "🪙 80코인";
+    if (catId === "buttertteok") return `최고 점수 ${(profile?.best_run_score ?? 0).toLocaleString()}/50,000`;
     return "";
   }
 
@@ -148,6 +181,23 @@ export default function GamePage() {
       setPurchases(p => [...p, "cat_abyssinian"]);
       setProfile(prev => prev ? { ...prev, coins: prev.coins - 50 } : prev);
       toast.success("아비시니안이 해금됐어요! 🎉");
+    } else if (result.reason === "코인 부족") {
+      toast.error("코인이 부족해요.");
+    } else {
+      toast.error(`해금 실패: ${result.reason}`);
+    }
+    setBuying(null);
+  }
+
+  // ─── 봄동비빔밥 해금 ─────────────────────
+  async function handleUnlockBomdong() {
+    if (!profile) return;
+    setBuying("cat_bomdong");
+    const result = await unlockCatWithCoins(80, "cat_bomdong");
+    if (result.ok) {
+      setPurchases(p => [...p, "cat_bomdong"]);
+      setProfile(prev => prev ? { ...prev, coins: prev.coins - 80 } : prev);
+      toast.success("봄동비빔밥이 해금됐어요! 🥗");
     } else if (result.reason === "코인 부족") {
       toast.error("코인이 부족해요.");
     } else {
@@ -195,6 +245,8 @@ export default function GamePage() {
         hasPiercing:      purchases.includes("pierce"),
         startProjectiles: selectedCat === "munchkin" ? 2 : 1,
         healMulti:        purchases.includes("heal_boost") ? 1.5 : 1.0,
+        extraWeaponSlot:  selectedCat === "bomdong",
+        counterShockwave: selectedCat === "doujeonku",
       },
     };
   }
@@ -512,6 +564,21 @@ export default function GamePage() {
                     }}
                   >
                     {buying === "cat_abyssinian" ? "처리 중..." : "🪙 50 UNLOCK"}
+                  </button>
+                )}
+                {/* 봄동비빔밥 해금 버튼 */}
+                {cat.id === "bomdong" && !isCatUnlocked(cat.id) && (
+                  <button
+                    onClick={handleUnlockBomdong}
+                    disabled={buying === "cat_bomdong" || (profile?.coins ?? 0) < 80}
+                    className="mt-1.5 py-2 rounded-lg font-mono text-xs tracking-wider disabled:opacity-30 transition-all active:scale-95"
+                    style={{
+                      background: "rgba(34,197,94,0.15)",
+                      border: "1px solid rgba(34,197,94,0.4)",
+                      color: "#22c55e",
+                    }}
+                  >
+                    {buying === "cat_bomdong" ? "처리 중..." : "🪙 80 UNLOCK"}
                   </button>
                 )}
               </div>
