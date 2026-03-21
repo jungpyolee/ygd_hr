@@ -253,6 +253,46 @@ export default function RoguelikeGame({ onClose, gameConfig }: Props) {
         </div>
       )}
 
+      {/* 콤보 카운터 */}
+      {(phase === "playing" || phase === "levelup") && stats && stats.combo >= 3 && (
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-10 pointer-events-none text-center">
+          <p
+            className="font-black tabular-nums tracking-tight"
+            style={{
+              fontSize: stats.combo >= 15 ? "28px" : stats.combo >= 8 ? "22px" : "18px",
+              color: stats.combo >= 15 ? "#ff4500" : stats.combo >= 8 ? "#f59e0b" : "#facc15",
+              textShadow: "0 0 12px rgba(255,150,0,0.7)",
+            }}
+          >
+            {stats.combo >= 15 ? "🔥 FEVER!" : `${stats.combo} COMBO!`}
+          </p>
+        </div>
+      )}
+
+      {/* 대시 버튼 (모바일) */}
+      {(phase === "playing") && (
+        <button
+          className="absolute right-4 z-20 w-14 h-14 rounded-full flex flex-col items-center justify-center select-none"
+          style={{
+            bottom: "88px",
+            background: (stats?.dashCooldown ?? 0) > 0
+              ? "rgba(255,255,255,0.08)"
+              : "rgba(59,130,246,0.55)",
+            border: "2px solid rgba(255,255,255,0.2)",
+            boxShadow: (stats?.dashCooldown ?? 0) > 0 ? "none" : "0 0 12px rgba(59,130,246,0.4)",
+          }}
+          onTouchStart={e => { e.preventDefault(); sceneRef.current?.triggerDash(); }}
+          onClick={() => sceneRef.current?.triggerDash()}
+        >
+          <span className="text-xl leading-none">💨</span>
+          {(stats?.dashCooldown ?? 0) > 0 && (
+            <span className="text-[10px] text-white/60 font-bold tabular-nums mt-0.5">
+              {Math.ceil(stats!.dashCooldown)}s
+            </span>
+          )}
+        </button>
+      )}
+
       {/* 무기 슬롯 HUD */}
       {(phase === "playing" || phase === "levelup") && stats && (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-end gap-1.5 pointer-events-none">

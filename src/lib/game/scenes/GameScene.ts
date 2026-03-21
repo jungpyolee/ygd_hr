@@ -195,6 +195,8 @@ export interface GameStats {
   nextBossIn: number; // 다음 보스까지 남은 웨이브 수
   boss: BossStatus | null;
   weapons: WeaponStatusInfo[]; // 장착 무기 슬롯
+  combo: number;               // 연속 킬 콤보
+  dashCooldown: number;        // 대시 쿨다운 잔여 초 (0이면 사용 가능)
 }
 
 // ─── GameScene ───────────────────────────────
@@ -270,6 +272,17 @@ export default class GameScene extends Phaser.Scene {
 
   // 패시브 런타임 배율 (레벨업 패시브로 누적)
   private runtimeExpMulti = 1.0;
+
+  // 콤보
+  private combo = 0;
+  private comboTimer?: Phaser.Time.TimerEvent;
+  private readonly COMBO_RESET_MS = 3000;
+
+  // 대시
+  private dashCooldownRemain = 0;
+  private readonly DASH_COOLDOWN_SEC = 4;
+  private readonly DASH_DISTANCE = 280;
+  private isDashing = false;
 
   // 일시정지 (레벨업 모달 중)
   private paused = false;
@@ -396,6 +409,10 @@ export default class GameScene extends Phaser.Scene {
       this.joyBase.setVisible(false);
       this.joyKnob.setVisible(false);
     });
+
+    // 대시 — 스페이스바
+    this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE)
+      .on("down", () => this.tryDash());
 
     // 첫 웨이브
     this.startWave(this.wave);
@@ -535,18 +552,34 @@ export default class GameScene extends Phaser.Scene {
     const scaledSpeed  = Math.round(spec.speed * (1 + (waveNum - 1) * 0.05));
     const scaledDamage = Math.round(spec.damage * scale); // damage already /3 in spec
 
-    (enemy as any).hp         = scaledHp;
-    (enemy as any).maxHp      = scaledHp;
-    (enemy as any).speed      = scaledSpeed + Phaser.Math.Between(-5, 5);
-    (enemy as any).damage     = scaledDamage;
-    (enemy as any).type       = enemyType;
+    // 엘리트 판정: 웨이브 3 이상, 보스 웨이브 아님, 15% 확률
+    const isElite = waveNum >= 3 && !this.isBossWave && Math.random() < 0.15;
 
-    if (enemyType === "ghost_rat") {
-      (enemy as any).ghostTimer = 0;
+    let hp    = scaledHp;
+    let speed = scaledSpeed + Phaser.Math.Between(-5, 5);
+    let dmg   = scaledDamage;
+    let dSize = displaySize;
+
+    if (isElite) {
+      hp    = Math.round(hp * 3);
+      speed = Math.round(speed * 1.15);
+      dmg   = Math.round(dmg * 1.5);
+      dSize = Math.round(dSize * 1.45);
+      enemy.setDisplaySize(dSize, dSize);
+      enemy.setTint(0xffd700); // 황금빛
+      (enemy as any).isElite = true;
+    } else {
+      enemy.setDisplaySize(displaySize, displaySize);
     }
-    if (enemyType === "ranged_rat") {
-      (enemy as any).rangedCooldown = 0;
-    }
+
+    (enemy as any).hp     = hp;
+    (enemy as any).maxHp  = hp;
+    (enemy as any).speed  = speed;
+    (enemy as any).damage = dmg;
+    (enemy as any).type   = enemyType;
+
+    if (enemyType === "ghost_rat") (enemy as any).ghostTimer = 0;
+    if (enemyType === "ranged_rat") (enemy as any).rangedCooldown = 0;
 
     this.enemies.add(enemy);
   }
@@ -744,6 +777,53 @@ export default class GameScene extends Phaser.Scene {
       case "meow":      this.firePulse(weapon);      break;
       case "nap":       this.fireAura(weapon);       break;
     }
+  }
+
+  // ─── 대시 ────────────────────────────────
+  public triggerDash() { this.tryDash(); }
+
+  private tryDash() {
+    if (this.dashCooldownRemain > 0 || this.isDashing || this.paused) return;
+
+    // 이동 방향 결정 (키보드 → 조이스틱 → 최근접 적 방향)
+    let dx = 0, dy = 0;
+    if (this.cursors.left.isDown  || this.wasd.left.isDown)  dx -= 1;
+    if (this.cursors.right.isDown || this.wasd.right.isDown) dx += 1;
+    if (this.cursors.up.isDown    || this.wasd.up.isDown)    dy -= 1;
+    if (this.cursors.down.isDown  || this.wasd.down.isDown)  dy += 1;
+    if (dx === 0 && dy === 0 && this.joyActive) { dx = this.joyDirX; dy = this.joyDirY; }
+    if (dx === 0 && dy === 0) {
+      const target = this.getNearestEnemy();
+      if (target) {
+        const ang = Math.atan2(target.y - this.player.y, target.x - this.player.x);
+        dx = Math.cos(ang); dy = Math.sin(ang);
+      } else return;
+    }
+    const len = Math.sqrt(dx * dx + dy * dy);
+    dx /= len; dy /= len;
+
+    this.isDashing = true;
+    this.invincible = true;
+    this.dashCooldownRemain = this.DASH_COOLDOWN_SEC;
+
+    // 잔상 이펙트
+    const afterImg = this.add.text(this.player.x, this.player.y, this.player.text, {
+      fontSize: this.player.style.fontSize as string,
+    }).setOrigin(0.5).setAlpha(0.6).setDepth(this.player.depth - 1);
+    this.tweens.add({ targets: afterImg, alpha: 0, duration: 250, onComplete: () => afterImg.destroy() });
+
+    this.tweens.add({
+      targets: this.player,
+      x: this.player.x + dx * this.DASH_DISTANCE,
+      y: this.player.y + dy * this.DASH_DISTANCE,
+      duration: 180,
+      ease: "Power2",
+      onComplete: () => {
+        this.isDashing = false;
+        this.time.delayedCall(200, () => { this.invincible = false; });
+      },
+    });
+    this.cameras.main.shake(70, 0.003);
   }
 
   // ─── 각성 발사 ────────────────────────────
@@ -986,50 +1066,97 @@ export default class GameScene extends Phaser.Scene {
   }
 
   // ─── 적 처치 ──────────────────────────────
-  private hitEnemy(enemy: Phaser.GameObjects.Image, damage: number) {
-    (enemy as any).hp -= damage;
+  // ─── 크리티컬 판정 ───────────────────────
+  private rollCrit(damage: number): { finalDmg: number; isCrit: boolean } {
+    const critChance = 0.15;
+    if (Math.random() < critChance) return { finalDmg: Math.round(damage * 1.8), isCrit: true };
+    return { finalDmg: damage, isCrit: false };
+  }
+
+  // ─── 플로팅 텍스트 ────────────────────────
+  private showFloatingText(x: number, y: number, text: string, color: string, size: string) {
+    const label = this.add.text(x, y, text, {
+      fontSize: size, color, fontStyle: "bold", stroke: "#000000", strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(60);
     this.tweens.add({
-      targets: enemy,
-      scaleX: 1.3, scaleY: 1.3,
-      duration: 80,
-      yoyo: true,
+      targets: label,
+      y: y - 45,
+      alpha: 0,
+      duration: 850,
+      ease: "Power1",
+      onComplete: () => label.destroy(),
     });
+  }
+
+  private hitEnemy(enemy: Phaser.GameObjects.Image, damage: number) {
+    const isBoss = (enemy as any).isBoss as boolean;
+    const { finalDmg, isCrit } = this.rollCrit(damage);
+
+    (enemy as any).hp -= finalDmg;
+    this.tweens.add({ targets: enemy, scaleX: 1.3, scaleY: 1.3, duration: 80, yoyo: true });
+
+    // 크리티컬 or 보스 피격 → 플로팅 데미지 숫자
+    if (isCrit) {
+      this.showFloatingText(enemy.x, enemy.y - 16, `💥 ${finalDmg}`, "#ff6b35", "17px");
+    } else if (isBoss) {
+      this.showFloatingText(enemy.x, enemy.y - 16, `${finalDmg}`, "#ffffff", "13px");
+    }
 
     if ((enemy as any).hp <= 0) {
-      if ((enemy as any).isBoss) {
-        // 보스 HP 동기화
-        this.bossHp -= damage + (enemy as any).hp; // hp는 이미 음수이므로 더하면 실제 초과 데미지 뺌
+      if (isBoss) {
+        this.bossHp -= finalDmg + (enemy as any).hp;
         if (this.bossHp < 0) this.bossHp = 0;
         this.killBoss(enemy);
       } else {
         this.killEnemy(enemy);
       }
-    } else if ((enemy as any).isBoss) {
-      // 보스 HP 업데이트
-      const prevHp = this.bossHp;
-      this.bossHp = Math.max(0, prevHp - damage);
-      if (this.bossStatus) {
-        this.bossStatus = { ...this.bossStatus, hp: this.bossHp };
-      }
+    } else if (isBoss) {
+      this.bossHp = Math.max(0, this.bossHp - finalDmg);
+      if (this.bossStatus) this.bossStatus = { ...this.bossStatus, hp: this.bossHp };
     }
   }
 
   private killEnemy(enemy: Phaser.GameObjects.Image) {
-    // 경험치 오브 드랍 (SVG)
-    const orb = this.add.image(enemy.x, enemy.y, "game_exp");
-    orb.setDisplaySize(18, 18);
-    (orb as any).value = Math.max(1, Math.floor((3 + this.wave) / 3)); // 경험치 1/3
-    this.expOrbs.add(orb);
+    const isElite = !!(enemy as any).isElite;
 
-    // 코인 드랍 10%
-    const dropChance = 0.10 + this.config.buffs.coinDropBonus;
-    if (Math.random() < dropChance) {
-      this.dropCoin(enemy.x + Phaser.Math.Between(-20, 20), enemy.y + Phaser.Math.Between(-20, 20));
+    // 경험치 오브 드랍
+    const baseExpVal = Math.max(1, Math.floor((3 + this.wave) / 3));
+    const expCount = isElite ? 3 : 1;
+    for (let i = 0; i < expCount; i++) {
+      const orb = this.add.image(
+        enemy.x + Phaser.Math.Between(-18, 18),
+        enemy.y + Phaser.Math.Between(-18, 18),
+        "game_exp",
+      );
+      orb.setDisplaySize(18, 18);
+      (orb as any).value = baseExpVal;
+      this.expOrbs.add(orb);
+    }
+
+    // 코인 드랍: 엘리트는 3~4개 확정, 일반은 10% 확률
+    if (isElite) {
+      const coinCount = Phaser.Math.Between(3, 4);
+      for (let i = 0; i < coinCount; i++) {
+        this.dropCoin(enemy.x + Phaser.Math.Between(-28, 28), enemy.y + Phaser.Math.Between(-28, 28));
+      }
+    } else {
+      const dropChance = 0.10 + this.config.buffs.coinDropBonus;
+      if (Math.random() < dropChance) {
+        this.dropCoin(enemy.x + Phaser.Math.Between(-20, 20), enemy.y + Phaser.Math.Between(-20, 20));
+      }
     }
 
     this.kills++;
     this.waveKills++;
-    this.score += 10 * this.wave;
+
+    // 콤보 업데이트
+    this.combo++;
+    this.comboTimer?.destroy();
+    this.comboTimer = this.time.delayedCall(this.COMBO_RESET_MS, () => { this.combo = 0; });
+
+    // 콤보 보너스 점수
+    const comboBonus = this.combo >= 3 ? Math.round(5 * this.wave * Math.min(this.combo, 20)) : 0;
+    this.score += 10 * this.wave + comboBonus + (isElite ? 30 * this.wave : 0);
 
     // 쌍둥이 처치 시 나머지 speed ×2
     const enemyType = (enemy as any).type as string;
@@ -1183,6 +1310,11 @@ export default class GameScene extends Phaser.Scene {
     this.playerHp -= damage;
     this.invincible = true;
     this.time.delayedCall(250, () => { this.invincible = false; });
+    // 피격 시 콤보 초기화
+    if (this.combo > 0) {
+      this.combo = 0;
+      this.comboTimer?.destroy();
+    }
     this.cameras.main.shake(150, 0.005);
 
     if (this.playerHp <= 0) {
@@ -1204,6 +1336,7 @@ export default class GameScene extends Phaser.Scene {
     this.spawnTimer?.destroy();
     this.bossWizardTimer?.destroy();
     this.bossChargeTimer?.destroy();
+    this.comboTimer?.destroy();
     this.weaponTimers.forEach(t => t.destroy());
     this.events.emit(GAME_EVENTS.GAME_OVER, {
       score: this.score,
@@ -1225,8 +1358,10 @@ export default class GameScene extends Phaser.Scene {
     if (this.paused) return;
 
     const dt = delta / 1000;
-    this.movePlayer(dt);
+    if (this.dashCooldownRemain > 0) this.dashCooldownRemain = Math.max(0, this.dashCooldownRemain - dt);
+    if (!this.isDashing) this.movePlayer(dt);
     this.moveEnemies(dt);
+
     this.moveProjectiles(dt);
     this.collectOrbs();
     this.collectCoins();
@@ -1544,9 +1679,11 @@ export default class GameScene extends Phaser.Scene {
       coins:      this.coinsThisRun,
       nextBossIn: this.isBossWave ? 0 : nextBoss,
       boss:       this.bossStatus,
-      weapons:    this.equippedWeapons.map(w => ({
+      weapons:      this.equippedWeapons.map(w => ({
         id: w.id, name: w.name, emoji: w.emoji, level: w.level, awakened: w.awakened,
       })),
+      combo:        this.combo,
+      dashCooldown: this.dashCooldownRemain,
     } satisfies GameStats);
   }
 }
