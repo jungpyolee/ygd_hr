@@ -71,9 +71,9 @@ const ENEMY_SPECS: Record<EnemyType, { textureKey: string; name: string; hp: num
 
 // 보스 스펙
 const BOSS_SPECS: Record<BossType, { textureKey: string; name: string; hp: number; speed: number; damage: number; scale: number }> = {
-  boss_king:   { textureKey: "daegwa_kumquat",  name: "금귤 대왕",       hp: 400, speed: 60,  damage: 8,  scale: 2.5 },
-  boss_wizard: { textureKey: "daegwa_dasik",    name: "다식 술사",       hp: 350, speed: 50,  damage: 7,  scale: 2.0 },
-  boss_twins:  { textureKey: "daegwa_pecan",    name: "피칸&호두 쌍둥이", hp: 250, speed: 80,  damage: 7,  scale: 1.8 },
+  boss_king:   { textureKey: "daegwa_kumquat",  name: "금귤 대왕",       hp: 800, speed: 60,  damage: 8,  scale: 2.5 },
+  boss_wizard: { textureKey: "daegwa_dasik",    name: "다식 술사",       hp: 700, speed: 50,  damage: 7,  scale: 2.0 },
+  boss_twins:  { textureKey: "daegwa_pecan",    name: "피칸&호두 쌍둥이", hp: 500, speed: 80,  damage: 7,  scale: 1.8 },
 };
 const BOSS_TWINS_TEXTURE2 = "daegwa_walnut";
 
@@ -92,15 +92,21 @@ function getWaveScale(wave: number): number {
   return 1 + (wave - 1) * 0.15;
 }
 
-// 웨이브별 스폰 카운트
+// 웨이브별 스폰 카운트 (틱 수 — 실제 적 수 = count × batchSize)
 function getSpawnCount(wave: number): number {
-  const base = (12 + wave * 6) * 3;
-  return Math.min(base, 150);
+  return Math.min(8 + wave * 3, 35);
 }
 
 // 웨이브별 스폰 인터벌
 function getSpawnInterval(wave: number): number {
-  return Math.max(200, 800 - wave * 30);
+  return Math.max(150, 550 - wave * 25);
+}
+
+// 틱당 동시 스폰 수 — 화면에 몬스터 밀도 확보
+function getSpawnBatchSize(wave: number): number {
+  if (wave <= 3) return 2;
+  if (wave <= 7) return 3;
+  return 4;
 }
 
 // ─── 무기 정의 ───────────────────────────────
@@ -386,11 +392,16 @@ export default class GameScene extends Phaser.Scene {
     tg.fillRect(0, 0, 160, 18);
     tg.generateTexture("plank", 160, 40);
     tg.destroy();
+    // 실제 화면 크기로 생성해야 이동 중 빈 영역이 생기지 않음
     this.floorTile = this.add
-      .tileSprite(0, 0, VIEWPORT_W, VIEWPORT_H, "plank")
+      .tileSprite(0, 0, this.scale.width, this.scale.height, "plank")
       .setOrigin(0, 0)
       .setScrollFactor(0)
       .setDepth(-1);
+    // 화면 크기 변경 시 타일스프라이트도 갱신
+    this.scale.on("resize", (gameSize: Phaser.Structs.Size) => {
+      this.floorTile.setSize(gameSize.width, gameSize.height);
+    });
   }
 
   /** 배경 장식 */
@@ -449,15 +460,18 @@ export default class GameScene extends Phaser.Scene {
       this.time.delayedCall(500, () => this.spawnBoss(waveNum));
     } else {
       // 일반 웨이브
-      const spawnCount = getSpawnCount(waveNum);
+      const spawnCount   = getSpawnCount(waveNum);
       const spawnInterval = getSpawnInterval(waveNum);
-      this.waveKillsNeeded = spawnCount;
+      const batchSize    = getSpawnBatchSize(waveNum);
+      this.waveKillsNeeded = spawnCount * batchSize;
       this.waveKills       = 0;
       this.spawnTimer?.destroy();
       this.spawnTimer = this.time.addEvent({
         delay: spawnInterval,
         repeat: spawnCount - 1,
-        callback: () => this.spawnEnemyForWave(waveNum),
+        callback: () => {
+          for (let i = 0; i < batchSize; i++) this.spawnEnemyForWave(waveNum);
+        },
       });
     }
 
@@ -651,9 +665,8 @@ export default class GameScene extends Phaser.Scene {
     this.waveKills++;
     if (!this.waveClearing && this.waveKills >= this.waveKillsNeeded) {
       this.waveClearing = true;
-      // 보스 처치 코인 별도 추가 (killEnemy에서 드랍하지 않으므로)
       this.coinsThisRun += coinCount;
-      this.time.delayedCall(2000, () => {
+      this.time.delayedCall(1500, () => {
         this.wave++;
         this.startWave(this.wave);
       });
@@ -879,7 +892,8 @@ export default class GameScene extends Phaser.Scene {
     // 웨이브 클리어 체크
     if (!this.waveClearing && this.waveKills >= this.waveKillsNeeded) {
       this.waveClearing = true;
-      this.time.delayedCall(1000, () => {
+      this.spawnTimer?.destroy(); // 잔여 스폰 즉시 중단
+      this.time.delayedCall(800, () => {
         this.wave++;
         this.startWave(this.wave);
       });

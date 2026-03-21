@@ -170,11 +170,24 @@ export default function GamePage() {
     setStarted(true);
   };
 
+  // ─── 게임 종료 핸들러 (코인/구매내역 즉시 갱신) ────
+  const handleGameClose = async () => {
+    setStarted(false);
+    setGameConfig(null);
+    // 게임 후 코인·구매내역 최신화
+    Promise.all([getMyGameProfile(), getMyPurchases()])
+      .then(([prof, purch]) => {
+        setProfile(prof);
+        setPurchases(purch);
+      })
+      .catch(() => {});
+  };
+
   // ─── 게임 화면 렌더링 ─────────────────────
   if (started && gameConfig) {
     return (
       <RoguelikeGame
-        onClose={() => { setStarted(false); setGameConfig(null); }}
+        onClose={handleGameClose}
         gameConfig={gameConfig}
       />
     );

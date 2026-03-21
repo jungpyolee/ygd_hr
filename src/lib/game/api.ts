@@ -108,8 +108,17 @@ export async function buyShopItem(itemId: string, cost: number): Promise<{ ok: b
 
   if (!profile || profile.coins < cost) return { ok: false, reason: "코인 부족" };
 
-  await supabase.from("game_purchases").insert({ user_id: user.id, item_id: itemId });
-  await supabase.from("game_profiles").update({ coins: profile.coins - cost }).eq("id", user.id);
+  const { error: insertError } = await supabase
+    .from("game_purchases")
+    .insert({ user_id: user.id, item_id: itemId });
+  if (insertError) return { ok: false, reason: "구매 저장 실패" };
+
+  const { error: updateError } = await supabase
+    .from("game_profiles")
+    .update({ coins: profile.coins - cost })
+    .eq("id", user.id);
+  if (updateError) return { ok: false, reason: "코인 차감 실패" };
+
   return { ok: true };
 }
 
