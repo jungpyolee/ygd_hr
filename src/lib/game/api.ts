@@ -136,7 +136,21 @@ export async function unlockCatWithCoins(cost: number): Promise<{ ok: boolean; r
 
   if (!profile || profile.coins < cost) return { ok: false, reason: "코인 부족" };
 
-  await supabase.from("game_profiles").update({ coins: profile.coins - cost }).eq("id", user.id);
+  // game_purchases에 기록 (새로고침 후에도 해금 유지)
+  const { error: insertError } = await supabase
+    .from("game_purchases")
+    .insert({ user_id: user.id, item_id: "cat_abyssinian" });
+  // 이미 해금된 경우(중복) 무시
+  if (insertError && !insertError.message.includes("duplicate")) {
+    return { ok: false, reason: "해금 저장 실패" };
+  }
+
+  const { error: updateError } = await supabase
+    .from("game_profiles")
+    .update({ coins: profile.coins - cost })
+    .eq("id", user.id);
+  if (updateError) return { ok: false, reason: "코인 차감 실패" };
+
   return { ok: true };
 }
 

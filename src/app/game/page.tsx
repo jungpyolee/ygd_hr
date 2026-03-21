@@ -112,8 +112,10 @@ export default function GamePage() {
       setPurchases(p => [...p, "cat_abyssinian"]);
       setProfile(prev => prev ? { ...prev, coins: prev.coins - 50 } : prev);
       toast.success("아비시니안이 해금됐어요! 🎉 이제 플레이할 수 있어요.");
-    } else {
+    } else if (result.reason === "코인 부족") {
       toast.error("코인이 부족해요. 게임을 더 플레이해서 코인을 모아봐요.");
+    } else {
+      toast.error(`해금에 실패했어요. 잠시 후 다시 시도해봐요. (${result.reason})`);
     }
     setBuying(null);
   }
@@ -127,8 +129,10 @@ export default function GamePage() {
       setProfile(prev => prev ? { ...prev, coins: prev.coins - cost } : prev);
       const item = SHOP_ITEMS.find(i => i.id === itemId);
       toast.success(`${item?.name ?? "아이템"}을 구매했어요! 다음 게임부터 적용돼요.`);
-    } else {
+    } else if (result.reason === "코인 부족") {
       toast.error("코인이 부족해요. 게임을 더 플레이해서 코인을 모아봐요.");
+    } else {
+      toast.error(`구매에 실패했어요. 잠시 후 다시 시도해봐요. (${result.reason})`);
     }
     setBuying(null);
   }
