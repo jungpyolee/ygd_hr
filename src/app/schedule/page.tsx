@@ -229,29 +229,44 @@ function SchedulePageInner() {
     const supabase = createClient();
     setRespondingId(req.id);
 
-    // 겹치는 기존 슬롯 검사
+    const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+    const reqStart = toMin(req.start_time.slice(0, 5));
+    const reqEnd   = toMin(req.end_time.slice(0, 5));
+
+    // 겹치거나 맞닿는 기존 슬롯 탐색 (위치·포지션 포함 조회)
     const { data: existingSlots } = await supabase
       .from("schedule_slots")
-      .select("start_time, end_time")
+      .select("start_time, end_time, work_location, cafe_positions")
       .eq("profile_id", profileId)
       .eq("slot_date", req.slot_date)
       .eq("status", "active");
 
-    const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
-    const reqStart = toMin(req.start_time.slice(0, 5));
-    const reqEnd = toMin(req.end_time.slice(0, 5));
-    const hasOverlap = (existingSlots || []).some((s) =>
-      toMin(s.start_time) < reqEnd && toMin(s.end_time) > reqStart
+    const overlapSlot = (existingSlots || []).find((s) =>
+      // 맞닿음(<=) 포함 — 10~15 + 15~20 도 병합 대상
+      toMin(s.start_time) <= reqEnd && toMin(s.end_time) >= reqStart
     );
-    if (hasOverlap) {
-      toast.error("기존 근무와 시간이 겹쳐요", {
-        description: "해당 날짜에 이미 겹치는 근무가 있어서 수락할 수 없어요.",
-      });
-      setRespondingId(null);
-      return;
+
+    if (overlapSlot) {
+      // 병합 가능 조건: 같은 위치 + 포지션 일치
+      const sameLocation = overlapSlot.work_location === req.work_location;
+      const existingPos  = (overlapSlot.cafe_positions ?? []) as string[];
+      const reqPos       = (req.cafe_positions ?? []) as string[];
+      const bothNoPos    = existingPos.length === 0 && reqPos.length === 0;
+      const samePos      = bothNoPos ||
+        (existingPos.length === reqPos.length &&
+         existingPos.every((p) => reqPos.includes(p)));
+
+      if (!sameLocation || !samePos) {
+        toast.error("기존 근무와 시간이 겹쳐요", {
+          description: "위치나 포지션이 달라서 합칠 수 없어요. 스케줄을 확인해주세요.",
+        });
+        setRespondingId(null);
+        return;
+      }
+      // 병합 가능 → 서버에서 처리 (RPC 내 UPDATE)
     }
 
-    const { error } = await supabase.rpc("accept_substitute", {
+    const { data: rpcResult, error } = await supabase.rpc("accept_substitute", {
       p_request_id: req.id,
       p_acceptor_id: profileId,
     });
@@ -259,6 +274,10 @@ function SchedulePageInner() {
     if (error) {
       if (error.message.includes("ALREADY_FILLED_OR_NOT_ELIGIBLE")) {
         toast.error("이미 다른 분이 수락했어요", { description: "대타가 확정됐어요." });
+      } else if (error.message.includes("OVERLAP_DIFFERENT_LOCATION_OR_POSITION")) {
+        toast.error("기존 근무와 시간이 겹쳐요", {
+          description: "위치나 포지션이 달라서 합칠 수 없어요.",
+        });
       } else {
         toast.error("수락에 실패했어요", { description: "잠시 후 다시 시도해주세요." });
       }
@@ -278,7 +297,16 @@ function SchedulePageInner() {
       source_id: req.id,
     });
 
-    toast.success("대타를 수락했어요", { description: `${slotDateLabel} 근무가 추가됐어요.` });
+    const isMerged = rpcResult?.mode === "merged";
+    if (isMerged) {
+      const mergedStart = (rpcResult.merged_start as string).slice(0, 5);
+      const mergedEnd   = (rpcResult.merged_end   as string).slice(0, 5);
+      toast.success("근무가 합쳐졌어요", {
+        description: `${slotDateLabel} 기존 근무와 이어져서 ${mergedStart}~${mergedEnd}로 변경됐어요.`,
+      });
+    } else {
+      toast.success("대타를 수락했어요", { description: `${slotDateLabel} 근무가 추가됐어요.` });
+    }
     setRespondingId(null);
     closeActiveRequest();
     mutateIncoming();

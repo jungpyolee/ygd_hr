@@ -93,13 +93,13 @@ export default function OnboardingFunnel({ onComplete }: OnboardingProps) {
 
         if (updateError) throw updateError;
 
-        await sendNotification({
+        sendNotification({
           target_role: "admin",
           type: "onboarding",
           title: "🎉 새 직원 등록",
           content: `${name}님이 온보딩을 완료하고 프로필을 등록했습니다.`,
           source_id: user.id,
-        });
+        }).catch((e) => console.error("온보딩 알림 발송 실패:", e));
       } catch (error) {
         console.error("업로드 중 에러 발생:", error);
         toast.error("저장에 실패했어요", {
