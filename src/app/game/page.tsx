@@ -25,7 +25,8 @@ const CAT_TYPES = [
     id: "persian",
     name: "페르시안",
     emoji: "🐱",
-    desc: "균형형 · 기본 스탯",
+    desc: "균형형",
+    detail: "기본 스탯 · 무난한 시작",
     unlockCondition: "always" as const,
     getStatBonuses: () => ({ hpBonus: 0, damageMulti: 1.0, moveSpeedMulti: 1.0 }),
   },
@@ -33,7 +34,8 @@ const CAT_TYPES = [
     id: "scottish",
     name: "스코티시폴드",
     emoji: "😺",
-    desc: "탱커형 · HP +40, 이동 -10%",
+    desc: "탱커형",
+    detail: "HP +40 · 이동속도 -10%",
     unlockCondition: "play5" as const,
     getStatBonuses: () => ({ hpBonus: 40, damageMulti: 1.0, moveSpeedMulti: 0.9 }),
   },
@@ -41,7 +43,8 @@ const CAT_TYPES = [
     id: "abyssinian",
     name: "아비시니안",
     emoji: "😸",
-    desc: "스피드형 · 이동 +20%, HP -20",
+    desc: "스피드형",
+    detail: "이동속도 +20% · HP -20",
     unlockCondition: "coins50" as const,
     getStatBonuses: () => ({ hpBonus: -20, damageMulti: 1.0, moveSpeedMulti: 1.2 }),
   },
@@ -49,57 +52,90 @@ const CAT_TYPES = [
     id: "munchkin",
     name: "먼치킨",
     emoji: "🐈",
-    desc: "서포터형 · EXP +30%, 투사체 2개",
+    desc: "서포터형",
+    detail: "EXP +30% · 투사체 2개",
     unlockCondition: "wave30" as const,
     getStatBonuses: () => ({ hpBonus: 0, damageMulti: 1.0, moveSpeedMulti: 1.0 }),
   },
 ] as const;
 
 type CatId = (typeof CAT_TYPES)[number]["id"];
+type Screen = "title" | "character" | "shop";
 
-// 카테고리 레이블
 const CATEGORY_LABEL: Record<string, string> = {
-  hp:      "체력",
-  attack:  "공격",
-  util:    "유틸",
-  special: "특수",
+  hp: "체력", attack: "공격", util: "유틸", special: "특수",
 };
+
+// 타이틀 화면 배경 장식 (결정적 위치 — SSR 안전)
+const BG_DECOS = [
+  { emoji: "🍊", x: 7,  y: 8,  size: 28, rot: -20, op: 0.09 },
+  { emoji: "🍡", x: 85, y: 5,  size: 22, rot: 15,  op: 0.07 },
+  { emoji: "🥜", x: 92, y: 32, size: 26, rot: 30,  op: 0.08 },
+  { emoji: "🧁", x: 4,  y: 55, size: 20, rot: -10, op: 0.06 },
+  { emoji: "🍬", x: 88, y: 70, size: 24, rot: 25,  op: 0.08 },
+  { emoji: "🍮", x: 12, y: 82, size: 22, rot: -30, op: 0.07 },
+  { emoji: "🎂", x: 75, y: 88, size: 18, rot: 10,  op: 0.06 },
+  { emoji: "🍯", x: 50, y: 3,  size: 20, rot: 5,   op: 0.05 },
+  { emoji: "🍊", x: 40, y: 92, size: 26, rot: -15, op: 0.07 },
+  { emoji: "🍡", x: 60, y: 78, size: 18, rot: 20,  op: 0.05 },
+];
 
 export default function GamePage() {
   const router = useRouter();
 
-  const [tab, setTab]             = useState<"character" | "shop">("character");
-  const [profile, setProfile]     = useState<GameProfileData | null>(null);
-  const [purchases, setPurchases] = useState<string[]>([]);
+  const [screen, setScreen]           = useState<Screen>("title");
+  const [profile, setProfile]         = useState<GameProfileData | null>(null);
+  const [purchases, setPurchases]     = useState<string[]>([]);
   const [selectedCat, setSelectedCat] = useState<CatId>("persian");
-  const [started, setStarted]     = useState(false);
-  const [loading, setLoading]     = useState(true);
-  const [buying, setBuying]       = useState<string | null>(null);
-  const [gameConfig, setGameConfig] = useState<GameConfig | null>(null);
+  const [started, setStarted]         = useState(false);
+  const [loading, setLoading]         = useState(true);
+  const [buying, setBuying]           = useState<string | null>(null);
+  const [gameConfig, setGameConfig]   = useState<GameConfig | null>(null);
+  const [menuIdx, setMenuIdx]         = useState(0);
+  const [blink, setBlink]             = useState(true);
 
   // 데이터 로드
   useEffect(() => {
     Promise.all([getMyGameProfile(), getMyPurchases()])
-      .then(([prof, purch]) => {
-        setProfile(prof);
-        setPurchases(purch);
-      })
+      .then(([prof, purch]) => { setProfile(prof); setPurchases(purch); })
       .finally(() => setLoading(false));
   }, []);
 
+  // 블링크 애니메이션
+  useEffect(() => {
+    const t = setInterval(() => setBlink(b => !b), 550);
+    return () => clearInterval(t);
+  }, []);
+
+  // 타이틀 키보드 내비게이션
+  useEffect(() => {
+    if (started || screen !== "title") return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowUp")   setMenuIdx(i => Math.max(0, i - 1));
+      if (e.key === "ArrowDown") setMenuIdx(i => Math.min(2, i + 1));
+      if (e.key === "Enter") {
+        if (menuIdx === 0) setScreen("character");
+        else if (menuIdx === 1) setScreen("shop");
+        else router.back();
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [started, screen, menuIdx, router]);
+
   // ─── 캐릭터 해금 체크 ────────────────────
   function isCatUnlocked(catId: string): boolean {
-    if (catId === "persian") return true;
-    if (catId === "scottish") return (profile?.play_count ?? 0) >= 5;
+    if (catId === "persian")    return true;
+    if (catId === "scottish")   return (profile?.play_count ?? 0) >= 5;
     if (catId === "abyssinian") return purchases.includes("cat_abyssinian");
-    if (catId === "munchkin") return (profile?.highest_wave ?? 0) >= 30;
+    if (catId === "munchkin")   return (profile?.highest_wave ?? 0) >= 30;
     return false;
   }
 
-  function getUnlockLabel(catId: string): string {
-    if (catId === "scottish")   return "5판 플레이하면 해금돼요";
-    if (catId === "abyssinian") return "50코인으로 해금할 수 있어요";
-    if (catId === "munchkin")   return "30웨이브 도달하면 해금돼요";
+  function getUnlockHint(catId: string): string {
+    if (catId === "scottish")   return `플레이 ${profile?.play_count ?? 0}/5판`;
+    if (catId === "abyssinian") return "🪙 50코인";
+    if (catId === "munchkin")   return `최고 웨이브 ${profile?.highest_wave ?? 0}/30`;
     return "";
   }
 
@@ -111,11 +147,11 @@ export default function GamePage() {
     if (result.ok) {
       setPurchases(p => [...p, "cat_abyssinian"]);
       setProfile(prev => prev ? { ...prev, coins: prev.coins - 50 } : prev);
-      toast.success("아비시니안이 해금됐어요! 🎉 이제 플레이할 수 있어요.");
+      toast.success("아비시니안이 해금됐어요! 🎉");
     } else if (result.reason === "코인 부족") {
-      toast.error("코인이 부족해요. 게임을 더 플레이해서 코인을 모아봐요.");
+      toast.error("코인이 부족해요.");
     } else {
-      toast.error(`해금에 실패했어요. 잠시 후 다시 시도해봐요. (${result.reason})`);
+      toast.error(`해금 실패: ${result.reason}`);
     }
     setBuying(null);
   }
@@ -128,20 +164,19 @@ export default function GamePage() {
       setPurchases(p => [...p, itemId]);
       setProfile(prev => prev ? { ...prev, coins: prev.coins - cost } : prev);
       const item = SHOP_ITEMS.find(i => i.id === itemId);
-      toast.success(`${item?.name ?? "아이템"}을 구매했어요! 다음 게임부터 적용돼요.`);
+      toast.success(`${item?.name ?? "아이템"} 구매 완료!`);
     } else if (result.reason === "코인 부족") {
-      toast.error("코인이 부족해요. 게임을 더 플레이해서 코인을 모아봐요.");
+      toast.error("코인이 부족해요.");
     } else {
-      toast.error(`구매에 실패했어요. 잠시 후 다시 시도해봐요. (${result.reason})`);
+      toast.error(`구매 실패: ${result.reason}`);
     }
     setBuying(null);
   }
 
   // ─── GameConfig 빌드 ─────────────────────
   function buildGameConfig(): GameConfig {
-    const catDef = CAT_TYPES.find(c => c.id === selectedCat);
+    const catDef  = CAT_TYPES.find(c => c.id === selectedCat);
     const catBonus = catDef?.getStatBonuses() ?? { hpBonus: 0, damageMulti: 1.0, moveSpeedMulti: 1.0 };
-
     return {
       catType: selectedCat as GameConfig["catType"],
       buffs: {
@@ -174,30 +209,374 @@ export default function GamePage() {
     setStarted(true);
   };
 
-  // ─── 게임 종료 핸들러 (코인/구매내역 즉시 갱신) ────
+  // ─── 게임 종료 ────────────────────────────
   const handleGameClose = async () => {
     setStarted(false);
     setGameConfig(null);
-    // 게임 후 코인·구매내역 최신화
+    setScreen("title");
     Promise.all([getMyGameProfile(), getMyPurchases()])
-      .then(([prof, purch]) => {
-        setProfile(prof);
-        setPurchases(purch);
-      })
+      .then(([prof, purch]) => { setProfile(prof); setPurchases(purch); })
       .catch(() => {});
   };
 
-  // ─── 게임 화면 렌더링 ─────────────────────
+  // ─── 게임 중 ──────────────────────────────
   if (started && gameConfig) {
+    return <RoguelikeGame onClose={handleGameClose} gameConfig={gameConfig} />;
+  }
+
+  // ══════════════════════════════════════════
+  //  타이틀 화면
+  // ══════════════════════════════════════════
+  if (screen === "title") {
+    const MENU = [
+      { label: "GAME  START", sub: "게임 시작" },
+      { label: "SHOP",        sub: "상점" },
+      { label: "EXIT",        sub: "나가기" },
+    ];
+
     return (
-      <RoguelikeGame
-        onClose={handleGameClose}
-        gameConfig={gameConfig}
-      />
+      <div
+        className="min-h-screen flex flex-col items-center justify-center relative overflow-hidden select-none"
+        style={{ background: "#07071a" }}
+      >
+        <style>{`
+          @keyframes titlePulse {
+            0%,100% { text-shadow: 0 0 16px #f59e0b, 0 0 32px #f59e0b88; }
+            50%      { text-shadow: 0 0 28px #f59e0b, 0 0 56px #f59e0bcc, 0 0 80px #ff6b3566; }
+          }
+          @keyframes floatY {
+            0%,100% { transform: translateY(0px) rotate(var(--rot)); }
+            50%      { transform: translateY(-8px) rotate(var(--rot)); }
+          }
+          .title-pulse { animation: titlePulse 2.4s ease-in-out infinite; }
+          .bg-deco     { animation: floatY 4s ease-in-out infinite; }
+        `}</style>
+
+        {/* 배경 도트 그리드 */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            backgroundImage: "radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px)",
+            backgroundSize: "28px 28px",
+          }}
+        />
+
+        {/* 배경 장식 이모지 */}
+        {BG_DECOS.map((d, i) => (
+          <span
+            key={i}
+            className="absolute pointer-events-none bg-deco"
+            style={{
+              left: `${d.x}%`, top: `${d.y}%`,
+              fontSize: `${d.size}px`,
+              opacity: d.op,
+              ["--rot" as string]: `${d.rot}deg`,
+              animationDelay: `${i * 0.4}s`,
+            }}
+          >{d.emoji}</span>
+        ))}
+
+        {/* 코인 + 최고점 (우상단) */}
+        <div className="absolute top-12 right-4 flex flex-col items-end gap-1.5">
+          <div
+            className="flex items-center gap-1.5 px-3 py-1 rounded"
+            style={{ border: "1px solid rgba(245,158,11,0.4)", background: "rgba(245,158,11,0.08)" }}
+          >
+            <span className="text-sm">🪙</span>
+            <span className="font-mono font-bold text-sm tabular-nums" style={{ color: "#f59e0b" }}>
+              {loading ? "..." : String(profile?.coins ?? 0).padStart(4, " ")}
+            </span>
+          </div>
+          {(profile?.best_run_score ?? 0) > 0 && (
+            <p className="font-mono text-[10px] tracking-widest" style={{ color: "#4a5568" }}>
+              BEST {profile!.best_run_score.toLocaleString()}
+            </p>
+          )}
+        </div>
+
+        {/* 메인 타이틀 영역 */}
+        <div className="flex flex-col items-center mb-10">
+          {/* 고양이 */}
+          <div className="text-6xl mb-4" style={{ filter: "drop-shadow(0 0 16px rgba(245,158,11,0.5))" }}>
+            🐱
+          </div>
+
+          {/* 게임 타이틀 */}
+          <h1
+            className="title-pulse font-black tracking-widest uppercase mb-1"
+            style={{
+              fontSize: "clamp(22px, 7vw, 32px)",
+              color: "#f59e0b",
+              letterSpacing: "0.15em",
+            }}
+          >
+            냥냥 서바이벌
+          </h1>
+          <p
+            className="font-mono tracking-widest"
+            style={{ color: "#4a5568", fontSize: "10px", letterSpacing: "0.3em" }}
+          >
+            NYANGNYANG  SURVIVAL
+          </p>
+
+          {/* 구분선 */}
+          <div className="flex items-center gap-3 mt-6 mb-6 w-64">
+            <div className="flex-1 h-px" style={{ background: "linear-gradient(90deg, transparent, #f59e0b44)" }} />
+            <span style={{ color: "#f59e0b66", fontSize: "10px" }}>✦</span>
+            <div className="flex-1 h-px" style={{ background: "linear-gradient(90deg, #f59e0b44, transparent)" }} />
+          </div>
+
+          {/* 메뉴 */}
+          <nav className="flex flex-col items-center gap-1 w-64">
+            {MENU.map((item, i) => {
+              const isSelected = menuIdx === i;
+              return (
+                <button
+                  key={i}
+                  onClick={() => {
+                    setMenuIdx(i);
+                    if (i === 0) setScreen("character");
+                    else if (i === 1) setScreen("shop");
+                    else router.back();
+                  }}
+                  onMouseEnter={() => setMenuIdx(i)}
+                  className="w-full flex items-center gap-3 px-5 py-3 rounded transition-all duration-100 active:scale-95"
+                  style={{
+                    background: isSelected ? "rgba(245,158,11,0.12)" : "transparent",
+                    border: isSelected ? "1px solid rgba(245,158,11,0.3)" : "1px solid transparent",
+                  }}
+                >
+                  <span
+                    className="font-mono text-sm w-4 text-center transition-opacity duration-100"
+                    style={{ color: "#f59e0b", opacity: isSelected ? 1 : 0 }}
+                  >▶</span>
+                  <div className="flex-1 text-left">
+                    <p
+                      className="font-mono font-bold tracking-widest"
+                      style={{
+                        fontSize: "15px",
+                        color: isSelected ? "#f59e0b" : "#94a3b8",
+                        letterSpacing: "0.2em",
+                      }}
+                    >
+                      {item.label}
+                    </p>
+                  </div>
+                  <span className="text-xs" style={{ color: isSelected ? "#f59e0b88" : "#374151" }}>
+                    {item.sub}
+                  </span>
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+
+        {/* 하단 — PRESS START */}
+        <div className="absolute bottom-10 flex flex-col items-center gap-2">
+          <p
+            className="font-mono tracking-widest text-xs uppercase"
+            style={{
+              color: "#34d399",
+              opacity: blink ? 1 : 0,
+              letterSpacing: "0.3em",
+              transition: "opacity 0.1s",
+            }}
+          >
+            ── PRESS  START ──
+          </p>
+          <p className="font-mono text-[10px]" style={{ color: "#1e293b", letterSpacing: "0.15em" }}>
+            © 연경당  2026
+          </p>
+        </div>
+      </div>
     );
   }
 
-  // ─── 상점 탭 렌더링 ──────────────────────
+  // ══════════════════════════════════════════
+  //  캐릭터 선택 화면
+  // ══════════════════════════════════════════
+  if (screen === "character") {
+    const selCat = CAT_TYPES.find(c => c.id === selectedCat)!;
+
+    return (
+      <div
+        className="min-h-screen flex flex-col relative overflow-hidden"
+        style={{ background: "#07071a" }}
+      >
+        <style>{`
+          @keyframes selectGlow {
+            0%,100% { box-shadow: 0 0 0 2px #f59e0b, 0 0 16px #f59e0b44; }
+            50%      { box-shadow: 0 0 0 2px #f59e0b, 0 0 28px #f59e0baa; }
+          }
+          .selected-card { animation: selectGlow 1.8s ease-in-out infinite; }
+        `}</style>
+
+        {/* 배경 그리드 */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            backgroundImage: "radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px)",
+            backgroundSize: "28px 28px",
+          }}
+        />
+
+        {/* 헤더 */}
+        <div className="relative z-10 flex items-center justify-between px-4 pt-12 pb-4">
+          <button
+            onClick={() => setScreen("title")}
+            className="font-mono text-xs tracking-widest px-3 py-1.5 rounded"
+            style={{ color: "#64748b", border: "1px solid #1e293b" }}
+          >
+            ← BACK
+          </button>
+          <p
+            className="font-mono font-bold tracking-widest uppercase"
+            style={{ color: "#f59e0b", fontSize: "13px", letterSpacing: "0.25em" }}
+          >
+            PLAYER  SELECT
+          </p>
+          <div
+            className="flex items-center gap-1 px-3 py-1 rounded"
+            style={{ border: "1px solid rgba(245,158,11,0.3)", background: "rgba(245,158,11,0.06)" }}
+          >
+            <span className="text-xs">🪙</span>
+            <span className="font-mono font-bold text-xs tabular-nums" style={{ color: "#f59e0b" }}>
+              {profile?.coins ?? 0}
+            </span>
+          </div>
+        </div>
+
+        {/* 캐릭터 그리드 */}
+        <div className="relative z-10 grid grid-cols-2 gap-3 px-4 mb-4">
+          {CAT_TYPES.map(cat => {
+            const unlocked = isCatUnlocked(cat.id);
+            const selected = selectedCat === cat.id;
+            return (
+              <div key={cat.id} className="flex flex-col">
+                <button
+                  onClick={() => unlocked && setSelectedCat(cat.id as CatId)}
+                  disabled={!unlocked}
+                  className={`rounded-xl p-4 flex flex-col items-center gap-2 transition-all duration-150 ${selected ? "selected-card" : ""}`}
+                  style={{
+                    background: selected
+                      ? "rgba(245,158,11,0.1)"
+                      : unlocked
+                      ? "rgba(255,255,255,0.04)"
+                      : "rgba(255,255,255,0.02)",
+                    border: selected
+                      ? "1px solid #f59e0b"
+                      : "1px solid rgba(255,255,255,0.08)",
+                    opacity: !unlocked ? 0.45 : 1,
+                  }}
+                >
+                  <span className={`text-4xl ${!unlocked ? "grayscale" : ""}`}>{cat.emoji}</span>
+                  <div className="text-center">
+                    <p
+                      className="font-mono font-bold text-xs tracking-wider"
+                      style={{ color: selected ? "#f59e0b" : "#94a3b8" }}
+                    >
+                      {cat.name}
+                    </p>
+                    <p className="text-[10px] mt-0.5" style={{ color: "#475569" }}>
+                      {cat.desc}
+                    </p>
+                  </div>
+                  {!unlocked && (
+                    <span
+                      className="font-mono text-[9px] tracking-wider px-2 py-0.5 rounded"
+                      style={{ background: "rgba(255,255,255,0.06)", color: "#475569" }}
+                    >
+                      🔒 {getUnlockHint(cat.id)}
+                    </span>
+                  )}
+                  {selected && (
+                    <span
+                      className="font-mono text-[9px] tracking-widest"
+                      style={{ color: "#f59e0b" }}
+                    >
+                      ── SELECTED ──
+                    </span>
+                  )}
+                </button>
+
+                {/* 아비시니안 해금 버튼 */}
+                {cat.id === "abyssinian" && !isCatUnlocked(cat.id) && (
+                  <button
+                    onClick={handleUnlockAbyssinian}
+                    disabled={buying === "cat_abyssinian" || (profile?.coins ?? 0) < 50}
+                    className="mt-1.5 py-2 rounded-lg font-mono text-xs tracking-wider disabled:opacity-30 transition-all active:scale-95"
+                    style={{
+                      background: "rgba(245,158,11,0.15)",
+                      border: "1px solid rgba(245,158,11,0.4)",
+                      color: "#f59e0b",
+                    }}
+                  >
+                    {buying === "cat_abyssinian" ? "처리 중..." : "🪙 50 UNLOCK"}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* 선택 캐릭터 정보 패널 */}
+        <div
+          className="relative z-10 mx-4 mb-4 p-4 rounded-xl"
+          style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.2)" }}
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-3xl">{selCat.emoji}</span>
+            <div className="flex-1">
+              <p className="font-mono font-bold text-sm tracking-wider" style={{ color: "#f59e0b" }}>
+                {selCat.name.toUpperCase()}
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: "#94a3b8" }}>{selCat.detail}</p>
+            </div>
+            <div
+              className="font-mono text-xs px-2 py-1 rounded"
+              style={{ background: "rgba(245,158,11,0.15)", color: "#f59e0b", letterSpacing: "0.1em" }}
+            >
+              {selCat.desc}
+            </div>
+          </div>
+          {/* 조작법 */}
+          <div className="mt-3 pt-3 grid grid-cols-2 gap-x-4 gap-y-1" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+            {[
+              ["📱 드래그", "이동"],
+              ["💨 스페이스 / 버튼", "대시"],
+              ["⚔️ 자동", "공격"],
+              ["🔥 5웨이브", "보스 등장"],
+            ].map(([k, v]) => (
+              <p key={k} className="text-[10px] font-mono" style={{ color: "#475569" }}>
+                <span style={{ color: "#64748b" }}>{k} </span>{v}
+              </p>
+            ))}
+          </div>
+        </div>
+
+        {/* 하단 버튼 */}
+        <div className="relative z-10 px-4 pb-10 mt-auto">
+          <button
+            onClick={handleStart}
+            disabled={!isCatUnlocked(selectedCat)}
+            className="w-full py-4 rounded-xl font-mono font-black tracking-widest uppercase text-base disabled:opacity-30 transition-all active:scale-95"
+            style={{
+              background: "linear-gradient(135deg, #d97706, #f59e0b)",
+              color: "#07071a",
+              letterSpacing: "0.25em",
+              boxShadow: "0 0 24px rgba(245,158,11,0.35)",
+            }}
+          >
+            ▶  GAME  START
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ══════════════════════════════════════════
+  //  상점 화면
+  // ══════════════════════════════════════════
   const shopByCategory = SHOP_ITEMS.reduce((acc, item) => {
     if (!acc[item.category]) acc[item.category] = [];
     acc[item.category].push(item);
@@ -205,212 +584,143 @@ export default function GamePage() {
   }, {} as Record<string, typeof SHOP_ITEMS[number][]>);
 
   return (
-    <div className="min-h-screen bg-[#1a1a2e] flex flex-col">
+    <div
+      className="min-h-screen flex flex-col relative overflow-hidden"
+      style={{ background: "#07071a" }}
+    >
+      {/* 배경 그리드 */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          backgroundImage: "radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px)",
+          backgroundSize: "28px 28px",
+        }}
+      />
+
       {/* 헤더 */}
-      <div className="flex items-center gap-3 px-4 pt-12 pb-4">
+      <div className="relative z-10 flex items-center justify-between px-4 pt-12 pb-5">
         <button
-          onClick={() => router.back()}
-          className="w-9 h-9 flex items-center justify-center rounded-full bg-white/10"
+          onClick={() => setScreen("title")}
+          className="font-mono text-xs tracking-widest px-3 py-1.5 rounded"
+          style={{ color: "#64748b", border: "1px solid #1e293b" }}
         >
-          <span className="text-white text-lg">←</span>
+          ← BACK
         </button>
-        <h1 className="text-white text-lg font-bold flex-1">냥냥 서바이벌</h1>
-        {/* 코인 표시 */}
-        {!loading && (
-          <div className="flex items-center gap-1 bg-[#f59e0b]/20 rounded-full px-3 py-1">
-            <span className="text-sm">🪙</span>
-            <span className="text-[#f59e0b] font-bold text-sm tabular-nums">
-              {profile?.coins ?? 0}
-            </span>
+        <p
+          className="font-mono font-bold tracking-widest"
+          style={{ color: "#f59e0b", fontSize: "15px", letterSpacing: "0.3em" }}
+        >
+          S H O P
+        </p>
+        <div
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded"
+          style={{ border: "1px solid rgba(245,158,11,0.4)", background: "rgba(245,158,11,0.08)" }}
+        >
+          <span className="text-sm">🪙</span>
+          <span className="font-mono font-bold text-sm tabular-nums" style={{ color: "#f59e0b" }}>
+            {profile?.coins ?? 0}
+          </span>
+        </div>
+      </div>
+
+      {/* 아이템 목록 */}
+      <div className="relative z-10 flex-1 overflow-y-auto px-4 pb-10">
+        {loading ? (
+          <div className="py-12 text-center font-mono text-xs tracking-widest" style={{ color: "#1e293b" }}>
+            LOADING...
           </div>
-        )}
-      </div>
-
-      {/* 타이틀 */}
-      <div className="text-center pt-2 pb-4 px-4">
-        <p className="text-4xl mb-2">🐱</p>
-        <p className="text-gray-400 text-sm">다과를 막아내고 연경당을 지켜내세요</p>
-      </div>
-
-      {/* 탭 */}
-      <div className="flex px-4 mb-4 gap-2">
-        <button
-          onClick={() => setTab("character")}
-          className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-colors ${
-            tab === "character"
-              ? "bg-[#3182F6] text-white"
-              : "bg-white/10 text-white/60"
-          }`}
-        >
-          캐릭터
-        </button>
-        <button
-          onClick={() => setTab("shop")}
-          className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-colors ${
-            tab === "shop"
-              ? "bg-[#3182F6] text-white"
-              : "bg-white/10 text-white/60"
-          }`}
-        >
-          상점
-        </button>
-      </div>
-
-      {/* 탭 내용 */}
-      <div className="px-4 flex-1 overflow-y-auto">
-        {/* ── 캐릭터 탭 ── */}
-        {tab === "character" && (
-          <div className="space-y-3 pb-4">
-            {CAT_TYPES.map(cat => {
-              const unlocked = isCatUnlocked(cat.id);
-              const selected = selectedCat === cat.id;
+        ) : (
+          <div className="space-y-5">
+            {(["hp", "attack", "util", "special"] as const).map(cat => {
+              const items = shopByCategory[cat] ?? [];
+              if (!items.length) return null;
               return (
-                <div
-                  key={cat.id}
-                  className={`w-full rounded-2xl p-4 text-left border-2 transition-colors relative ${
-                    selected
-                      ? "border-[#3182F6] bg-[#3182F6]/10"
-                      : unlocked
-                      ? "border-gray-700 bg-[#16213e]"
-                      : "border-gray-700/50 bg-[#16213e]/50 opacity-60"
-                  }`}
-                >
-                  {/* 캐릭터 선택 영역 */}
-                  <div
-                    role="button"
-                    tabIndex={unlocked ? 0 : -1}
-                    onClick={() => unlocked && setSelectedCat(cat.id)}
-                    onKeyDown={e => e.key === "Enter" && unlocked && setSelectedCat(cat.id)}
-                    className={`flex items-center gap-3 ${unlocked ? "cursor-pointer active:opacity-70" : "cursor-default"}`}
-                  >
-                    <span className={`text-4xl ${!unlocked ? "grayscale" : ""}`}>{cat.emoji}</span>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="text-white font-bold text-sm">{cat.name}</p>
-                        {selected && unlocked && (
-                          <span className="text-[10px] bg-[#3182F6] text-white rounded-full px-2 py-0.5">선택됨</span>
-                        )}
-                        {!unlocked && (
-                          <span className="text-[10px] bg-white/10 text-white/50 rounded-full px-2 py-0.5">🔒 잠금</span>
-                        )}
-                      </div>
-                      <p className="text-gray-400 text-xs mt-0.5">{cat.desc}</p>
-                      {!unlocked && (
-                        <p className="text-white/30 text-xs mt-1">{getUnlockLabel(cat.id)}</p>
-                      )}
-                    </div>
+                <div key={cat}>
+                  {/* 카테고리 구분선 */}
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="h-px flex-1" style={{ background: "rgba(255,255,255,0.06)" }} />
+                    <p
+                      className="font-mono text-[10px] tracking-widest uppercase"
+                      style={{ color: "#475569" }}
+                    >
+                      {CATEGORY_LABEL[cat]}
+                    </p>
+                    <div className="h-px flex-1" style={{ background: "rgba(255,255,255,0.06)" }} />
                   </div>
 
-                  {/* 아비시니안 해금 버튼 */}
-                  {cat.id === "abyssinian" && !unlocked && (
-                    <button
-                      onClick={handleUnlockAbyssinian}
-                      disabled={buying === "cat_abyssinian" || (profile?.coins ?? 0) < 50}
-                      className="mt-3 w-full py-2 rounded-xl text-sm font-bold disabled:opacity-40 transition-colors"
-                      style={{ background: "linear-gradient(135deg, #f59e0b, #d97706)", color: "white" }}
-                    >
-                      {buying === "cat_abyssinian" ? "처리 중..." : "🪙 50코인으로 해금하기"}
-                    </button>
-                  )}
+                  <div className="space-y-2">
+                    {items.map(item => {
+                      const bought   = purchases.includes(item.id);
+                      const locked   = !!item.requires && !purchases.includes(item.requires);
+                      const noCoins  = (profile?.coins ?? 0) < item.cost;
+                      const disabled = bought || locked || buying === item.id;
+
+                      return (
+                        <div
+                          key={item.id}
+                          className="flex items-center gap-3 px-3 py-3 rounded-xl"
+                          style={{
+                            background: bought
+                              ? "rgba(52,211,153,0.05)"
+                              : "rgba(255,255,255,0.03)",
+                            border: bought
+                              ? "1px solid rgba(52,211,153,0.2)"
+                              : "1px solid rgba(255,255,255,0.06)",
+                            opacity: locked ? 0.45 : 1,
+                          }}
+                        >
+                          <div
+                            className="w-10 h-10 rounded-lg flex items-center justify-center text-xl shrink-0"
+                            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
+                          >
+                            {item.emoji}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-mono font-bold text-xs tracking-wider" style={{ color: "#cbd5e1" }}>
+                              {item.name}
+                            </p>
+                            <p className="text-[10px] mt-0.5" style={{ color: "#475569" }}>
+                              {item.description}
+                            </p>
+                            {locked && (
+                              <p className="font-mono text-[9px] mt-0.5" style={{ color: "#92400e" }}>
+                                선행 구매 필요: {SHOP_ITEMS.find(i => i.id === item.requires)?.name}
+                              </p>
+                            )}
+                          </div>
+                          <div className="shrink-0">
+                            {bought ? (
+                              <span className="font-mono text-xs tracking-wider" style={{ color: "#34d399" }}>
+                                ✓ OK
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => handleBuyItem(item.id, item.cost)}
+                                disabled={disabled || noCoins}
+                                className="px-3 py-1.5 rounded-lg font-mono text-xs font-bold tracking-wider disabled:opacity-30 transition-all active:scale-95"
+                                style={{
+                                  background: locked || noCoins
+                                    ? "rgba(255,255,255,0.05)"
+                                    : "rgba(245,158,11,0.2)",
+                                  border: locked || noCoins
+                                    ? "1px solid rgba(255,255,255,0.08)"
+                                    : "1px solid rgba(245,158,11,0.5)",
+                                  color: locked || noCoins ? "#374151" : "#f59e0b",
+                                }}
+                              >
+                                {buying === item.id ? "..." : `🪙${item.cost}`}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               );
             })}
-
-            {/* 조작법 안내 */}
-            <div className="bg-[#16213e] rounded-2xl p-4 mt-2">
-              <p className="text-gray-300 text-sm font-bold mb-2">조작법</p>
-              <div className="space-y-1.5">
-                <p className="text-gray-400 text-xs">📱 화면 터치 후 드래그 → 이동</p>
-                <p className="text-gray-400 text-xs">⌨️ WASD / 방향키 → 이동</p>
-                <p className="text-gray-400 text-xs">⚔️ 공격은 자동 (가장 가까운 적 조준)</p>
-                <p className="text-gray-400 text-xs">🪙 코인 수집 → 게임 후 상점에서 사용</p>
-                <p className="text-gray-400 text-xs">🔥 5웨이브마다 보스 등장</p>
-              </div>
-            </div>
           </div>
         )}
-
-        {/* ── 상점 탭 ── */}
-        {tab === "shop" && (
-          <div className="space-y-5 pb-4">
-            {loading ? (
-              <div className="py-8 text-center text-white/30 text-sm">불러오는 중...</div>
-            ) : (
-              (["hp", "attack", "util", "special"] as const).map(cat => {
-                const items = shopByCategory[cat] ?? [];
-                if (!items.length) return null;
-                return (
-                  <div key={cat}>
-                    <p className="text-white/50 text-xs font-bold uppercase tracking-widest mb-2">
-                      {CATEGORY_LABEL[cat]}
-                    </p>
-                    <div className="space-y-2">
-                      {items.map(item => {
-                        const bought    = purchases.includes(item.id);
-                        const locked    = !!item.requires && !purchases.includes(item.requires);
-                        const noCoins   = (profile?.coins ?? 0) < item.cost;
-                        const disabled  = bought || locked || buying === item.id;
-
-                        return (
-                          <div
-                            key={item.id}
-                            className={`rounded-2xl p-3 flex items-center gap-3 ${
-                              bought ? "bg-[#16213e]/40 opacity-60" : "bg-[#16213e]"
-                            }`}
-                          >
-                            <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-xl shrink-0">
-                              {item.emoji}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-white text-sm font-bold">{item.name}</p>
-                              <p className="text-white/40 text-xs">{item.description}</p>
-                              {locked && (
-                                <p className="text-yellow-500/60 text-[10px] mt-0.5">
-                                  선행: {SHOP_ITEMS.find(i => i.id === item.requires)?.name} 필요
-                                </p>
-                              )}
-                            </div>
-                            <div className="shrink-0">
-                              {bought ? (
-                                <span className="text-[#22c55e] text-xs font-bold">✓ 보유</span>
-                              ) : (
-                                <button
-                                  onClick={() => handleBuyItem(item.id, item.cost)}
-                                  disabled={disabled || noCoins}
-                                  className="px-3 py-1.5 rounded-xl text-xs font-bold disabled:opacity-40 transition-colors"
-                                  style={{
-                                    background: locked || noCoins
-                                      ? "rgba(255,255,255,0.1)"
-                                      : "linear-gradient(135deg, #f59e0b, #d97706)",
-                                    color: locked || noCoins ? "rgba(255,255,255,0.4)" : "white",
-                                  }}
-                                >
-                                  {buying === item.id ? "..." : `🪙 ${item.cost}`}
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* 시작 버튼 */}
-      <div className="px-4 pb-10 pt-4">
-        <button
-          onClick={handleStart}
-          disabled={!isCatUnlocked(selectedCat)}
-          className="w-full py-4 rounded-2xl text-white text-lg font-bold disabled:opacity-40 transition-opacity"
-          style={{ background: "linear-gradient(135deg, #3182F6, #2563eb)" }}
-        >
-          게임 시작하기
-        </button>
       </div>
     </div>
   );
