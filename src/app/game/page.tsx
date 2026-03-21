@@ -175,7 +175,7 @@ export default function GamePage() {
     if (catId === "munchkin")    return (profile?.highest_wave ?? 0) >= 30;
     if (catId === "doujeonku")   return (profile?.play_count ?? 0) >= 15;
     if (catId === "bomdong")     return purchases.includes("cat_bomdong");
-    if (catId === "buttertteok") return (profile?.best_run_score ?? 0) >= 50000;
+    if (catId === "buttertteok") return (profile?.best_run_score ?? 0) >= 200000;
     return false;
   }
 
@@ -185,7 +185,7 @@ export default function GamePage() {
     if (catId === "munchkin")    return `최고 웨이브 ${profile?.highest_wave ?? 0}/30`;
     if (catId === "doujeonku")   return `플레이 ${profile?.play_count ?? 0}/15판`;
     if (catId === "bomdong")     return "🪙 80코인";
-    if (catId === "buttertteok") return `최고 점수 ${(profile?.best_run_score ?? 0).toLocaleString()}/50,000`;
+    if (catId === "buttertteok") return `최고 점수 ${(profile?.best_run_score ?? 0).toLocaleString()}/200,000`;
     return "";
   }
 
