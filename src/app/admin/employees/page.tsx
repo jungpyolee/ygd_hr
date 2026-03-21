@@ -30,8 +30,6 @@ interface Profile {
   department: string | null;
   position: string | null;
   role: string;
-  target_in_time: string | null;
-  target_out_time: string | null;
   created_at: string;
   join_date: string | null;
   health_cert_verified: boolean | null;
@@ -708,34 +706,6 @@ export default function AdminEmployeesPage() {
                       }
                       className="w-full px-4 py-2.5 bg-[#F9FAFB] border border-slate-200 rounded-xl text-[14px] text-[#191F28] focus:outline-none focus:border-[#3182F6] transition-all"
                     />
-                  </div>
-                  <div className="col-span-2 grid grid-cols-2 gap-3 mt-1">
-                    <div>
-                      <label className="block text-[12px] font-medium text-[#8B95A1] mb-1">
-                        기본 출근 시간
-                      </label>
-                      <input
-                        type="time"
-                        value={editForm.target_in_time || ""}
-                        onChange={(e) =>
-                          handleFormChange("target_in_time", e.target.value)
-                        }
-                        className="w-full px-4 py-2.5 bg-[#F9FAFB] border border-slate-200 rounded-xl text-[14px] text-[#191F28] focus:outline-none focus:border-[#3182F6] transition-all"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[12px] font-medium text-[#8B95A1] mb-1">
-                        기본 퇴근 시간
-                      </label>
-                      <input
-                        type="time"
-                        value={editForm.target_out_time || ""}
-                        onChange={(e) =>
-                          handleFormChange("target_out_time", e.target.value)
-                        }
-                        className="w-full px-4 py-2.5 bg-[#F9FAFB] border border-slate-200 rounded-xl text-[14px] text-[#191F28] focus:outline-none focus:border-[#3182F6] transition-all"
-                      />
-                    </div>
                   </div>
                 </div>
 

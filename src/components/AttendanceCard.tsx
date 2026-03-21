@@ -246,7 +246,6 @@ export default function AttendanceCard({
     };
 
     if (nearestStore) {
-      insertData.store_id = nearestStore.id;
       if (type === "IN") insertData.check_in_store_id = nearestStore.id;
       else insertData.check_out_store_id = nearestStore.id;
     }

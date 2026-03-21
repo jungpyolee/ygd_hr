@@ -61,7 +61,7 @@ export default async function HomePage() {
     supabase.from("profiles").select("*").eq("id", user.id).single(),
     supabase
       .from("attendance_logs")
-      .select("type, created_at, attendance_type, stores!store_id(name)")
+      .select("type, created_at, attendance_type, check_in_store:stores!check_in_store_id(name), check_out_store:stores!check_out_store_id(name)")
       .eq("profile_id", user.id)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -106,8 +106,9 @@ export default async function HomePage() {
         created_at: rawLogData.created_at,
         attendance_type: rawLogData.attendance_type || "regular",
         store_name:
-          (rawLogData.stores as unknown as { name: string } | null)?.name ??
-          null,
+          rawLogData.type === "IN"
+            ? ((rawLogData as any).check_in_store as { name: string } | null)?.name ?? null
+            : ((rawLogData as any).check_out_store as { name: string } | null)?.name ?? null,
       }
     : null;
 

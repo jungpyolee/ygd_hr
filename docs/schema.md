@@ -1,7 +1,7 @@
 # DB 스키마 (최신 상태)
 
 > **프로젝트**: ymvdjxzkjodasctktunh
-> **최종 갱신**: 2026-03-17 (Epic D 스케줄 5테이블 + profiles 5컬럼 추가)
+> **최종 갱신**: 2026-03-22 (레거시/미사용 컬럼 4개 제거 — DB-005)
 > **DB 시간대**: `Asia/Seoul` (KST, UTC+9) — 모든 롤에 적용됨
 > **timestamptz 저장**: UTC로 저장, 날짜 함수(`DATE_TRUNC`, `CURRENT_DATE` 등)는 KST 기준 동작
 > **연결 방식**: Supabase Management API
@@ -43,8 +43,6 @@
 | `position` | text | YES | - | 직급 |
 | `role` | text | YES | `'employee'` | `'admin'` / `'employee'` |
 | `color_hex` | varchar(7) | YES | `'#8B95A1'` | 아바타 색상 |
-| `target_in_time` | text | YES | `'09:00'` | 기본 출근 시간 |
-| `target_out_time` | text | YES | `'18:00'` | 기본 퇴근 시간 |
 | `join_date` | date | YES | - | 입사일 |
 | `employment_contract_url` | text | YES | - | 근로계약서 Storage 경로 |
 | `bank_account_copy_url` | text | YES | - | 통장사본 Storage 경로 |
@@ -77,7 +75,6 @@
 |------|------|------|--------|------|
 | `id` | uuid | NO | `gen_random_uuid()` | PK |
 | `profile_id` | uuid | NO | - | FK → profiles.id |
-| `store_id` | uuid | **YES** | - | FK → stores.id (레거시, 신규는 아래 컬럼 사용) |
 | `check_in_store_id` | uuid | YES | - | FK → stores.id (출근 매장, 출장출근 시 null) |
 | `check_out_store_id` | uuid | YES | - | FK → stores.id (퇴근 매장, 원격/출장퇴근 시 null) |
 | `type` | text | NO | - | `'IN'` / `'OUT'` |
@@ -100,7 +97,6 @@
 **제약조건**
 - PK: `id`
 - FK: `profile_id` → `profiles.id`
-- FK: `store_id` → `stores.id` (nullable, DB-003 이후)
 - FK: `check_in_store_id` → `stores.id`
 - FK: `check_out_store_id` → `stores.id`
 
@@ -116,13 +112,9 @@
 | `name` | text | NO | - | 매장명 |
 | `lat` | float8 | NO | - | 위도 |
 | `lng` | float8 | NO | - | 경도 |
-| `radius_m` | integer | YES | `100` | 출근 가능 반경 (미터) |
 
 **제약조건**
 - PK: `id`
-
-> ⚠️ 현재 코드(`AttendanceCard.tsx`)에서 반경은 `RADIUS_METER = 100` 상수로 하드코딩되어 있음.
-> `stores.radius_m` 컬럼이 존재하지만 코드에서 활용 안 됨 → 개선 여지 있음.
 
 ---
 
@@ -525,9 +517,9 @@ DELETE FROM auth.users WHERE id = target_user_id
 
 | # | 항목 | 우선순위 | 상태 |
 |---|------|---------|------|
-| 1 | `stores.radius_m` 컬럼이 있는데 코드에서 하드코딩 상수 사용 중 | 낮음 | 미처리 |
+| 1 | `stores.radius_m` 컬럼이 있는데 코드에서 하드코딩 상수 사용 중 | 낮음 | ✅ DB-005 완료 (컬럼 제거) |
 | 2 | `attendance_logs.profile_id`, `created_at` 인덱스 없음 | 중간 | ✅ DB-001 완료 |
 | 3 | `profiles.updated_at` 자동 갱신 트리거 없음 | 낮음 | ✅ DB-002 완료 |
 | 4 | `attendance_logs.store_id` 단일 컬럼으로 출/퇴근 매장 구분 불가 | 높음 | ✅ DB-003 완료 |
-| 5 | `attendance_logs.store_id` 레거시 컬럼 제거 (check_in/out_store_id로 완전 이관 후) | 낮음 | 미처리 |
+| 5 | `attendance_logs.store_id` 레거시 컬럼 제거 | 낮음 | ✅ DB-005 완료 |
 | 6 | DB 시간대 UTC → KST 통일, 중복 출퇴근 방지 트리거 없음 | 높음 | ✅ DB-004 완료 |

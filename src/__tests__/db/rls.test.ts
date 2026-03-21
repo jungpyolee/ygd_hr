@@ -125,7 +125,7 @@ beforeAll(async () => {
   // 4. 테스트 매장 생성
   const { data: store } = await serviceClient
     .from("stores")
-    .insert({ name: "RLS테스트점", lat: 37.5, lng: 127.0, radius_m: 100 })
+    .insert({ name: "RLS테스트점", lat: 37.5, lng: 127.0 })
     .select("id")
     .single();
   T.storeId = store!.id;
@@ -291,7 +291,7 @@ beforeAll(async () => {
     .from("work_defaults")
     .insert({
       profile_id: T.ftId,
-      store_id: T.storeId,
+      work_location: "cafe",
       day_of_week: 1,
       start_time: "09:00:00",
       end_time: "18:00:00",
@@ -370,7 +370,7 @@ describe("profiles", () => {
     await expectSuccess("ft UPDATE own profile", () =>
       T.ftClient
         .from("profiles")
-        .update({ target_out_time: "18:30" })
+        .update({ phone: "010-0000-0000" })
         .eq("id", T.ftId)
     );
   });
@@ -390,7 +390,7 @@ describe("profiles", () => {
     await expectSuccess("pt UPDATE own profile", () =>
       T.ptClient
         .from("profiles")
-        .update({ target_in_time: "09:30" })
+        .update({ phone: "010-1111-1111" })
         .eq("id", T.ptId)
     );
   });
@@ -410,7 +410,7 @@ describe("attendance_logs", () => {
   it("정규직: 본인 출퇴근 기록 INSERT 가능", async () => {
     const { data, error } = await T.ftClient.from("attendance_logs").insert({
       profile_id: T.ftId,
-      store_id: T.storeId,
+      check_in_store_id: T.storeId,
       attendance_type: "regular",
       type: "IN",
     }).select("id").single();
@@ -426,7 +426,7 @@ describe("attendance_logs", () => {
     await expectError("ft INSERT other's attendance_log", () =>
       T.ftClient.from("attendance_logs").insert({
         profile_id: T.ptId, // 다른 유저
-        store_id: T.storeId,
+        check_in_store_id: T.storeId,
         attendance_type: "regular",
         type: "IN",
       })
@@ -450,7 +450,7 @@ describe("stores", () => {
   it("어드민: 매장 INSERT/UPDATE/DELETE 가능", async () => {
     const { data: newStore, error } = await T.adminClient
       .from("stores")
-      .insert({ name: "임시테스트점", lat: 37.0, lng: 127.0, radius_m: 100 })
+      .insert({ name: "임시테스트점", lat: 37.0, lng: 127.0 })
       .select("id")
       .single();
     expect(error).toBeNull();
@@ -468,7 +468,7 @@ describe("stores", () => {
 
   it("직원: 매장 INSERT 차단", async () => {
     await expectError("ft INSERT store", () =>
-      T.ftClient.from("stores").insert({ name: "해킹점", lat: 0, lng: 0, radius_m: 50 })
+      T.ftClient.from("stores").insert({ name: "해킹점", lat: 0, lng: 0 })
     );
   });
 });
@@ -1231,7 +1231,7 @@ describe("work_defaults", () => {
       .from("work_defaults")
       .insert({
         profile_id: T.adminId,
-        store_id: T.storeId,
+        work_location: "cafe",
         day_of_week: 2,
         start_time: "10:00:00",
         end_time: "19:00:00",
@@ -1256,7 +1256,7 @@ describe("work_defaults", () => {
       .from("work_defaults")
       .insert({
         profile_id: T.ptId,
-        store_id: T.storeId,
+        work_location: "cafe",
         day_of_week: 3,
         start_time: "11:00:00",
         end_time: "20:00:00",

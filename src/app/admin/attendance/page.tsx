@@ -150,7 +150,7 @@ export default function AdminAttendanceCalendar() {
       const { data, error } = await supabase
         .from("attendance_logs")
         .select(
-          `id, profile_id, type, created_at, distance_m, attendance_type, reason, profiles(name, color_hex), stores!store_id(name)`,
+          `id, profile_id, type, created_at, distance_m, attendance_type, reason, profiles(name, color_hex), check_in_store:stores!check_in_store_id(name)`,
         )
         .gte("created_at", startStr)
         .lte("created_at", endStr)
@@ -168,7 +168,7 @@ export default function AdminAttendanceCalendar() {
               profile_id: pId,
               name: log.profiles?.name || "알 수 없음",
               color_hex: log.profiles?.color_hex || "#8B95A1",
-              store_name: log.stores?.name || "알 수 없음",
+              store_name: log.check_in_store?.name || "알 수 없음",
               clock_in: null,
               clock_out: null,
               distance_in: null,
@@ -191,7 +191,7 @@ export default function AdminAttendanceCalendar() {
             userLog.clock_in = log.created_at;
             userLog.distance_in = log.distance_m ?? null;
             userLog.attendance_type_in = log.attendance_type || "regular";
-            userLog.store_name = log.stores?.name || "알 수 없음";
+            userLog.store_name = log.check_in_store?.name || "알 수 없음";
             userLog.is_absent = false;
 
             if (userLog.scheduled_start) {
