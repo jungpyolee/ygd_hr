@@ -117,10 +117,12 @@ INSERT INTO game_seasons (name, starts_at, ends_at, is_active)
 VALUES ('2026년 1분기', '2026-01-01 00:00:00+09', '2026-03-31 23:59:59+09', true);
 
 -- 8. game_profiles 자동 생성 트리거
+-- SET search_path = public 필수: auth.users 트리거 컨텍스트에서 search_path가 auth만 포함되어
+-- 스키마 미지정 시 public.game_profiles를 못 찾아 회원가입 500 에러 발생
 CREATE OR REPLACE FUNCTION handle_new_game_profile()
-RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $$
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
-  INSERT INTO game_profiles (id) VALUES (NEW.id)
+  INSERT INTO public.game_profiles (id) VALUES (NEW.id)
   ON CONFLICT (id) DO NOTHING;
   RETURN NEW;
 END;
