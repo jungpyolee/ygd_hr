@@ -11,6 +11,7 @@ import {
   getUpgradeCost,
   unlockCatWithCoins,
   getMyHRStats,
+  getLeaderboard,
   SHOP_ITEMS,
   type GameProfileData,
   type HRStats,
@@ -126,7 +127,7 @@ const CAT_TYPES = [
 ] as const;
 
 type CatId = (typeof CAT_TYPES)[number]["id"];
-type Screen = "title" | "character" | "shop";
+type Screen = "title" | "character" | "shop" | "rank";
 
 const CATEGORY_LABEL: Record<string, string> = {
   hp: "체력", attack: "공격", util: "유틸", special: "특수",
@@ -214,6 +215,8 @@ export default function GamePage() {
   const [blink, setBlink]                 = useState(true);
   const [detailOpen, setDetailOpen]       = useState(false);
   const [hrStats, setHrStats]             = useState<HRStats | null>(null);
+  const [leaderboard, setLeaderboard]     = useState<Awaited<ReturnType<typeof getLeaderboard>>["scores"]>([]);
+  const [rankLoading, setRankLoading]     = useState(false);
 
   // 데이터 로드 (게임/상점용 — HR 통계 제외)
   function refreshData() {
@@ -231,6 +234,15 @@ export default function GamePage() {
     getMyHRStats().then(setHrStats);
   }, [screen, hrStats]);
 
+  // 리더보드 — 랭킹 화면 진입 시마다 로드
+  useEffect(() => {
+    if (screen !== "rank") return;
+    setRankLoading(true);
+    getLeaderboard()
+      .then(res => setLeaderboard(res.scores))
+      .finally(() => setRankLoading(false));
+  }, [screen]);
+
   useEffect(() => {
     refreshData().finally(() => setLoading(false));
   }, []);
@@ -246,11 +258,12 @@ export default function GamePage() {
     if (started || screen !== "title") return;
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === "ArrowUp")   setMenuIdx(i => Math.max(0, i - 1));
-      if (e.key === "ArrowDown") setMenuIdx(i => Math.min(2, i + 1));
+      if (e.key === "ArrowDown") setMenuIdx(i => Math.min(3, i + 1));
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         if (menuIdx === 0) setScreen("character");
         else if (menuIdx === 1) setScreen("shop");
+        else if (menuIdx === 2) setScreen("rank");
         else router.back();
       }
     };
@@ -420,6 +433,7 @@ export default function GamePage() {
     const MENU = [
       { label: "GAME  START", sub: "게임 시작" },
       { label: "SHOP",        sub: "상점" },
+      { label: "RANK",        sub: "랭킹" },
       { label: "EXIT",        sub: "나가기" },
     ];
 
@@ -538,6 +552,7 @@ export default function GamePage() {
                     setMenuIdx(i);
                     if (i === 0) setScreen("character");
                     else if (i === 1) setScreen("shop");
+                    else if (i === 2) setScreen("rank");
                     else router.back();
                   }}
                   onMouseEnter={() => setMenuIdx(i)}
@@ -820,6 +835,181 @@ export default function GamePage() {
               </div>
             )}
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ══════════════════════════════════════════
+  //  랭킹 화면
+  // ══════════════════════════════════════════
+  if (screen === "rank") {
+    const MEDALS = ["🥇", "🥈", "🥉"];
+    const myId = profile?.id;
+
+    return (
+      <div
+        className="min-h-screen flex flex-col relative overflow-hidden"
+        style={{ background: "#07071a" }}
+      >
+        {/* 배경 그리드 */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            backgroundImage: "radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px)",
+            backgroundSize: "28px 28px",
+          }}
+        />
+
+        {/* 헤더 */}
+        <div className="relative z-10 flex items-center justify-between px-4 pt-12 pb-5">
+          <button
+            onClick={() => setScreen("title")}
+            className="font-mono text-xs tracking-widest px-3 py-1.5 rounded"
+            style={{ color: "#64748b", border: "1px solid #1e293b" }}
+          >
+            ← BACK
+          </button>
+          <p
+            className="font-mono font-bold tracking-widest"
+            style={{ color: "#f59e0b", fontSize: "15px", letterSpacing: "0.3em" }}
+          >
+            R A N K I N G
+          </p>
+          <div className="w-16" />
+        </div>
+
+        {/* 구분선 */}
+        <div className="relative z-10 flex items-center gap-3 mx-4 mb-4">
+          <div className="flex-1 h-px" style={{ background: "linear-gradient(90deg, transparent, #f59e0b44)" }} />
+          <span style={{ color: "#f59e0b66", fontSize: "10px" }}>✦</span>
+          <div className="flex-1 h-px" style={{ background: "linear-gradient(90deg, #f59e0b44, transparent)" }} />
+        </div>
+
+        {/* 내 점수 요약 */}
+        {profile && (profile.total_score > 0 || profile.play_count > 0) && (
+          <div
+            className="relative z-10 mx-4 mb-4 px-4 py-3 rounded-xl"
+            style={{
+              background: "rgba(245,158,11,0.07)",
+              border: "1px solid rgba(245,158,11,0.25)",
+            }}
+          >
+            <p className="font-mono text-[9px] tracking-widest mb-1.5" style={{ color: "#475569" }}>MY RECORD</p>
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-1.5">
+                <span className="text-base">😺</span>
+                <div>
+                  <p className="font-mono font-bold text-xs" style={{ color: "#f59e0b" }}>
+                    누적 {profile.total_score.toLocaleString()}점
+                  </p>
+                  <p className="font-mono text-[10px]" style={{ color: "#4a5568" }}>
+                    최고 {profile.best_run_score.toLocaleString()}점 · {profile.play_count}판
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="font-mono text-[10px]" style={{ color: "#64748b" }}>
+                  최고 {profile.highest_wave}웨이브
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 리더보드 목록 */}
+        <div className="relative z-10 flex-1 overflow-y-auto px-4 pb-10">
+          {rankLoading ? (
+            <div className="py-16 flex flex-col items-center gap-3">
+              <div
+                className="w-8 h-8 rounded-full border-2 border-transparent"
+                style={{
+                  borderTopColor: "#f59e0b",
+                  animation: "spin 0.8s linear infinite",
+                }}
+              />
+              <p className="font-mono text-[10px] tracking-widest" style={{ color: "#1e293b" }}>LOADING...</p>
+              <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+            </div>
+          ) : leaderboard.length === 0 ? (
+            <div className="py-20 text-center">
+              <p className="text-3xl mb-3">🐱</p>
+              <p className="font-mono text-xs tracking-widest" style={{ color: "#1e293b" }}>
+                아직 기록이 없어요
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {leaderboard.map((entry, idx) => {
+                const isMe = entry.user_id === myId;
+                const medal = MEDALS[idx];
+                const color = (entry.profiles as { color_hex?: string | null }).color_hex ?? "#94a3b8";
+                const name  = (entry.profiles as { name?: string }).name ?? "알 수 없음";
+
+                return (
+                  <div
+                    key={entry.user_id}
+                    className="flex items-center gap-3 px-3 py-3 rounded-xl"
+                    style={{
+                      background: isMe
+                        ? "rgba(245,158,11,0.1)"
+                        : idx === 0
+                        ? "rgba(255,215,0,0.05)"
+                        : "rgba(255,255,255,0.03)",
+                      border: isMe
+                        ? "1px solid rgba(245,158,11,0.4)"
+                        : idx === 0
+                        ? "1px solid rgba(255,215,0,0.2)"
+                        : "1px solid rgba(255,255,255,0.06)",
+                    }}
+                  >
+                    {/* 순위 */}
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 font-mono font-black text-sm"
+                      style={{
+                        background: "rgba(255,255,255,0.04)",
+                        color: idx === 0 ? "#fbbf24" : idx === 1 ? "#94a3b8" : idx === 2 ? "#cd7c3e" : "#374151",
+                      }}
+                    >
+                      {medal ?? `#${idx + 1}`}
+                    </div>
+
+                    {/* 아바타 + 이름 */}
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <div
+                        className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center font-bold text-xs"
+                        style={{ background: color + "33", color }}
+                      >
+                        {name.charAt(0)}
+                      </div>
+                      <div className="min-w-0">
+                        <p
+                          className="font-mono font-bold text-xs truncate"
+                          style={{ color: isMe ? "#f59e0b" : "#cbd5e1" }}
+                        >
+                          {name}{isMe && <span className="ml-1 text-[9px]" style={{ color: "#f59e0b88" }}>ME</span>}
+                        </p>
+                        <p className="font-mono text-[9px]" style={{ color: "#374151" }}>
+                          최고 {entry.best_run_score.toLocaleString()}점 · {entry.highest_wave}웨이브
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* 누적 점수 */}
+                    <div className="shrink-0 text-right">
+                      <p
+                        className="font-mono font-black text-sm tabular-nums"
+                        style={{ color: isMe ? "#f59e0b" : idx < 3 ? "#e2e8f0" : "#64748b" }}
+                      >
+                        {entry.total_score.toLocaleString()}
+                      </p>
+                      <p className="font-mono text-[9px]" style={{ color: "#1e293b" }}>TOTAL</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     );
