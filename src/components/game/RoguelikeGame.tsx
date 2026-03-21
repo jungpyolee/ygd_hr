@@ -12,13 +12,20 @@ interface Props {
   gameConfig?: GameConfig;
 }
 
-type Phase = "countdown" | "playing" | "levelup" | "gameover";
+type Phase = "countdown" | "playing" | "levelup" | "gameover" | "gameclear";
 
 interface LeaderboardEntry {
   user_id: string;
   total_score: number;
   best_run_score: number;
+  highest_wave: number;
   profiles: { name: string; color_hex: string | null };
+}
+
+function fmtScore(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}m`;
+  if (n >= 1_000)     return `${(n / 1_000).toFixed(1).replace(/\.0$/, "")}k`;
+  return String(n);
 }
 interface LeaderboardData {
   scores: LeaderboardEntry[];
@@ -107,6 +114,24 @@ export default function RoguelikeGame({ onClose, gameConfig }: Props) {
         s.events.on(GAME_EVENTS.GAME_OVER, (result: GameRunPayload) => {
           setRunResult(result);
           setPhase("gameover");
+          setSaving(true);
+          setSaveError(false);
+          setLeaderboard(null);
+          setLeaderboardLoading(true);
+          saveGameRun(result)
+            .catch(() => setSaveError(true))
+            .finally(() => {
+              setSaving(false);
+              getLeaderboard()
+                .then(data => setLeaderboard(data as LeaderboardData))
+                .catch(() => {})
+                .finally(() => setLeaderboardLoading(false));
+            });
+        });
+
+        s.events.on(GAME_EVENTS.GAME_CLEAR, (result: GameRunPayload) => {
+          setRunResult(result);
+          setPhase("gameclear");
           setSaving(true);
           setSaveError(false);
           setLeaderboard(null);
@@ -437,6 +462,112 @@ export default function RoguelikeGame({ onClose, gameConfig }: Props) {
         </div>
       )}
 
+      {/* ── 게임 클리어 모달 ── */}
+      {phase === "gameclear" && runResult && (
+        <div className="absolute inset-0 z-20 overflow-y-auto"
+          style={{ background: "rgba(0,0,0,0.92)" }}
+        >
+          <div className="min-h-full flex items-start justify-center py-8 px-4">
+            <div className="w-full max-w-sm">
+
+              <div className="text-center mb-5">
+                <div className="text-5xl mb-3">🏆</div>
+                <h2 className="text-white text-2xl font-black mb-1">게임 클리어!</h2>
+                <p className="text-[#f59e0b] text-sm font-medium mb-1">30웨이브 보스를 처치했어요</p>
+                {saving ? (
+                  <p className="text-[#f59e0b]/70 text-sm">기록 저장 중...</p>
+                ) : saveError ? (
+                  <p className="text-[#ef4444] text-sm">저장에 실패했어요</p>
+                ) : (
+                  <p className="text-[#22c55e] text-sm font-medium">✓ 기록이 저장됐어요</p>
+                )}
+              </div>
+
+              {/* 이번 런 스탯 */}
+              <div className="grid grid-cols-2 gap-2 mb-5">
+                <Stat label="최종 점수"  value={runResult.score.toLocaleString()} highlight />
+                <Stat label="웨이브"     value={`${runResult.wave_reached}웨이브`} />
+                <Stat label="생존 시간"  value={formatTime(runResult.duration_sec)} />
+                <Stat label="처치"       value={`${runResult.killed_count}마리`} />
+                <Stat label="획득 코인"  value={`🪙 ${runResult.coins_earned}`} />
+              </div>
+
+              {/* 리더보드 */}
+              <div className="mb-5">
+                <div className="flex items-center mb-2">
+                  <p className="text-white/70 text-xs font-bold tracking-widest uppercase">
+                    🏆 누적 리더보드
+                  </p>
+                </div>
+                <div className="rounded-2xl overflow-hidden" style={{ background: "rgba(255,255,255,0.05)" }}>
+                  {leaderboardLoading ? (
+                    <div className="py-6 text-center text-white/30 text-sm">불러오는 중...</div>
+                  ) : !leaderboard || leaderboard.scores.length === 0 ? (
+                    <div className="py-6 text-center text-white/30 text-sm">아직 기록이 없어요</div>
+                  ) : (
+                    leaderboard.scores.map((entry, i) => {
+                      const isMe = entry.user_id === myUserId;
+                      const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : null;
+                      return (
+                        <div
+                          key={entry.user_id}
+                          className="flex items-center gap-3 px-3 py-2.5"
+                          style={{
+                            background: isMe ? "rgba(245,158,11,0.15)" : undefined,
+                            borderBottom: i < leaderboard.scores.length - 1 ? "1px solid rgba(255,255,255,0.05)" : undefined,
+                          }}
+                        >
+                          <span className="text-white/40 text-xs tabular-nums w-5 text-center shrink-0">
+                            {medal ?? `${i + 1}`}
+                          </span>
+                          <div
+                            className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
+                            style={{ backgroundColor: entry.profiles?.color_hex ?? "#8B95A1" }}
+                          >
+                            {entry.profiles?.name?.charAt(0) ?? "?"}
+                          </div>
+                          <span className={`flex-1 text-sm font-medium truncate ${isMe ? "text-[#f59e0b]" : "text-white"}`}>
+                            {entry.profiles?.name ?? "알 수 없음"}
+                            {isMe && <span className="text-[#f59e0b]/60 text-[10px] ml-1">나</span>}
+                          </span>
+                          <div className="text-right shrink-0">
+                            <p className={`text-sm font-bold tabular-nums ${isMe ? "text-[#f59e0b]" : "text-white"}`}>
+                              {fmtScore(entry.best_run_score)}
+                            </p>
+                            <p className="text-[10px] tabular-nums" style={{ color: isMe ? "rgba(245,158,11,0.6)" : "rgba(255,255,255,0.35)" }}>
+                              W{entry.highest_wave} · {fmtScore(entry.total_score)}누적
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={onClose}
+                  className="flex-1 py-3.5 rounded-2xl text-white/60 font-semibold text-sm"
+                  style={{ background: "rgba(255,255,255,0.08)" }}
+                >
+                  그만할래요
+                </button>
+                <button
+                  onClick={onClose}
+                  disabled={saving}
+                  className="flex-1 py-3.5 rounded-2xl text-white font-bold text-sm disabled:opacity-50"
+                  style={{ background: "linear-gradient(135deg, #f59e0b, #d97706)" }}
+                >
+                  한판 더
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── 게임 오버 모달 ── */}
       {phase === "gameover" && runResult && (
         <div className="absolute inset-0 z-20 overflow-y-auto"
@@ -506,7 +637,10 @@ export default function RoguelikeGame({ onClose, gameConfig }: Props) {
                           </span>
                           <div className="text-right shrink-0">
                             <p className={`text-sm font-bold tabular-nums ${isMe ? "text-[#f59e0b]" : "text-white"}`}>
-                              {entry.total_score.toLocaleString()}
+                              {fmtScore(entry.best_run_score)}
+                            </p>
+                            <p className="text-[10px] tabular-nums" style={{ color: isMe ? "rgba(245,158,11,0.6)" : "rgba(255,255,255,0.35)" }}>
+                              W{entry.highest_wave} · {fmtScore(entry.total_score)}누적
                             </p>
                           </div>
                         </div>

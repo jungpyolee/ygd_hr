@@ -963,7 +963,7 @@ export default class GameScene extends Phaser.Scene {
       this.coinsThisRun += coinCount;
       // 30웨이브 보스 처치 → 게임 클리어
       if (this.wave === 30) {
-        this.time.delayedCall(1000, () => this.triggerGameClear());
+        this.time.delayedCall(1000, () => this.triggerGameOver());
       } else {
         this.time.delayedCall(1500, () => {
           this.wave++;
@@ -1542,7 +1542,7 @@ export default class GameScene extends Phaser.Scene {
   // ─── 플레이어 피격 ────────────────────────
   private takeDamage(damage: number) {
     if (this.invincible) return;
-    this.playerHp -= damage;
+    this.playerHp = Math.floor(this.playerHp - damage);
     this.invincible = true;
     this.time.delayedCall(250, () => { this.invincible = false; });
     // 피격 시 콤보 초기화
@@ -1588,6 +1588,27 @@ export default class GameScene extends Phaser.Scene {
     this.poisonPuddles.clear(true, true);
     this.weaponTimers.forEach(t => t.destroy());
     this.events.emit(GAME_EVENTS.GAME_OVER, {
+      score: this.score,
+      wave_reached: this.wave,
+      duration_sec: this.elapsed,
+      weapons_used: this.equippedWeapons.map(w => w.id),
+      killed_count: this.kills,
+      coins_earned: this.coinsThisRun,
+    } satisfies import("@/lib/game/api").GameRunPayload);
+  }
+
+  private triggerGameClear() {
+    this.paused = true;
+    this.spawnTimer?.destroy();
+    this.bossWizardTimer?.destroy();
+    this.bossChargeTimer?.destroy();
+    this.bossSikhyeTimer?.destroy();
+    this.bossTteokTimer?.destroy();
+    this.comboTimer?.destroy();
+    this.poisonPuddles.getChildren().forEach(p => p.destroy());
+    this.poisonPuddles.clear(true, true);
+    this.weaponTimers.forEach(t => t.destroy());
+    this.events.emit(GAME_EVENTS.GAME_CLEAR, {
       score: this.score,
       wave_reached: this.wave,
       duration_sec: this.elapsed,

@@ -3,11 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronDown, Search, X } from "lucide-react";
-import dynamic from "next/dynamic";
-
-const CatDodgeGame = dynamic(() => import("@/components/CatDodgeGame"), {
-  ssr: false,
-});
 
 /* ─────────────────────────────────────────────
    고양이 감정 단계 (클릭 0~9 → 10번째 😻 피날레)
@@ -92,11 +87,6 @@ function WalkingCat({ onGameStart }: { onGameStart: () => void }) {
     // 팝 애니메이션
     setPopping(true);
     setTimeout(() => setPopping(false), 350);
-
-    if (n === 9) {
-      // 9번째 클릭에서 미리 로드
-      import("@/components/CatDodgeGame");
-    }
 
     if (n >= 10) {
       phaseRef.current = "hearts";
@@ -521,7 +511,6 @@ export default function GuidePage() {
   const [open, setOpen] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [highlighted, setHighlighted] = useState<string | null>(null);
-  const [showGame, setShowGame] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
 
   // 진입 시 레드닷 해제
@@ -608,8 +597,7 @@ export default function GuidePage() {
           100% { opacity: 0; transform: translateX(-50%) translateY(-6px); }
         }
       `}</style>
-      <WalkingCat onGameStart={() => setShowGame(true)} />
-      {showGame && <CatDodgeGame onClose={() => setShowGame(false)} />}
+      <WalkingCat onGameStart={() => router.push("/game")} />
       {/* 헤더 */}
       <header className="sticky top-0 z-10 flex items-center gap-3 px-5 py-4 bg-white/90 backdrop-blur-md border-b border-[#E5E8EB]">
         <button
