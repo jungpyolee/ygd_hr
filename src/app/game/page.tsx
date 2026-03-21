@@ -25,6 +25,7 @@ const CAT_TYPES = [
     id: "persian",
     name: "페르시안",
     emoji: "🐱",
+    svg: "/cats/persian.svg",
     desc: "균형형",
     detail: "기본 스탯 · 무난한 시작",
     unlockCondition: "always" as const,
@@ -34,6 +35,7 @@ const CAT_TYPES = [
     id: "scottish",
     name: "스코티시폴드",
     emoji: "😺",
+    svg: "/cats/scottish.svg",
     desc: "탱커형",
     detail: "HP +40 · 이동속도 -10%",
     unlockCondition: "play5" as const,
@@ -43,6 +45,7 @@ const CAT_TYPES = [
     id: "abyssinian",
     name: "아비시니안",
     emoji: "😸",
+    svg: "/cats/abyssinian.svg",
     desc: "스피드형",
     detail: "이동속도 +20% · HP -20",
     unlockCondition: "coins50" as const,
@@ -52,6 +55,7 @@ const CAT_TYPES = [
     id: "munchkin",
     name: "먼치킨",
     emoji: "🐈",
+    svg: "/cats/munchkin.svg",
     desc: "서포터형",
     detail: "EXP +30% · 투사체 2개",
     unlockCondition: "wave30" as const,
@@ -61,6 +65,7 @@ const CAT_TYPES = [
     id: "doujeonku",
     name: "두쫀쿠",
     emoji: "🍘",
+    svg: "/cats/doujeonku.svg",
     desc: "탱커반격형",
     detail: "HP +50 · 피해 누적 시 자동 반격",
     unlockCondition: "play15" as const,
@@ -70,6 +75,7 @@ const CAT_TYPES = [
     id: "bomdong",
     name: "봄동비빔밥",
     emoji: "🥗",
+    svg: "/cats/bomdong.svg",
     desc: "시너지형",
     detail: "무기 슬롯 +1 · 2종 무기로 시작",
     unlockCondition: "weapons4" as const,
@@ -79,6 +85,7 @@ const CAT_TYPES = [
     id: "buttertteok",
     name: "버터떡",
     emoji: "🧈",
+    svg: "/cats/buttertteok.svg",
     desc: "글래스캐논형",
     detail: "속도 +25% · 공격력 +25% · HP -30",
     unlockCondition: "score50k" as const,
@@ -521,7 +528,14 @@ export default function GamePage() {
                     opacity: !unlocked ? 0.45 : 1,
                   }}
                 >
-                  <span className={`text-4xl ${!unlocked ? "grayscale" : ""}`}>{cat.emoji}</span>
+                  <img
+                    src={cat.svg}
+                    alt={cat.name}
+                    width={64}
+                    height={64}
+                    className={!unlocked ? "grayscale opacity-60" : ""}
+                    style={{ imageRendering: "auto" }}
+                  />
                   <div className="text-center">
                     <p
                       className="font-mono font-bold text-xs tracking-wider"
@@ -592,7 +606,7 @@ export default function GamePage() {
           style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.2)" }}
         >
           <div className="flex items-center gap-3">
-            <span className="text-3xl">{selCat.emoji}</span>
+            <img src={selCat.svg} alt={selCat.name} width={48} height={48} />
             <div className="flex-1">
               <p className="font-mono font-bold text-sm tracking-wider" style={{ color: "#f59e0b" }}>
                 {selCat.name.toUpperCase()}

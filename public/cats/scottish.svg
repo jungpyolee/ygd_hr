@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- 스코티시폴드: 탱커형, 접힌 귀, 회색 -->
+
+  <!-- 꼬리 -->
+  <path d="M70 70 Q86 60 82 46 Q80 40 74 43" stroke="#8A9BAD" stroke-width="7" fill="none" stroke-linecap="round"/>
+
+  <!-- 몸통 (크고 든든) -->
+  <ellipse cx="48" cy="64" rx="28" ry="22" fill="#A8BAC8"/>
+  <!-- 배 -->
+  <ellipse cx="48" cy="67" rx="18" ry="14" fill="#C8D8E8"/>
+
+  <!-- 줄무늬 -->
+  <line x1="38" y1="54" x2="36" y2="76" stroke="#8A9BAD" stroke-width="2" opacity="0.5" stroke-linecap="round"/>
+  <line x1="48" y1="52" x2="48" y2="75" stroke="#8A9BAD" stroke-width="2" opacity="0.5" stroke-linecap="round"/>
+  <line x1="58" y1="54" x2="60" y2="76" stroke="#8A9BAD" stroke-width="2" opacity="0.5" stroke-linecap="round"/>
+
+  <!-- 뒷다리 (두꺼운) -->
+  <ellipse cx="31" cy="85" rx="12" ry="7" fill="#8A9BAD"/>
+  <ellipse cx="65" cy="85" rx="12" ry="7" fill="#8A9BAD"/>
+
+  <!-- 앞발 (짧고 굵음) -->
+  <ellipse cx="21" cy="68" rx="11" ry="8" fill="#8A9BAD" transform="rotate(-8 21 68)"/>
+  <ellipse cx="75" cy="68" rx="11" ry="8" fill="#8A9BAD" transform="rotate(8 75 68)"/>
+
+  <!-- 머리 (둥글고 큰) -->
+  <circle cx="48" cy="34" r="22" fill="#A8BAC8"/>
+
+  <!-- 줄무늬 (머리) -->
+  <line x1="42" y1="18" x2="40" y2="28" stroke="#8A9BAD" stroke-width="2" opacity="0.5" stroke-linecap="round"/>
+  <line x1="48" y1="16" x2="48" y2="26" stroke="#8A9BAD" stroke-width="2" opacity="0.5" stroke-linecap="round"/>
+  <line x1="54" y1="18" x2="56" y2="28" stroke="#8A9BAD" stroke-width="2" opacity="0.5" stroke-linecap="round"/>
+
+  <!-- 접힌 귀 (스코티시폴드 특징) -->
+  <ellipse cx="30" cy="18" rx="10" ry="6" fill="#A8BAC8" transform="rotate(30 30 18)"/>
+  <ellipse cx="66" cy="18" rx="10" ry="6" fill="#A8BAC8" transform="rotate(-30 66 18)"/>
+  <!-- 귀 안쪽 -->
+  <ellipse cx="31" cy="19" rx="7" ry="4" fill="#C4C4D4" transform="rotate(30 31 19)"/>
+  <ellipse cx="65" cy="19" rx="7" ry="4" fill="#C4C4D4" transform="rotate(-30 65 19)"/>
+
+  <!-- 눈 (차분하고 무거운) -->
+  <ellipse cx="40" cy="34" rx="7" ry="6" fill="white"/>
+  <ellipse cx="56" cy="34" rx="7" ry="6" fill="white"/>
+  <circle cx="41" cy="35" r="4.5" fill="#4A7C59"/>
+  <circle cx="57" cy="35" r="4.5" fill="#4A7C59"/>
+  <circle cx="41" cy="35" r="2.5" fill="#1A3A25"/>
+  <circle cx="57" cy="35" r="2.5" fill="#1A3A25"/>
+  <circle cx="42.5" cy="33" r="1.5" fill="white"/>
+  <circle cx="58.5" cy="33" r="1.5" fill="white"/>
+
+  <!-- 코 -->
+  <ellipse cx="48" cy="41" rx="3" ry="2" fill="#FFB6C1"/>
+  <!-- 입 -->
+  <path d="M44 44 Q48 48 52 44" stroke="#6A7A8A" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+
+  <!-- 수염 -->
+  <line x1="22" y1="41" x2="39" y2="42" stroke="#6A7A8A" stroke-width="1.2" opacity="0.6"/>
+  <line x1="22" y1="44" x2="39" y2="44" stroke="#6A7A8A" stroke-width="1.2" opacity="0.6"/>
+  <line x1="74" y1="41" x2="57" y2="42" stroke="#6A7A8A" stroke-width="1.2" opacity="0.6"/>
+  <line x1="74" y1="44" x2="57" y2="44" stroke="#6A7A8A" stroke-width="1.2" opacity="0.6"/>
+
+  <!-- 방패 아이콘 (탱커) -->
+  <path d="M44 88 L48 85 L52 88 L52 92 Q48 95 44 92 Z" fill="#4A7C59" opacity="0.6"/>
+</svg>

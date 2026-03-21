@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- 버터떡: 날렵하고 빠른 노란 버터 고양이 -->
+
+  <!-- 속도 이펙트 (잔상) -->
+  <ellipse cx="20" cy="60" rx="10" ry="6" fill="#FFF3A0" opacity="0.2" transform="rotate(-20 20 60)"/>
+  <ellipse cx="14" cy="55" rx="7" ry="4" fill="#FFF3A0" opacity="0.12" transform="rotate(-25 14 55)"/>
+
+  <!-- 꼬리 (길고 날렵한) -->
+  <path d="M72 65 Q90 50 88 32 Q87 25 80 28" stroke="#E6B800" stroke-width="5" fill="none" stroke-linecap="round"/>
+
+  <!-- 몸통 (날렵한 타원) -->
+  <ellipse cx="47" cy="63" rx="23" ry="19" fill="#FFD700"/>
+  <!-- 배 (연한 버터색) -->
+  <ellipse cx="47" cy="65" rx="15" ry="12" fill="#FFF5B0"/>
+
+  <!-- 버터 광택 -->
+  <ellipse cx="40" cy="57" rx="6" ry="3" fill="white" opacity="0.3" transform="rotate(-20 40 57)"/>
+
+  <!-- 뒷다리 (날렵) -->
+  <ellipse cx="32" cy="82" rx="9" ry="5" fill="#E6B800" transform="rotate(-10 32 82)"/>
+  <ellipse cx="63" cy="82" rx="9" ry="5" fill="#E6B800" transform="rotate(10 63 82)"/>
+
+  <!-- 앞발 (달리는 자세 느낌) -->
+  <ellipse cx="22" cy="62" rx="8" ry="6" fill="#E6B800" transform="rotate(-25 22 62)"/>
+  <ellipse cx="72" cy="62" rx="8" ry="6" fill="#E6B800" transform="rotate(25 72 62)"/>
+
+  <!-- 머리 (약간 앞으로 기운) -->
+  <circle cx="47" cy="35" r="20" fill="#FFD700"/>
+
+  <!-- 귀 (뾰족하고 날렵) -->
+  <polygon points="29,22 23,4 40,17" fill="#FFD700"/>
+  <polygon points="65,22 77,4 60,17" fill="#FFD700"/>
+  <!-- 귀 안쪽 -->
+  <polygon points="31,21 27,9 39,18" fill="#FFECAA"/>
+  <polygon points="63,21 73,9 61,18" fill="#FFECAA"/>
+
+  <!-- 눈 (날카롭고 집중된) -->
+  <ellipse cx="39" cy="33" rx="7" ry="5.5" fill="white"/>
+  <ellipse cx="55" cy="33" rx="7" ry="5.5" fill="white"/>
+  <!-- 고양이 눈 (세로 동공) -->
+  <ellipse cx="39.5" cy="33.5" rx="3" ry="4.5" fill="#1A1A00"/>
+  <ellipse cx="55.5" cy="33.5" rx="3" ry="4.5" fill="#1A1A00"/>
+  <!-- 홍채 (황금빛) -->
+  <ellipse cx="39.5" cy="33.5" rx="5" ry="5.5" fill="#CC8800" opacity="0.4"/>
+  <ellipse cx="55.5" cy="33.5" rx="5" ry="5.5" fill="#CC8800" opacity="0.4"/>
+  <!-- 눈 하이라이트 -->
+  <circle cx="41" cy="31" r="1.5" fill="white"/>
+  <circle cx="57" cy="31" r="1.5" fill="white"/>
+
+  <!-- 코 -->
+  <ellipse cx="47" cy="40" rx="2.5" ry="1.8" fill="#FFB6C1"/>
+  <!-- 입 (날카로운 V) -->
+  <path d="M44 43 L47 46 L50 43" stroke="#CC8800" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- 수염 (뒤로 날림) -->
+  <line x1="22" y1="40" x2="37" y2="41" stroke="#CC8800" stroke-width="1" opacity="0.7" transform="rotate(-5 29 40.5)"/>
+  <line x1="22" y1="43" x2="37" y2="43" stroke="#CC8800" stroke-width="1" opacity="0.7"/>
+  <line x1="72" y1="40" x2="57" y2="41" stroke="#CC8800" stroke-width="1" opacity="0.7" transform="rotate(5 64 40.5)"/>
+  <line x1="72" y1="43" x2="57" y2="43" stroke="#CC8800" stroke-width="1" opacity="0.7"/>
+
+  <!-- 속도 라인 -->
+  <line x1="2" y1="45" x2="18" y2="45" stroke="#FFF5B0" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+  <line x1="4" y1="52" x2="16" y2="52" stroke="#FFF5B0" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
+  <line x1="6" y1="58" x2="15" y2="58" stroke="#FFF5B0" stroke-width="1" stroke-linecap="round" opacity="0.3"/>
+
+  <!-- 버터 방울 (떨어지는 이펙트) -->
+  <ellipse cx="60" cy="88" rx="4" ry="3" fill="#FFD700" opacity="0.6"/>
+  <ellipse cx="55" cy="92" rx="3" ry="2" fill="#FFD700" opacity="0.4"/>
+  <ellipse cx="65" cy="90" rx="2" ry="1.5" fill="#FFD700" opacity="0.3"/>
+</svg>
