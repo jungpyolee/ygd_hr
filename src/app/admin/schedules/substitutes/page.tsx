@@ -16,6 +16,7 @@ import {
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import Link from "next/link";
+import { useWorkplaces } from "@/lib/hooks/useWorkplaces";
 
 interface SubstituteRequest {
   id: string;
@@ -70,18 +71,9 @@ interface SubstituteRequestRow {
   accepted?: { name: string } | null;
 }
 
-const LOCATION_LABELS: Record<string, string> = {
-  cafe: "카페",
-  factory: "공장",
-  catering: "케이터링",
-};
-const LOCATION_COLORS: Record<string, string> = {
-  cafe: "#3182F6",
-  factory: "#00B761",
-  catering: "#F59E0B",
-};
 
 export default function AdminSubstitutesPage() {
+  const { byKey } = useWorkplaces();
   const [tab, setTab] = useState<"pending" | "done">("pending");
   const { user } = useAuth();
   const currentAdminId = user?.id ?? null;
@@ -238,7 +230,7 @@ export default function AdminSubstitutesPage() {
         target_role: "employee" as const,
         type: "substitute_approved",
         title: "대타 요청이 왔어요",
-        content: `${format(new Date(approveTarget.slot_date + "T00:00:00"), "M월 d일", { locale: ko })} ${LOCATION_LABELS[approveTarget.work_location]} ${approveTarget.start_time.slice(0, 5)}~${approveTarget.end_time.slice(0, 5)} 대타를 설 수 있어요. 확인해보세요.`,
+        content: `${format(new Date(approveTarget.slot_date + "T00:00:00"), "M월 d일", { locale: ko })} ${byKey[approveTarget.work_location]?.label || approveTarget.work_location} ${approveTarget.start_time.slice(0, 5)}~${approveTarget.end_time.slice(0, 5)} 대타를 설 수 있어요. 확인해보세요.`,
         source_id: approveTarget.id,
       }));
       await supabase.from("notifications").insert(notifications);
@@ -384,11 +376,11 @@ export default function AdminSubstitutesPage() {
                 <span
                   className="flex items-center gap-1 font-bold px-2 py-0.5 rounded-md text-white text-[12px]"
                   style={{
-                    backgroundColor: LOCATION_COLORS[req.work_location],
+                    backgroundColor: byKey[req.work_location]?.color,
                   }}
                 >
                   <MapPin className="w-3 h-3" />
-                  {LOCATION_LABELS[req.work_location]}
+                  {byKey[req.work_location]?.label || req.work_location}
                 </span>
               </div>
 

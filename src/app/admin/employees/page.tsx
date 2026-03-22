@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
+import { useWorkplaces } from "@/lib/hooks/useWorkplaces";
 
 // 🚀 스키마 100% 반영된 인터페이스
 interface Profile {
@@ -54,17 +55,6 @@ const EMPLOYMENT_TYPE_OPTIONS = [
   { value: "part_time_daily", label: "일일 알바" },
 ];
 
-const WORK_LOCATION_OPTIONS = [
-  { value: "factory", label: "공장" },
-  { value: "cafe", label: "카페" },
-  { value: "catering", label: "케이터링" },
-];
-
-const CAFE_POSITION_OPTIONS = [
-  { value: "hall", label: "홀" },
-  { value: "kitchen", label: "주방" },
-  { value: "showroom", label: "쇼룸" },
-];
 
 // 파일 업로드용 키 타입
 type DocKey = "employment_contract_url" | "health_cert_url";
@@ -92,6 +82,7 @@ function generateTimeOptions(startH: number, endH: number) {
 }
 
 export default function AdminEmployeesPage() {
+  const { workplaces, positionsOf, hasPositions } = useWorkplaces();
   const [uploading, setUploading] = useState(false);
 
   const [editingEmployee, setEditingEmployee] = useState<Profile | null>(null);
@@ -741,21 +732,19 @@ export default function AdminEmployeesPage() {
                     근무 가능 장소
                   </label>
                   <div className="flex gap-2 flex-wrap">
-                    {WORK_LOCATION_OPTIONS.map((opt) => {
-                      const selected = (editForm.work_locations || []).includes(
-                        opt.value,
-                      );
+                    {workplaces.map((w) => {
+                      const selected = (editForm.work_locations || []).includes(w.work_location_key);
                       return (
                         <button
-                          key={opt.value}
+                          key={w.work_location_key}
                           type="button"
                           onClick={() => {
                             const cur = editForm.work_locations || [];
                             const next = selected
-                              ? cur.filter((v) => v !== opt.value)
-                              : [...cur, opt.value];
+                              ? cur.filter((v) => v !== w.work_location_key)
+                              : [...cur, w.work_location_key];
                             handleFormChange("work_locations", next);
-                            if (!next.includes("cafe")) {
+                            if (!next.some((loc) => hasPositions(loc))) {
                               handleFormChange("cafe_positions", []);
                             }
                           }}
@@ -765,45 +754,45 @@ export default function AdminEmployeesPage() {
                               : "bg-[#F2F4F6] text-[#4E5968]"
                           }`}
                         >
-                          {opt.label}
+                          {w.label}
                         </button>
                       );
                     })}
                   </div>
                 </div>
 
-                {/* 카페 포지션 (카페 선택 시만 표시) */}
-                {(editForm.work_locations || []).includes("cafe") && (
+                {/* 포지션 (포지션 있는 근무지 선택 시만 표시) */}
+                {(editForm.work_locations || []).some((loc) => hasPositions(loc)) && (
                   <div>
                     <label className="block text-[12px] font-medium text-[#8B95A1] mb-2">
-                      카페 담당 포지션
+                      담당 포지션
                     </label>
                     <div className="flex gap-2 flex-wrap">
-                      {CAFE_POSITION_OPTIONS.map((opt) => {
-                        const selected = (
-                          editForm.cafe_positions || []
-                        ).includes(opt.value);
-                        return (
-                          <button
-                            key={opt.value}
-                            type="button"
-                            onClick={() => {
-                              const cur = editForm.cafe_positions || [];
-                              const next = selected
-                                ? cur.filter((v) => v !== opt.value)
-                                : [...cur, opt.value];
-                              handleFormChange("cafe_positions", next);
-                            }}
-                            className={`px-4 py-2 rounded-xl text-[13px] font-bold transition-all ${
-                              selected
-                                ? "bg-[#E8F3FF] text-[#3182F6] border border-[#3182F6]"
-                                : "bg-[#F2F4F6] text-[#4E5968]"
-                            }`}
-                          >
-                            {opt.label}
-                          </button>
-                        );
-                      })}
+                      {(editForm.work_locations || [])
+                        .flatMap((loc) => positionsOf(loc))
+                        .map((p) => {
+                          const selected = (editForm.cafe_positions || []).includes(p.position_key);
+                          return (
+                            <button
+                              key={p.position_key}
+                              type="button"
+                              onClick={() => {
+                                const cur = editForm.cafe_positions || [];
+                                const next = selected
+                                  ? cur.filter((v) => v !== p.position_key)
+                                  : [...cur, p.position_key];
+                                handleFormChange("cafe_positions", next);
+                              }}
+                              className={`px-4 py-2 rounded-xl text-[13px] font-bold transition-all ${
+                                selected
+                                  ? "bg-[#E8F3FF] text-[#3182F6] border border-[#3182F6]"
+                                  : "bg-[#F2F4F6] text-[#4E5968]"
+                              }`}
+                            >
+                              {p.label}
+                            </button>
+                          );
+                        })}
                     </div>
                   </div>
                 )}
@@ -1153,44 +1142,41 @@ export default function AdminEmployeesPage() {
                   근무 장소
                 </label>
                 <div className="flex gap-2">
-                  {WORK_LOCATION_OPTIONS.map((opt) => (
+                  {workplaces.map((w) => (
                     <button
-                      key={opt.value}
+                      key={w.work_location_key}
                       type="button"
                       onClick={() =>
                         setEditingDefault((prev) =>
                           prev
                             ? {
                                 ...prev,
-                                work_location: opt.value,
-                                cafe_positions:
-                                  opt.value !== "cafe"
-                                    ? []
-                                    : prev.cafe_positions,
+                                work_location: w.work_location_key,
+                                cafe_positions: !hasPositions(w.work_location_key)
+                                  ? []
+                                  : prev.cafe_positions,
                               }
                             : null,
                         )
                       }
-                      className={`flex-1 py-2 rounded-xl text-[13px] font-bold transition-all ${editingDefault.work_location === opt.value ? "bg-[#3182F6] text-white" : "bg-[#F2F4F6] text-[#4E5968]"}`}
+                      className={`flex-1 py-2 rounded-xl text-[13px] font-bold transition-all ${editingDefault.work_location === w.work_location_key ? "bg-[#3182F6] text-white" : "bg-[#F2F4F6] text-[#4E5968]"}`}
                     >
-                      {opt.label}
+                      {w.label}
                     </button>
                   ))}
                 </div>
               </div>
-              {editingDefault.work_location === "cafe" && (
+              {editingDefault.work_location && hasPositions(editingDefault.work_location) && (
                 <div>
                   <label className="block text-[12px] font-medium text-[#8B95A1] mb-2">
-                    카페 포지션
+                    포지션
                   </label>
                   <div className="flex gap-2">
-                    {CAFE_POSITION_OPTIONS.map((opt) => {
-                      const sel = (
-                        editingDefault.cafe_positions || []
-                      ).includes(opt.value);
+                    {positionsOf(editingDefault.work_location).map((p) => {
+                      const sel = (editingDefault.cafe_positions || []).includes(p.position_key);
                       return (
                         <button
-                          key={opt.value}
+                          key={p.position_key}
                           type="button"
                           onClick={() => {
                             const cur = editingDefault.cafe_positions || [];
@@ -1199,15 +1185,15 @@ export default function AdminEmployeesPage() {
                                 ? {
                                     ...prev,
                                     cafe_positions: sel
-                                      ? cur.filter((v) => v !== opt.value)
-                                      : [...cur, opt.value],
+                                      ? cur.filter((v) => v !== p.position_key)
+                                      : [...cur, p.position_key],
                                   }
                                 : null,
                             );
                           }}
                           className={`flex-1 py-2 rounded-xl text-[13px] font-bold transition-all ${sel ? "bg-[#E8F3FF] text-[#3182F6] border border-[#3182F6]" : "bg-[#F2F4F6] text-[#4E5968]"}`}
                         >
-                          {opt.label}
+                          {p.label}
                         </button>
                       );
                     })}

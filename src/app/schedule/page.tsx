@@ -9,6 +9,7 @@ import { ChevronLeft, ChevronRight, Calendar, MapPin, Clock, ArrowRightLeft, X, 
 import { format, addWeeks, subWeeks, startOfWeek, addDays, isSameDay, isToday } from "date-fns";
 import { ko } from "date-fns/locale";
 import { useSearchParams, useRouter } from "next/navigation";
+import { useWorkplaces } from "@/lib/hooks/useWorkplaces";
 
 interface ScheduleSlot {
   id: string;
@@ -52,26 +53,6 @@ interface SubstituteRequest {
   cafe_positions: string[];
 }
 
-const LOCATION_LABELS: Record<string, string> = {
-  cafe: "카페",
-  factory: "공장",
-  catering: "케이터링",
-};
-const LOCATION_COLORS: Record<string, string> = {
-  cafe: "#3182F6",
-  factory: "#00B761",
-  catering: "#F59E0B",
-};
-const LOCATION_BG: Record<string, string> = {
-  cafe: "#E8F3FF",
-  factory: "#E6FAF0",
-  catering: "#FFF7E6",
-};
-const CAFE_POSITION_LABELS: Record<string, string> = {
-  hall: "홀",
-  kitchen: "주방",
-  showroom: "쇼룸",
-};
 const DAY_LABELS_SHORT = ["일", "월", "화", "수", "목", "금", "토"];
 
 function getWeekDates(weekStart: Date): Date[] {
@@ -81,6 +62,7 @@ function getWeekDates(weekStart: Date): Date[] {
 function SchedulePageInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { byKey, positionsOf } = useWorkplaces();
 
   const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date(), { weekStartsOn: 0 }));
   const [selectedDay, setSelectedDay] = useState<Date>(new Date());
@@ -293,7 +275,7 @@ function SchedulePageInner() {
       target_role: "employee",
       type: "substitute_filled",
       title: "대타가 구해졌어요",
-      content: `${slotDateLabel} ${LOCATION_LABELS[req.work_location] || req.work_location} 대타가 확정됐어요.`,
+      content: `${slotDateLabel} ${byKey[req.work_location]?.label || req.work_location} 대타가 확정됐어요.`,
       source_id: req.id,
     });
 
@@ -369,7 +351,7 @@ function SchedulePageInner() {
         target_role: "admin",
         type: "substitute_requested",
         title: "대타 요청이 들어왔어요",
-        content: `${format(new Date(requestTarget.slot_date), "M월 d일", { locale: ko })} ${LOCATION_LABELS[requestTarget.work_location]} ${requestTarget.start_time.slice(0, 5)}~${requestTarget.end_time.slice(0, 5)} 대타 요청이 접수됐어요.`,
+        content: `${format(new Date(requestTarget.slot_date), "M월 d일", { locale: ko })} ${byKey[requestTarget.work_location]?.label || requestTarget.work_location} ${requestTarget.start_time.slice(0, 5)}~${requestTarget.end_time.slice(0, 5)} 대타 요청이 접수됐어요.`,
         source_id: requestTarget.id,
       });
       toast.success("대타 요청을 보냈어요", { description: "관리자 승인 후 알림을 드려요." });
@@ -478,18 +460,18 @@ function SchedulePageInner() {
                         <span
                           className="flex items-center gap-1 px-3 py-1 rounded-full text-[13px] font-bold"
                           style={{
-                            backgroundColor: LOCATION_BG[slot.work_location],
-                            color: LOCATION_COLORS[slot.work_location],
+                            backgroundColor: byKey[slot.work_location]?.bg_color,
+                            color: byKey[slot.work_location]?.color,
                           }}
                         >
                           <MapPin className="w-3.5 h-3.5" />
-                          {LOCATION_LABELS[slot.work_location]}
+                          {byKey[slot.work_location]?.label || slot.work_location}
                         </span>
                         {slot.cafe_positions && slot.cafe_positions.length > 0 && (
                           <div className="flex gap-1">
                             {slot.cafe_positions.map((pos) => (
                               <span key={pos} className="px-2 py-0.5 bg-[#F2F4F6] text-[#4E5968] rounded-md text-[11px] font-bold">
-                                {CAFE_POSITION_LABELS[pos] || pos}
+                                {positionsOf(slot.work_location).find(p => p.position_key === pos)?.label || pos}
                               </span>
                             ))}
                           </div>
@@ -540,16 +522,16 @@ function SchedulePageInner() {
                           <span
                             className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[12px] font-bold shrink-0"
                             style={{
-                              backgroundColor: LOCATION_BG[req.work_location] || "#F2F4F6",
-                              color: LOCATION_COLORS[req.work_location] || "#4E5968",
+                              backgroundColor: byKey[req.work_location]?.bg_color || "#F2F4F6",
+                              color: byKey[req.work_location]?.color || "#4E5968",
                             }}
                           >
                             <MapPin className="w-3 h-3" />
-                            {LOCATION_LABELS[req.work_location] || req.work_location}
+                            {byKey[req.work_location]?.label || req.work_location}
                           </span>
                           {req.cafe_positions && req.cafe_positions.length > 0 && req.cafe_positions.map((pos) => (
                             <span key={pos} className="px-2 py-0.5 bg-[#F2F4F6] text-[#4E5968] rounded-md text-[11px] font-bold shrink-0">
-                              {CAFE_POSITION_LABELS[pos] || pos}
+                              {positionsOf(req.work_location).find(p => p.position_key === pos)?.label || pos}
                             </span>
                           ))}
                           {slotDate && (
@@ -600,16 +582,16 @@ function SchedulePageInner() {
                           <span
                             className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[12px] font-bold shrink-0"
                             style={{
-                              backgroundColor: LOCATION_BG[req.work_location] || "#F2F4F6",
-                              color: LOCATION_COLORS[req.work_location] || "#4E5968",
+                              backgroundColor: byKey[req.work_location]?.bg_color || "#F2F4F6",
+                              color: byKey[req.work_location]?.color || "#4E5968",
                             }}
                           >
                             <MapPin className="w-3 h-3" />
-                            {LOCATION_LABELS[req.work_location] || req.work_location}
+                            {byKey[req.work_location]?.label || req.work_location}
                           </span>
                           {req.cafe_positions && req.cafe_positions.length > 0 && req.cafe_positions.map((pos) => (
                             <span key={pos} className="px-2 py-0.5 bg-[#F2F4F6] text-[#4E5968] rounded-md text-[11px] font-bold shrink-0">
-                              {CAFE_POSITION_LABELS[pos] || pos}
+                              {positionsOf(req.work_location).find(p => p.position_key === pos)?.label || pos}
                             </span>
                           ))}
                           {slotDate && (
@@ -663,7 +645,7 @@ function SchedulePageInner() {
             </div>
             <p className="text-[14px] text-[#4E5968] mb-4">
               {format(new Date(requestTarget.slot_date + "T00:00:00"), "M월 d일", { locale: ko })}{" "}
-              {LOCATION_LABELS[requestTarget.work_location]}{" "}
+              {byKey[requestTarget.work_location]?.label || requestTarget.work_location}{" "}
               {requestTarget.start_time.slice(0, 5)}~{requestTarget.end_time.slice(0, 5)} 근무예요.
             </p>
             <div className="mb-4">
@@ -713,12 +695,12 @@ function SchedulePageInner() {
                 <span
                   className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[13px] font-bold"
                   style={{
-                    backgroundColor: LOCATION_BG[activeRequest.work_location] || "#F2F4F6",
-                    color: LOCATION_COLORS[activeRequest.work_location] || "#4E5968",
+                    backgroundColor: byKey[activeRequest.work_location]?.bg_color || "#F2F4F6",
+                    color: byKey[activeRequest.work_location]?.color || "#4E5968",
                   }}
                 >
                   <MapPin className="w-3.5 h-3.5" />
-                  {LOCATION_LABELS[activeRequest.work_location] || activeRequest.work_location}
+                  {byKey[activeRequest.work_location]?.label || activeRequest.work_location}
                 </span>
                 {activeRequest.slot_date && (
                   <span className="text-[14px] font-bold text-[#191F28]">

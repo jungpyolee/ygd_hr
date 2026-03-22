@@ -4,24 +4,7 @@ import { useMemo } from "react";
 import { startOfWeek, addDays, format } from "date-fns";
 import { CalendarDays, ChevronRight } from "lucide-react";
 import Link from "next/link";
-
-const LOCATION_COLORS: Record<string, string> = {
-  cafe: "#3182F6",
-  factory: "#00B761",
-  catering: "#F59E0B",
-};
-
-const LOCATION_LABELS: Record<string, string> = {
-  cafe: "카페",
-  factory: "공장",
-  catering: "케이터링",
-};
-
-const LOCATION_BG: Record<string, string> = {
-  cafe: "#E8F3FF",
-  factory: "#E6FAF0",
-  catering: "#FFF7E6",
-};
+import { useWorkplaces } from "@/lib/hooks/useWorkplaces";
 
 const DAY_LABELS = ["월", "화", "수", "목", "금", "토", "일"];
 
@@ -37,6 +20,7 @@ interface Props {
 }
 
 export default function WeeklyScheduleCard({ slots }: Props) {
+  const { byKey } = useWorkplaces();
   const todayIdx = (new Date().getDay() + 6) % 7; // 0=월 ~ 6=일
   const weekStartSun = startOfWeek(new Date(), { weekStartsOn: 0 });
   const weekDates = Array.from({ length: 7 }, (_, i) => addDays(weekStartSun, i + 1));
@@ -101,7 +85,7 @@ export default function WeeklyScheduleCard({ slots }: Props) {
                       key={si}
                       className="w-1.5 h-1.5 rounded-full"
                       style={{
-                        backgroundColor: LOCATION_COLORS[slot.work_location] || "#8B95A1",
+                        backgroundColor: byKey[slot.work_location]?.color || "#8B95A1",
                       }}
                     />
                   ))}
@@ -138,7 +122,7 @@ export default function WeeklyScheduleCard({ slots }: Props) {
                     <div
                       className="w-1.5 h-1.5 rounded-full shrink-0"
                       style={{
-                        backgroundColor: LOCATION_COLORS[slot.work_location] || "#8B95A1",
+                        backgroundColor: byKey[slot.work_location]?.color || "#8B95A1",
                       }}
                     />
                     <span className="flex-1 text-[13px] font-semibold text-[#191F28] tabular-nums">
@@ -147,11 +131,11 @@ export default function WeeklyScheduleCard({ slots }: Props) {
                     <span
                       className="text-[11px] font-bold px-2.5 py-0.5 rounded-full shrink-0"
                       style={{
-                        backgroundColor: LOCATION_BG[slot.work_location] || "#F2F4F6",
-                        color: LOCATION_COLORS[slot.work_location] || "#4E5968",
+                        backgroundColor: byKey[slot.work_location]?.bg_color || "#F2F4F6",
+                        color: byKey[slot.work_location]?.color || "#4E5968",
                       }}
                     >
-                      {LOCATION_LABELS[slot.work_location] || slot.work_location}
+                      {byKey[slot.work_location]?.label || slot.work_location}
                     </span>
                   </div>
                 );

@@ -21,30 +21,10 @@ import { CheckCircle2, Circle } from "lucide-react";
 import { toast } from "sonner";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
 import type { ChecklistTemplate } from "@/types/checklist";
+import { useWorkplaces } from "@/lib/hooks/useWorkplaces";
 
 type ViewMode = "group" | "preview";
 type TriggerTab = "check_in" | "check_out";
-
-const LOCATION_LABELS: Record<string, string> = {
-  cafe: "카페",
-  factory: "공장",
-  catering: "케이터링",
-};
-const POSITION_LABELS: Record<string, string> = {
-  hall: "홀",
-  kitchen: "주방",
-  showroom: "쇼룸",
-};
-
-const COMBOS: { location: string | null; position: string | null; label: string }[] = [
-  { location: null, position: null, label: "전체 적용" },
-  { location: "cafe", position: null, label: "카페 (공통)" },
-  { location: "cafe", position: "hall", label: "카페 · 홀" },
-  { location: "cafe", position: "kitchen", label: "카페 · 주방" },
-  { location: "cafe", position: "showroom", label: "카페 · 쇼룸" },
-  { location: "factory", position: null, label: "공장" },
-  { location: "catering", position: null, label: "케이터링" },
-];
 
 /** 특정 조합에 직접 속하는 항목 (정확히 일치) */
 function getExactItems(
@@ -96,6 +76,25 @@ function getPreviewItems(
 }
 
 export default function AdminChecklistsPage() {
+  const { workplaces, byKey, positionsOf } = useWorkplaces();
+
+  // 조합 목록 동적 생성: 전체 적용 + 근무지별(공통) + 근무지별 포지션
+  const COMBOS: { location: string | null; position: string | null; label: string }[] = [
+    { location: null, position: null, label: "전체 적용" },
+    ...workplaces.flatMap((w) => [
+      {
+        location: w.work_location_key,
+        position: null,
+        label: w.positions.length > 0 ? `${w.label} (공통)` : w.label,
+      },
+      ...w.positions.map((p) => ({
+        location: w.work_location_key,
+        position: p.position_key,
+        label: `${w.label} · ${p.label}`,
+      })),
+    ]),
+  ];
+
   const [viewMode, setViewMode] = useState<ViewMode>("group");
 
   // 조합별 보기
@@ -111,7 +110,7 @@ export default function AdminChecklistsPage() {
 
   // 미리보기
   const [previewLocation, setPreviewLocation] = useState("cafe");
-  const [previewPosition, setPreviewPosition] = useState("hall");
+  const [previewPosition, setPreviewPosition] = useState<string | null>("hall");
   const [previewTrigger, setPreviewTrigger] = useState<TriggerTab>("check_in");
   const [previewCheckedIds, setPreviewCheckedIds] = useState<Set<string>>(new Set());
 
@@ -397,23 +396,30 @@ export default function AdminChecklistsPage() {
                                     <div className="flex gap-2">
                                       <select
                                         value={editLocation}
-                                        onChange={(e) => setEditLocation(e.target.value)}
+                                        onChange={(e) => {
+                                          const loc = e.target.value;
+                                          setEditLocation(loc);
+                                          if (!positionsOf(loc).length) setEditPosition("");
+                                        }}
                                         className="flex-1 bg-white border border-[#E5E8EB] rounded-xl px-2 py-2 text-[12px] text-[#4E5968] outline-none"
                                       >
                                         <option value="">전체 근무지</option>
-                                        <option value="cafe">카페</option>
-                                        <option value="factory">공장</option>
-                                        <option value="catering">케이터링</option>
+                                        {workplaces.map((w) => (
+                                          <option key={w.work_location_key} value={w.work_location_key}>{w.label}</option>
+                                        ))}
                                       </select>
                                       <select
                                         value={editPosition}
+                                        disabled={!positionsOf(editLocation).length}
                                         onChange={(e) => setEditPosition(e.target.value)}
-                                        className="flex-1 bg-white border border-[#E5E8EB] rounded-xl px-2 py-2 text-[12px] text-[#4E5968] outline-none"
+                                        className={`flex-1 bg-white border border-[#E5E8EB] rounded-xl px-2 py-2 text-[12px] text-[#4E5968] outline-none ${
+                                          !positionsOf(editLocation).length ? "opacity-40 cursor-not-allowed" : ""
+                                        }`}
                                       >
                                         <option value="">전체 포지션</option>
-                                        <option value="hall">홀</option>
-                                        <option value="kitchen">주방</option>
-                                        <option value="showroom">쇼룸</option>
+                                        {positionsOf(editLocation).map((p) => (
+                                          <option key={p.position_key} value={p.position_key}>{p.label}</option>
+                                        ))}
                                       </select>
                                     </div>
                                     <div className="flex gap-2">
@@ -481,14 +487,14 @@ export default function AdminChecklistsPage() {
                                       <button
                                         type="button"
                                         onClick={() => toggleActive(item)}
-                                        className={`w-9 h-5 rounded-full transition-colors relative overflow-hidden shrink-0 ${
-                                          item.is_active ? "bg-[#3182F6]" : "bg-[#D1D6DB]"
+                                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                                          item.is_active ? "bg-[#3182F6]" : "bg-[#E5E8EB]"
                                         }`}
                                         aria-label={item.is_active ? "비활성화" : "활성화"}
                                       >
                                         <span
-                                          className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
-                                            item.is_active ? "translate-x-4" : "translate-x-0.5"
+                                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ease-in-out ${
+                                            item.is_active ? "translate-x-5" : "translate-x-0"
                                           }`}
                                         />
                                       </button>
@@ -527,26 +533,32 @@ export default function AdminChecklistsPage() {
               <select
                 value={previewLocation}
                 onChange={(e) => {
-                  setPreviewLocation(e.target.value);
+                  const loc = e.target.value;
+                  setPreviewLocation(loc);
+                  const positions = positionsOf(loc);
+                  setPreviewPosition(positions.length > 0 ? positions[0].position_key : null);
                   setPreviewCheckedIds(new Set());
                 }}
                 className="flex-1 bg-[#F2F4F6] rounded-xl px-3 py-2.5 text-[13px] text-[#4E5968] outline-none"
               >
-                <option value="cafe">카페</option>
-                <option value="factory">공장</option>
-                <option value="catering">케이터링</option>
+                {workplaces.map((w) => (
+                  <option key={w.work_location_key} value={w.work_location_key}>{w.label}</option>
+                ))}
               </select>
               <select
-                value={previewPosition}
+                value={previewPosition ?? ""}
+                disabled={!positionsOf(previewLocation).length}
                 onChange={(e) => {
-                  setPreviewPosition(e.target.value);
+                  setPreviewPosition(e.target.value || null);
                   setPreviewCheckedIds(new Set());
                 }}
-                className="flex-1 bg-[#F2F4F6] rounded-xl px-3 py-2.5 text-[13px] text-[#4E5968] outline-none"
+                className={`flex-1 bg-[#F2F4F6] rounded-xl px-3 py-2.5 text-[13px] text-[#4E5968] outline-none ${
+                  !positionsOf(previewLocation).length ? "opacity-40 cursor-not-allowed" : ""
+                }`}
               >
-                <option value="hall">홀</option>
-                <option value="kitchen">주방</option>
-                <option value="showroom">쇼룸</option>
+                {positionsOf(previewLocation).map((p) => (
+                  <option key={p.position_key} value={p.position_key}>{p.label}</option>
+                ))}
               </select>
             </div>
           </div>
@@ -586,8 +598,8 @@ export default function AdminChecklistsPage() {
                 <div className="flex items-center gap-2">
                   <Eye className="w-3.5 h-3.5 text-[#3182F6]" />
                   <span className="text-[11px] font-bold text-[#3182F6]">
-                    {LOCATION_LABELS[previewLocation]} ·{" "}
-                    {POSITION_LABELS[previewPosition]} 미리보기
+                    {byKey[previewLocation]?.label || previewLocation}
+                    {previewPosition ? ` · ${positionsOf(previewLocation).find(p => p.position_key === previewPosition)?.label || previewPosition}` : ""} 미리보기
                   </span>
                 </div>
 

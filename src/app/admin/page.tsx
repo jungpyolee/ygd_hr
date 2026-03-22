@@ -12,6 +12,7 @@ import {
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import { format, addDays, differenceInDays } from "date-fns";
+import { useWorkplaces } from "@/lib/hooks/useWorkplaces";
 import { ko } from "date-fns/locale";
 
 interface TodayAttendanceItem {
@@ -35,19 +36,10 @@ interface HealthCertItem {
   days_left: number;
 }
 
-const LOCATION_LABELS: Record<string, string> = {
-  cafe: "카페",
-  factory: "공장",
-  catering: "케이터링",
-};
-const LOCATION_COLORS: Record<string, string> = {
-  cafe: "#3182F6",
-  factory: "#00B761",
-  catering: "#F59E0B",
-};
 
 export default function AdminDashboardPage() {
   const router = useRouter();
+  const { byKey } = useWorkplaces();
 
   const todayText = new Intl.DateTimeFormat("ko-KR", {
     month: "long",
@@ -212,8 +204,8 @@ export default function AdminDashboardPage() {
                 {} as Record<string, number>,
               ),
             ).map(([loc, cnt]) => (
-              <span key={loc} style={{ color: LOCATION_COLORS[loc] }}>
-                {LOCATION_LABELS[loc]} {cnt}명
+              <span key={loc} style={{ color: byKey[loc]?.color }}>
+                {byKey[loc]?.label || loc} {cnt}명
               </span>
             ))}
           </div>
@@ -245,10 +237,9 @@ export default function AdminDashboardPage() {
                       </p>
                       <div className="flex items-center gap-1.5 text-[12px] text-[#8B95A1]">
                         <span
-                          style={{ color: LOCATION_COLORS[item.work_location] }}
+                          style={{ color: byKey[item.work_location]?.color }}
                         >
-                          {LOCATION_LABELS[item.work_location] ||
-                            item.work_location}
+                          {byKey[item.work_location]?.label || item.work_location}
                         </span>
                         <span>·</span>
                         <span>

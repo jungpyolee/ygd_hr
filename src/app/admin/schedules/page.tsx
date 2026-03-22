@@ -24,6 +24,7 @@ import {
 } from "date-fns";
 import { ko } from "date-fns/locale";
 import Link from "next/link";
+import { useWorkplaces } from "@/lib/hooks/useWorkplaces";
 
 // --------------- Types ---------------
 interface Profile {
@@ -53,21 +54,6 @@ interface WeeklySchedule {
 }
 
 // --------------- Helpers ---------------
-const LOCATION_COLORS: Record<string, string> = {
-  cafe: "#3182F6",
-  factory: "#00B761",
-  catering: "#F59E0B",
-};
-const LOCATION_LABELS: Record<string, string> = {
-  cafe: "카페",
-  factory: "공장",
-  catering: "케이터링",
-};
-const CAFE_POSITION_LABELS: Record<string, string> = {
-  hall: "홀",
-  kitchen: "주방",
-  showroom: "쇼룸",
-};
 const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
 
 function timeToMinutes(t: string): number {
@@ -116,6 +102,7 @@ function SlotBottomSheet({
   defaultProfileId,
 }: SlotBottomSheetProps) {
   const isNew = !slot?.id;
+  const { workplaces, positionsOf, hasPositions } = useWorkplaces();
   const [form, setForm] = useState<Partial<ScheduleSlot>>({
     profile_id: defaultProfileId || profiles[0]?.id || "",
     slot_date: defaultDate || weekDates[0] || "",
@@ -269,55 +256,55 @@ function SlotBottomSheet({
               근무 장소
             </label>
             <div className="flex gap-2">
-              {(["cafe", "factory", "catering"] as const).map((loc) => (
+              {workplaces.map((w) => (
                 <button
-                  key={loc}
+                  key={w.work_location_key}
                   type="button"
                   onClick={() =>
                     setForm((p) => ({
                       ...p,
-                      work_location: loc,
-                      cafe_positions: loc !== "cafe" ? [] : p.cafe_positions,
+                      work_location: w.work_location_key,
+                      cafe_positions: !hasPositions(w.work_location_key) ? [] : p.cafe_positions,
                     }))
                   }
-                  className={`flex-1 py-2.5 rounded-xl text-[13px] font-bold transition-all ${form.work_location === loc ? "text-white" : "bg-[#F2F4F6] text-[#4E5968]"}`}
+                  className={`flex-1 py-2.5 rounded-xl text-[13px] font-bold transition-all ${form.work_location === w.work_location_key ? "text-white" : "bg-[#F2F4F6] text-[#4E5968]"}`}
                   style={
-                    form.work_location === loc
-                      ? { backgroundColor: LOCATION_COLORS[loc] }
+                    form.work_location === w.work_location_key
+                      ? { backgroundColor: w.color }
                       : {}
                   }
                 >
-                  {LOCATION_LABELS[loc]}
+                  {w.label}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* 카페 포지션 */}
-          {form.work_location === "cafe" && (
+          {/* 포지션 (포지션 있는 근무지만 표시) */}
+          {form.work_location && hasPositions(form.work_location) && (
             <div>
               <label className="block text-[12px] font-medium text-[#8B95A1] mb-2">
-                카페 포지션
+                포지션
               </label>
               <div className="flex gap-2">
-                {(["hall", "kitchen", "showroom"] as const).map((pos) => {
-                  const sel = (form.cafe_positions || []).includes(pos);
+                {positionsOf(form.work_location).map((p) => {
+                  const sel = (form.cafe_positions || []).includes(p.position_key);
                   return (
                     <button
-                      key={pos}
+                      key={p.position_key}
                       type="button"
                       onClick={() => {
                         const cur = form.cafe_positions || [];
-                        setForm((p) => ({
-                          ...p,
+                        setForm((prev) => ({
+                          ...prev,
                           cafe_positions: sel
-                            ? cur.filter((v) => v !== pos)
-                            : [...cur, pos],
+                            ? cur.filter((v) => v !== p.position_key)
+                            : [...cur, p.position_key],
                         }));
                       }}
                       className={`flex-1 py-2.5 rounded-xl text-[13px] font-bold transition-all ${sel ? "bg-[#E8F3FF] text-[#3182F6] border border-[#3182F6]" : "bg-[#F2F4F6] text-[#4E5968]"}`}
                     >
-                      {CAFE_POSITION_LABELS[pos]}
+                      {p.label}
                     </button>
                   );
                 })}
@@ -412,6 +399,7 @@ interface AttLogRow {
 
 // --------------- Main Page ---------------
 export default function AdminSchedulesPage() {
+  const { byKey, positionsOf } = useWorkplaces();
   const [tab, setTab] = useState<"weekly" | "daily">("weekly");
   const [weekStart, setWeekStart] = useState<Date>(() =>
     startOfWeek(new Date(), { weekStartsOn: 0 }),
@@ -1125,7 +1113,7 @@ export default function AdminSchedulesPage() {
                           const isSubstituted = slot.status === "substituted";
                           const positions = slot.cafe_positions?.length
                             ? slot.cafe_positions
-                                .map((p) => CAFE_POSITION_LABELS[p] || p)
+                                .map((p) => positionsOf(slot.work_location).find(pp => pp.position_key === p)?.label || p)
                                 .join("·")
                             : null;
                           return (
@@ -1136,11 +1124,11 @@ export default function AdminSchedulesPage() {
                               style={{
                                 backgroundColor: isSubstituted
                                   ? "#F2F4F6"
-                                  : LOCATION_COLORS[slot.work_location],
+                                  : byKey[slot.work_location]?.color,
                               }}
                             >
                               <div className="text-[11px] font-bold truncate leading-tight">
-                                {LOCATION_LABELS[slot.work_location]}
+                                {byKey[slot.work_location]?.label || slot.work_location}
                                 {positions && (
                                   <span className="opacity-80 ml-0.5 font-normal">
                                     ·{positions}
@@ -1284,7 +1272,7 @@ export default function AdminSchedulesPage() {
                             left: `${leftPct}%`,
                             width: `${widthPct}%`,
                             backgroundColor:
-                              LOCATION_COLORS[slot.work_location],
+                              byKey[slot.work_location]?.color,
                             minWidth: "4px",
                           }}
                         >
@@ -1292,7 +1280,7 @@ export default function AdminSchedulesPage() {
                             {slot.cafe_positions &&
                             slot.cafe_positions.length > 0
                               ? slot.cafe_positions
-                                  .map((p) => CAFE_POSITION_LABELS[p] || p)
+                                  .map((p) => positionsOf(slot.work_location).find(pp => pp.position_key === p)?.label || p)
                                   .join("·") + " "
                               : ""}
                             {slot.start_time.slice(0, 5)}~

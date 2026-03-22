@@ -27,6 +27,7 @@ import { useGeolocation } from "@/lib/hooks/useGeolocation";
 import type { Announcement } from "@/types/announcement";
 import type { TodaySlot, RawLogData } from "@/app/page";
 import PushPromptModal from "@/components/PushPromptModal";
+import { useWorkplaces } from "@/lib/hooks/useWorkplaces";
 
 // 주간 스케줄 — Streaming SSR용 (use() + Suspense)
 function WeeklyScheduleSection({
@@ -38,26 +39,6 @@ function WeeklyScheduleSection({
   return <WeeklyScheduleCard slots={slots} />;
 }
 
-const LOCATION_LABELS: Record<string, string> = {
-  cafe: "카페",
-  factory: "공장",
-  catering: "케이터링",
-};
-const LOCATION_COLORS: Record<string, string> = {
-  cafe: "#3182F6",
-  factory: "#00B761",
-  catering: "#F59E0B",
-};
-const LOCATION_BG: Record<string, string> = {
-  cafe: "#E8F3FF",
-  factory: "#E6FAF0",
-  catering: "#FFF7E6",
-};
-const CAFE_POSITION_LABELS: Record<string, string> = {
-  hall: "홀",
-  kitchen: "주방",
-  showroom: "쇼룸",
-};
 
 const DynamicClock = dynamic(() => import("@/components/Clock"), {
   ssr: false,
@@ -83,6 +64,7 @@ export default function HomeClient({
 }: HomeClientProps) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
+  const { byKey, positionsOf } = useWorkplaces();
 
   const [showGuideRedDot, setShowGuideRedDot] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -425,7 +407,7 @@ const markAllRead = async (userId: string) => {
                     className="w-1 rounded-full self-stretch min-h-[44px] shrink-0"
                     style={{
                       backgroundColor:
-                        LOCATION_COLORS[slot.work_location] || "#8B95A1",
+                        byKey[slot.work_location]?.color || "#8B95A1",
                     }}
                   />
                   <div className="flex-1 min-w-0">
@@ -435,21 +417,20 @@ const markAllRead = async (userId: string) => {
                         className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[12px] font-bold shrink-0"
                         style={{
                           backgroundColor:
-                            LOCATION_BG[slot.work_location] || "#F2F4F6",
+                            byKey[slot.work_location]?.bg_color || "#F2F4F6",
                           color:
-                            LOCATION_COLORS[slot.work_location] || "#4E5968",
+                            byKey[slot.work_location]?.color || "#4E5968",
                         }}
                       >
                         <MapPin className="w-3 h-3" />
-                        {LOCATION_LABELS[slot.work_location] ||
-                          slot.work_location}
+                        {byKey[slot.work_location]?.label || slot.work_location}
                       </span>
                       {slot.cafe_positions?.map((pos) => (
                         <span
                           key={pos}
                           className="px-2 py-0.5 bg-[#F2F4F6] text-[#4E5968] rounded-full text-[11px] font-bold"
                         >
-                          {CAFE_POSITION_LABELS[pos] || pos}
+                          {positionsOf(slot.work_location).find(p => p.position_key === pos)?.label || pos}
                         </span>
                       ))}
                     </div>

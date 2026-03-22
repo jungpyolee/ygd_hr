@@ -104,7 +104,7 @@
 
 ## stores
 
-매장 정보. 위도/경도 기반 출근 반경 판단에 사용.
+매장 정보. 위도/경도 기반 출근 반경 판단 + 근무지 메타데이터 관리.
 
 | 컬럼 | 타입 | NULL | 기본값 | 설명 |
 |------|------|------|--------|------|
@@ -112,9 +112,35 @@
 | `name` | text | NO | - | 매장명 |
 | `lat` | float8 | NO | - | 위도 |
 | `lng` | float8 | NO | - | 경도 |
+| `work_location_key` | text | YES | - | 코드 식별자 (`cafe`/`factory`/`catering`) UNIQUE |
+| `label` | text | NO | `''` | UI 한글 표시명 |
+| `color` | text | NO | `'#8B95A1'` | UI 색상 |
+| `bg_color` | text | NO | `'#F2F4F6'` | UI 배경색 |
+| `display_order` | integer | NO | `0` | 정렬 순서 |
 
 **제약조건**
 - PK: `id`
+- UNIQUE: `work_location_key`
+
+---
+
+## store_positions
+
+근무지별 포지션 목록. `stores.work_location_key`가 있는 근무지에 연결.
+
+| 컬럼 | 타입 | NULL | 기본값 | 설명 |
+|------|------|------|--------|------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `store_id` | uuid | NO | - | FK → stores.id (CASCADE) |
+| `position_key` | text | NO | - | 코드 식별자 (`hall`/`kitchen`/`showroom`) |
+| `label` | text | NO | - | UI 한글 표시명 |
+| `display_order` | integer | NO | `0` | 정렬 순서 |
+
+**제약조건**
+- PK: `id`
+- UNIQUE: `(store_id, position_key)`
+- FK: `store_id` → `stores.id` ON DELETE CASCADE
+- RLS: anon/authenticated SELECT, admin ALL
 
 ---
 

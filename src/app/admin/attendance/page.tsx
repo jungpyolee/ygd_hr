@@ -34,6 +34,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useWorkplaces } from "@/lib/hooks/useWorkplaces";
 
 interface ProcessedLog {
   profile_id: string;
@@ -55,13 +56,9 @@ interface ProcessedLog {
   early_leave_minutes: number | null;
 }
 
-const LOCATION_LABELS: Record<string, string> = {
-  cafe: "카페",
-  factory: "공장",
-  catering: "케이터링",
-};
 
 export default function AdminAttendanceCalendar() {
+  const { byKey } = useWorkplaces();
   const [viewType, setViewType] = useState<"week" | "month">("week");
   const [baseDate, setBaseDate] = useState<Date>(new Date());
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -521,7 +518,7 @@ export default function AdminAttendanceCalendar() {
                           {log.scheduled_location && (
                             <span className="ml-1">
                               (
-                              {LOCATION_LABELS[log.scheduled_location] ??
+                              {byKey[log.scheduled_location]?.label ??
                                 log.scheduled_location}
                               )
                             </span>
@@ -609,8 +606,7 @@ export default function AdminAttendanceCalendar() {
                         }}
                       >
                         {log.scheduled_location
-                          ? LOCATION_LABELS[log.scheduled_location] ||
-                            log.scheduled_location
+                          ? byKey[log.scheduled_location]?.label || log.scheduled_location
                           : ""}
                       </span>
                       <span className="text-[12px] text-[#4E5968] font-medium">
