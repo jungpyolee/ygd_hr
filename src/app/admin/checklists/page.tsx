@@ -408,19 +408,18 @@ export default function AdminChecklistsPage() {
                                           <option key={w.work_location_key} value={w.work_location_key}>{w.label}</option>
                                         ))}
                                       </select>
-                                      <select
-                                        value={editPosition}
-                                        disabled={!positionsOf(editLocation).length}
-                                        onChange={(e) => setEditPosition(e.target.value)}
-                                        className={`flex-1 bg-white border border-[#E5E8EB] rounded-xl px-2 py-2 text-[12px] text-[#4E5968] outline-none ${
-                                          !positionsOf(editLocation).length ? "opacity-40 cursor-not-allowed" : ""
-                                        }`}
-                                      >
-                                        <option value="">전체 포지션</option>
-                                        {positionsOf(editLocation).map((p) => (
-                                          <option key={p.position_key} value={p.position_key}>{p.label}</option>
-                                        ))}
-                                      </select>
+                                      {positionsOf(editLocation).length > 0 && (
+                                        <select
+                                          value={editPosition}
+                                          onChange={(e) => setEditPosition(e.target.value)}
+                                          className="flex-1 bg-white border border-[#E5E8EB] rounded-xl px-2 py-2 text-[12px] text-[#4E5968] outline-none"
+                                        >
+                                          <option value="">전체 포지션</option>
+                                          {positionsOf(editLocation).map((p) => (
+                                            <option key={p.position_key} value={p.position_key}>{p.label}</option>
+                                          ))}
+                                        </select>
+                                      )}
                                     </div>
                                     <div className="flex gap-2">
                                       <button
@@ -545,21 +544,20 @@ export default function AdminChecklistsPage() {
                   <option key={w.work_location_key} value={w.work_location_key}>{w.label}</option>
                 ))}
               </select>
-              <select
-                value={previewPosition ?? ""}
-                disabled={!positionsOf(previewLocation).length}
-                onChange={(e) => {
-                  setPreviewPosition(e.target.value || null);
-                  setPreviewCheckedIds(new Set());
-                }}
-                className={`flex-1 bg-[#F2F4F6] rounded-xl px-3 py-2.5 text-[13px] text-[#4E5968] outline-none ${
-                  !positionsOf(previewLocation).length ? "opacity-40 cursor-not-allowed" : ""
-                }`}
-              >
-                {positionsOf(previewLocation).map((p) => (
-                  <option key={p.position_key} value={p.position_key}>{p.label}</option>
-                ))}
-              </select>
+              {positionsOf(previewLocation).length > 0 && (
+                <select
+                  value={previewPosition ?? ""}
+                  onChange={(e) => {
+                    setPreviewPosition(e.target.value || null);
+                    setPreviewCheckedIds(new Set());
+                  }}
+                  className="flex-1 bg-[#F2F4F6] rounded-xl px-3 py-2.5 text-[13px] text-[#4E5968] outline-none"
+                >
+                  {positionsOf(previewLocation).map((p) => (
+                    <option key={p.position_key} value={p.position_key}>{p.label}</option>
+                  ))}
+                </select>
+              )}
             </div>
           </div>
 
