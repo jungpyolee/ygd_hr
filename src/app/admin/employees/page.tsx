@@ -3,6 +3,7 @@
 import { useState } from "react";
 import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
+import { logError } from "@/lib/logError";
 import {
   Trash2,
   Palette,
@@ -132,6 +133,7 @@ export default function AdminEmployeesPage() {
       .update({ color_hex: newColor })
       .eq("id", id);
     if (error) {
+      logError({ message: "직원 색상 변경 실패", error, source: "employees/handleColorChange", context: { profileId: id } });
       toast.error("색상 변경에 실패했어요", {
         description: "다시 시도해주세요",
       });
@@ -161,6 +163,7 @@ export default function AdminEmployeesPage() {
       toast.success(`${name}님이 삭제됐어요`);
       mutateEmployees((prev) => prev?.filter((emp) => emp.id !== id));
     } else {
+      logError({ message: "직원 삭제 실패", error, source: "employees/confirmDelete", context: { profileId: id } });
       toast.error("삭제에 실패했어요", { description: "다시 시도해주세요" });
     }
   };
@@ -218,6 +221,7 @@ export default function AdminEmployeesPage() {
         })
         .eq("id", id);
       if (error) {
+        logError({ message: "기본 근무 패턴 수정 실패", error, source: "employees/handleSaveWorkDefault", context: { profileId: editingEmployee.id } });
         toast.error("저장에 실패했어요", { description: error.message });
       } else {
         toast.success("기본 근무 패턴을 수정했어요");
@@ -233,6 +237,7 @@ export default function AdminEmployeesPage() {
         position_keys: position_keys || [],
       });
       if (error) {
+        logError({ message: "기본 근무 패턴 추가 실패", error, source: "employees/handleSaveWorkDefault", context: { profileId: editingEmployee.id } });
         toast.error("저장에 실패했어요", { description: error.message });
       } else {
         toast.success("기본 근무 패턴을 추가했어요");
@@ -251,6 +256,7 @@ export default function AdminEmployeesPage() {
       .delete()
       .eq("id", id);
     if (error) {
+      logError({ message: "기본 근무 패턴 삭제 실패", error, source: "employees/handleDeleteWorkDefault", context: { workDefaultId: id } });
       toast.error("삭제에 실패했어요");
     } else {
       toast.success("기본 근무 패턴을 삭제했어요");
@@ -274,10 +280,12 @@ export default function AdminEmployeesPage() {
       .update(safeForm)
       .eq("id", editingEmployee.id);
 
-    if (error)
+    if (error) {
+      logError({ message: "직원 정보 수정 실패", error, source: "employees/handleSaveEdit", context: { profileId: editingEmployee.id } });
       return toast.error("수정에 실패했어요", {
         description: "다시 시도해주세요",
       });
+    }
 
     // 근무지 배정 동기화 (employee_store_assignments)
     const profileId = editingEmployee.id;

@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { createClient } from "@/lib/supabase";
+import { logError } from "@/lib/logError";
 import { ChevronLeft, CheckCircle2, UploadCloud } from "lucide-react";
 import { format } from "date-fns";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -104,7 +105,7 @@ export default function OnboardingFunnel({ onComplete }: OnboardingProps) {
           source_id: user.id,
         }).catch((e) => console.error("온보딩 알림 발송 실패:", e));
       } catch (error) {
-        console.error("업로드 중 에러 발생:", error);
+        logError({ message: "온보딩 저장 실패", error, source: "OnboardingFunnel/handleSubmit" });
         toast.error("저장에 실패했어요", {
           description: "잠시 후 다시 시도해 주세요.",
         });

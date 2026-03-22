@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
+import { logError } from "@/lib/logError";
 import { getDistance } from "@/lib/utils/distance";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -274,6 +275,7 @@ export default function AttendanceCard({
           description: "먼저 출근 버튼을 눌러주세요",
         });
       } else {
+        logError({ message: "출퇴근 기록 실패", error, source: "AttendanceCard/processAttendance", context: { type, attendanceType } });
         toast.error("기록에 실패했어요. 다시 시도해주세요.");
       }
       setLoading(false);

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
+import { logError } from "@/lib/logError";
 import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
 import {
@@ -173,6 +174,7 @@ export default function AdminSubstitutesPage() {
       .eq("id", rejectTarget.id);
 
     if (error) {
+      logError({ message: "대타 반려 실패", error, source: "substitutes/handleReject", context: { requestId: rejectTarget?.id } });
       toast.error("반려에 실패했어요", { description: error.message });
     } else {
       // Notify requester
@@ -225,6 +227,7 @@ export default function AdminSubstitutesPage() {
       .eq("id", approveTarget.id);
 
     if (error) {
+      logError({ message: "대타 승인 실패", error, source: "substitutes/handleApprove", context: { requestId: approveTarget?.id } });
       toast.error("승인에 실패했어요", { description: error.message });
     } else {
       // Notify eligible employees (중복 ID 제거)

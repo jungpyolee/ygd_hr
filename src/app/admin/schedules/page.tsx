@@ -25,6 +25,7 @@ import {
 import { ko } from "date-fns/locale";
 import Link from "next/link";
 import { useWorkplaces } from "@/lib/hooks/useWorkplaces";
+import { logError } from "@/lib/logError";
 
 // --------------- Types ---------------
 interface Profile {
@@ -585,6 +586,7 @@ export default function AdminSchedulesPage() {
       .select("id")
       .single();
     if (error) {
+      logError({ message: "주차 생성 실패", error, source: "schedules/getOrCreateWeeklySchedule" });
       toast.error("주차 생성에 실패했어요", { description: error.message });
       return null;
     }
@@ -652,6 +654,7 @@ export default function AdminSchedulesPage() {
         status: "active",
       });
       if (error) {
+        logError({ message: "슬롯 추가 실패", error, source: "schedules/handleSaveSlot", context: { profileId: data.profile_id, slotDate: data.slot_date } });
         toast.error("추가에 실패했어요", { description: error.message });
         return;
       }
@@ -685,6 +688,7 @@ export default function AdminSchedulesPage() {
         })
         .eq("id", data.id!);
       if (error) {
+        logError({ message: "슬롯 수정 실패", error, source: "schedules/handleSaveSlot", context: { slotId: data.id } });
         toast.error("수정에 실패했어요", { description: error.message });
         return;
       }
@@ -720,6 +724,7 @@ export default function AdminSchedulesPage() {
       .update({ status: "cancelled" })
       .eq("id", id);
     if (error) {
+      logError({ message: "슬롯 삭제 실패", error, source: "schedules/handleDeleteSlot", context: { slotId: id } });
       toast.error("삭제에 실패했어요");
       return;
     }
@@ -824,6 +829,7 @@ export default function AdminSchedulesPage() {
 
     const { error } = await supabase.from("schedule_slots").insert(newSlots);
     if (error) {
+      logError({ message: "이전 주 복사 실패", error, source: "schedules/handleCopyPrevWeek", context: { weekStartStr } });
       toast.error("복사에 실패했어요", { description: error.message });
     } else {
       toast.success(`${newSlots.length}개 슬롯을 복사했어요`);
@@ -913,6 +919,7 @@ export default function AdminSchedulesPage() {
 
     const { error } = await supabase.from("schedule_slots").insert(newSlots);
     if (error) {
+      logError({ message: "기본 패턴 채우기 실패", error, source: "schedules/handleFillDefaults", context: { weekStartStr } });
       toast.error("기본 패턴 채우기에 실패했어요", {
         description: error.message,
       });
@@ -949,6 +956,7 @@ export default function AdminSchedulesPage() {
       .eq("status", "draft");
 
     if (error) {
+      logError({ message: "주 스케줄 확정 실패", error, source: "schedules/handleConfirmSchedule", context: { weekStartStr } });
       toast.error("확정에 실패했어요", { description: error.message });
       setConfirming(false);
       return;
@@ -1001,6 +1009,7 @@ export default function AdminSchedulesPage() {
           .select("id")
           .single();
         if (createErr) {
+          logError({ message: "일간 확정 중 주차 생성 실패", error: createErr, source: "schedules/handleConfirmDay", context: { dateStr } });
           toast.error("확정에 실패했어요", { description: createErr.message });
           setConfirmingDay(false);
           return;
@@ -1016,6 +1025,7 @@ export default function AdminSchedulesPage() {
       .eq("id", wsId!);
 
     if (error) {
+      logError({ message: "일간 스케줄 확정 실패", error, source: "schedules/handleConfirmDay", context: { dateStr } });
       toast.error("확정에 실패했어요", { description: error.message });
       setConfirmingDay(false);
       return;
