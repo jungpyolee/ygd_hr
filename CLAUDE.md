@@ -77,7 +77,7 @@ npm run lint       # ESLint
 source .env.local
 
 curl -s -X POST "https://api.supabase.com/v1/projects/ymvdjxzkjodasctktunh/database/query" \
-  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+  -H "Authorization: Bearer $SUPABASE_PROD_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"query": "SQL HERE"}'
 ```
