@@ -52,6 +52,7 @@ export default function RoguelikeGame({ onClose, gameConfig }: Props) {
   const [myUserId, setMyUserId]                 = useState<string | null>(null);
 
   const [gameStarted, setGameStarted] = useState(false);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
 
   useEffect(() => {
     createClient().auth.getUser().then(({ data }) => setMyUserId(data.user?.id ?? null));
@@ -206,6 +207,19 @@ export default function RoguelikeGame({ onClose, gameConfig }: Props) {
     return () => window.removeEventListener("keydown", handleKey);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, upgradeOptions, upgradeIdx]);
+
+  // ─── 뒤로가기 인터셉트 (게임 중) ────────────
+  useEffect(() => {
+    if (phase !== "playing" && phase !== "levelup") return;
+    history.pushState(null, "", window.location.href);
+    const handlePopState = () => {
+      history.pushState(null, "", window.location.href);
+      sceneRef.current?.scene?.pause?.();
+      setShowExitConfirm(true);
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [phase]);
 
   // ─── 레벨업 선택 ───────────────────────────
   const handleUpgrade = useCallback((option: UpgradeOption) => {
@@ -424,11 +438,52 @@ export default function RoguelikeGame({ onClose, gameConfig }: Props) {
       {/* 닫기 버튼 */}
       {(phase === "playing" || phase === "levelup") && (
         <button
-          onClick={onClose}
+          onClick={() => {
+            sceneRef.current?.scene?.pause?.();
+            setShowExitConfirm(true);
+          }}
           className="absolute top-3 right-3 z-30 w-8 h-8 rounded-full bg-black/60 text-white/70 text-sm flex items-center justify-center"
         >
           ✕
         </button>
+      )}
+
+      {/* 종료 확인 모달 */}
+      {showExitConfirm && (
+        <div
+          className="absolute inset-0 z-50 flex items-center justify-center"
+          style={{ background: "rgba(0,0,0,0.75)" }}
+        >
+          <div
+            className="w-72 rounded-2xl p-6 flex flex-col items-center gap-4"
+            style={{ background: "#1a1a2e", border: "1px solid rgba(245,158,11,0.3)" }}
+          >
+            <p className="text-2xl">⏸️</p>
+            <div className="text-center">
+              <p className="text-white font-bold text-base mb-1">게임을 종료할까요?</p>
+              <p className="text-white/50 text-xs">지금까지의 기록은 저장되지 않아요</p>
+            </div>
+            <div className="flex gap-2 w-full">
+              <button
+                onClick={() => {
+                  sceneRef.current?.scene?.resume?.();
+                  setShowExitConfirm(false);
+                }}
+                className="flex-1 py-3 rounded-xl font-bold text-sm"
+                style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.7)" }}
+              >
+                계속하기
+              </button>
+              <button
+                onClick={onClose}
+                className="flex-1 py-3 rounded-xl font-bold text-sm"
+                style={{ background: "linear-gradient(135deg, #ef4444, #dc2626)", color: "#fff" }}
+              >
+                종료하기
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── 레벨업 모달 ── */}

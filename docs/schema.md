@@ -1,7 +1,7 @@
 # DB 스키마 (최신 상태)
 
 > **프로젝트**: ymvdjxzkjodasctktunh
-> **최종 갱신**: 2026-03-22 (DB-033: profiles.work_locations 제거 + employee_store_assignments 테이블 추가)
+> **최종 갱신**: 2026-03-22 (037: chat_conversations + chat_messages 테이블 추가 — 직원-어드민 1:1 채팅)
 > **DB 시간대**: `Asia/Seoul` (KST, UTC+9) — 모든 롤에 적용됨
 > **timestamptz 저장**: UTC로 저장, 날짜 함수(`DATE_TRUNC`, `CURRENT_DATE` 등)는 KST 기준 동작
 > **연결 방식**: Supabase Management API
@@ -26,6 +26,11 @@
 | `schedule_slots` | 개별 근무 슬롯 (날짜·시간·장소·포지션) |
 | `substitute_requests` | 대타 요청 (pending→approved/rejected→filled) |
 | `substitute_responses` | 대타 수락/거절 응답 |
+| `announcements` | 공지사항 |
+| `announcement_reads` | 공지 읽음 기록 |
+| `chat_conversations` | 직원-어드민 1:1 채팅방 (직원별 1개) |
+| `chat_messages` | 채팅 메시지 (템플릿/액션요청/일반) |
+| `announcement_reactions` | 공지 이모지 리액션 |
 
 ---
 
@@ -55,7 +60,7 @@
 | `employment_type` | text | YES | `'part_time_fixed'` | `'full_time'` / `'part_time_fixed'` / `'part_time_daily'` |
 | `position_keys` | text[] | YES | `'{}'` | `'hall'` / `'kitchen'` / `'showroom'` 복수 선택 |
 | `hourly_wage` | integer | YES | - | 시급 (원, 알바만) |
-| `insurance_type` | text | YES | - | `'national'` (2대보험) / `'3.3'` (원천징수) |
+| `insurance_type` | text | YES | - | `'national'` (2대보험) / `'4_major'` (4대보험) / `'3.3'` (원천징수) |
 | `created_at` | timestamptz | YES | `now()` | 생성일 |
 | `updated_at` | timestamptz | YES | `now()` | 수정일 |
 
@@ -548,6 +553,59 @@ DELETE FROM auth.users WHERE id = target_user_id
 | `substitute_filled` | 대타 확정 (→ 요청자 + 어드민) |
 | `schedule_published` | 스케줄 확정 (→ 해당 직원) |
 | `schedule_updated` | 확정 스케줄 슬롯 수정/삭제 시 (→ 해당 직원) |
+
+---
+
+## announcements
+
+공지사항. 관리자가 작성, 직원에게 공개.
+
+| 컬럼 | 타입 | NULL | 기본값 | 설명 |
+|------|------|------|--------|------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `title` | text | NO | - | 제목 |
+| `content` | text | NO | - | 본문 |
+| `is_pinned` | boolean | NO | `false` | 상단 고정 여부 |
+| `target_roles` | text[] | NO | `'{all}'` | `'all'` / `'full_time'` / `'part_time'` |
+| `created_by` | uuid | NO | - | 작성자 profiles.id 참조 |
+| `created_at` | timestamptz | YES | `now()` | 생성일 |
+| `updated_at` | timestamptz | YES | `now()` | 수정일 (트리거 자동 갱신) |
+
+**RLS**: 어드민 전체, 직원 target_roles 해당 시 SELECT
+
+---
+
+## announcement_reads
+
+직원별 공지 읽음 기록. 상세 페이지 진입 시 upsert.
+
+| 컬럼 | 타입 | NULL | 기본값 | 설명 |
+|------|------|------|--------|------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `announcement_id` | uuid | NO | - | announcements.id 참조 |
+| `profile_id` | uuid | NO | - | profiles.id 참조 |
+| `read_at` | timestamptz | YES | `now()` | 읽은 시각 |
+
+**UNIQUE**: `(announcement_id, profile_id)`
+
+---
+
+## announcement_reactions
+
+공지사항 이모지 리액션. 직원이 공지 상세 하단에서 토글.
+
+| 컬럼 | 타입 | NULL | 기본값 | 설명 |
+|------|------|------|--------|------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `announcement_id` | uuid | NO | - | announcements.id 참조 |
+| `profile_id` | uuid | NO | - | profiles.id 참조 |
+| `emoji` | text | NO | - | `'👍'` / `'❤️'` / `'😊'` / `'🎉'` / `'💪'` |
+| `created_at` | timestamptz | YES | `now()` | 생성일 |
+
+**UNIQUE**: `(announcement_id, profile_id, emoji)`
+**CHECK**: emoji IN ('👍', '❤️', '😊', '🎉', '💪')
+**RLS**: 인증 사용자 SELECT, 본인만 INSERT/DELETE
+**어드민 뷰**: profiles JOIN으로 누가 눌렀는지 조회 가능
 
 ---
 

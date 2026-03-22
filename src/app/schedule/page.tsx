@@ -5,7 +5,7 @@ import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
-import { ChevronLeft, ChevronRight, Calendar, MapPin, Clock, ArrowRightLeft, X, Check, UserCheck } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar, MapPin, Clock, ArrowRightLeft, X, Check } from "lucide-react";
 import { format, addWeeks, subWeeks, startOfWeek, addDays, isSameDay, isToday } from "date-fns";
 import { ko } from "date-fns/locale";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -24,20 +24,7 @@ interface ScheduleSlot {
   notes: string | null;
 }
 
-interface MySubstituteRequest {
-  id: string;
-  reason: string | null;
-  status: string;
-  accepted_by: string | null;
-  acceptor_name: string | null;
-  slot_date: string;
-  start_time: string;
-  end_time: string;
-  store_id: string;
-  position_keys: string[];
-}
-
-interface SubstituteRequest {
+interface IncomingSubstituteRequest {
   id: string;
   slot_id: string;
   requester_id: string;
@@ -67,16 +54,11 @@ function SchedulePageInner() {
   const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date(), { weekStartsOn: 0 }));
   const [selectedDay, setSelectedDay] = useState<Date>(new Date());
 
-  // 대타 요청하기 바텀시트 (내가 요청)
-  const [requestTarget, setRequestTarget] = useState<ScheduleSlot | null>(null);
-  const [requestReason, setRequestReason] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-
   // 나에게 온 대타 요청
   const [respondingId, setRespondingId] = useState<string | null>(null);
 
   // 대타 수락 확인 바텀시트
-  const [activeRequest, setActiveRequest] = useState<SubstituteRequest | null>(null);
+  const [activeRequest, setActiveRequest] = useState<IncomingSubstituteRequest | null>(null);
 
   const { user } = useAuth();
   const profileId = user?.id ?? null;
@@ -91,58 +73,54 @@ function SchedulePageInner() {
       const supabase = createClient();
       const { data: wsData } = await supabase
         .from("weekly_schedules")
-        .select("id")
+        .select("id, confirmed_dates")
         .eq("status", "confirmed")
         .eq("week_start", wss);
 
       if (!wsData || wsData.length === 0) return [];
 
+      const wsEntry = wsData[0] as { id: string; confirmed_dates: string[] | null };
       const wsIds = wsData.map((ws: { id: string }) => ws.id);
-      const { data: slotData } = await supabase
+
+      let slotQuery = supabase
         .from("schedule_slots")
         .select("*")
         .eq("profile_id", pid)
         .in("weekly_schedule_id", wsIds)
         .eq("status", "active");
 
+      // confirmed_dates가 있으면 확정된 날짜의 슬롯만 표시 (일간 확정 지원)
+      if (wsEntry?.confirmed_dates && wsEntry.confirmed_dates.length > 0) {
+        slotQuery = slotQuery.in("slot_date", wsEntry.confirmed_dates);
+      }
+
+      const { data: slotData } = await slotQuery;
       return (slotData as ScheduleSlot[]) ?? [];
     },
     { dedupingInterval: 30_000, revalidateOnFocus: true, revalidateOnMount: true }
   );
 
-  // 3. 나에게 온 대타 요청
+  // 3. 나에게 온 대타 요청 (requests 테이블 기반)
   const { data: incomingRequests = [], mutate: mutateIncoming } = useSWR(
     profileId ? ["substitute-incoming", profileId] : null,
     async ([, pid]) => {
       const supabase = createClient();
-      const { data: requests } = await supabase
-        .from("substitute_requests")
+      const { data } = await supabase
+        .from("requests")
         .select(`
           id, slot_id, requester_id, reason, status, eligible_profile_ids, accepted_by,
           schedule_slots!slot_id(slot_date, start_time, end_time, store_id, position_keys),
-          profiles!requester_id(name)
+          requester:profiles!requester_id(name)
         `)
+        .eq("type", "substitute")
         .eq("status", "approved");
 
-      if (!requests) return [];
+      if (!data) return [];
 
-      const eligibleRequests = requests.filter((r: any) =>
-        Array.isArray(r.eligible_profile_ids) && r.eligible_profile_ids.includes(pid)
-      );
-
-      if (eligibleRequests.length === 0) return [];
-
-      const requestIds = eligibleRequests.map((r: any) => r.id);
-      const { data: responses } = await supabase
-        .from("substitute_responses")
-        .select("request_id")
-        .eq("profile_id", pid)
-        .in("request_id", requestIds);
-
-      const respondedIds = new Set((responses || []).map((r: any) => r.request_id));
-
-      return eligibleRequests
-        .filter((r: any) => !respondedIds.has(r.id))
+      return data
+        .filter((r: any) =>
+          Array.isArray(r.eligible_profile_ids) && r.eligible_profile_ids.includes(pid)
+        )
         .map((r: any) => ({
           id: r.id,
           slot_id: r.slot_id,
@@ -151,47 +129,17 @@ function SchedulePageInner() {
           status: r.status,
           eligible_profile_ids: r.eligible_profile_ids,
           accepted_by: r.accepted_by,
-          requester_name: r.profiles?.name || "알 수 없음",
+          requester_name: r.requester?.name || "알 수 없음",
           slot_date: r.schedule_slots?.slot_date || "",
           start_time: r.schedule_slots?.start_time || "",
           end_time: r.schedule_slots?.end_time || "",
           store_id: r.schedule_slots?.store_id || "",
           position_keys: r.schedule_slots?.position_keys || [],
-        })) as SubstituteRequest[];
+        })) as IncomingSubstituteRequest[];
     },
     { dedupingInterval: 30_000, revalidateOnFocus: true }
   );
 
-  // 4. 내가 요청한 대타
-  const { data: myRequests = [], mutate: mutateMyRequests } = useSWR(
-    profileId ? ["substitute-my", profileId, weekStartStr] : null,
-    async ([, pid]) => {
-      const supabase = createClient();
-      const { data } = await supabase
-        .from("substitute_requests")
-        .select(`
-          id, reason, status, accepted_by,
-          schedule_slots!substitute_requests_slot_id_fkey(slot_date, start_time, end_time, store_id, position_keys),
-          profiles!substitute_requests_accepted_by_fkey(name)
-        `)
-        .eq("requester_id", pid)
-        .order("created_at", { ascending: false });
-      if (!data) return [];
-      return data.map((r: any) => ({
-        id: r.id,
-        reason: r.reason,
-        status: r.status,
-        accepted_by: r.accepted_by,
-        acceptor_name: r.profiles?.name ?? null,
-        slot_date: r.schedule_slots?.slot_date ?? "",
-        start_time: r.schedule_slots?.start_time ?? "",
-        end_time: r.schedule_slots?.end_time ?? "",
-        store_id: r.schedule_slots?.store_id ?? "",
-        position_keys: r.schedule_slots?.position_keys ?? [],
-      })) as MySubstituteRequest[];
-    },
-    { dedupingInterval: 30_000, revalidateOnFocus: true }
-  );
 
   // URL request_id → 바텀시트 자동 오픈
   useEffect(() => {
@@ -206,7 +154,7 @@ function SchedulePageInner() {
     router.replace("/schedule");
   };
 
-  const handleAcceptSubstitute = async (req: SubstituteRequest) => {
+  const handleAcceptSubstitute = async (req: IncomingSubstituteRequest) => {
     if (!profileId) return;
     const supabase = createClient();
     setRespondingId(req.id);
@@ -295,72 +243,15 @@ function SchedulePageInner() {
     mutateSlots();
   };
 
-  const handleDeclineSubstitute = async (req: SubstituteRequest) => {
-    if (!profileId) return;
-    const supabase = createClient();
-    setRespondingId(req.id);
-
-    const { error } = await supabase.from("substitute_responses").insert({
-      request_id: req.id,
-      profile_id: profileId,
-      response: "declined",
-    });
-
-    if (error) {
-      toast.error("거절에 실패했어요", { description: error.message });
-    } else {
-      toast.success("거절했어요");
-      closeActiveRequest();
-      mutateIncoming();
-    }
-    setRespondingId(null);
+  const handleDeclineSubstitute = (req: IncomingSubstituteRequest) => {
+    // 신 시스템에서 거절은 수락 안 하면 그만 — 단순 닫기
+    void req;
+    closeActiveRequest();
   };
 
   const selectedDateStr = format(selectedDay, "yyyy-MM-dd");
   const selectedSlots = slots.filter((s) => s.slot_date === selectedDateStr);
 
-  const handleSubstituteRequest = async () => {
-    if (!requestTarget || !profileId) return;
-    const supabase = createClient();
-    setSubmitting(true);
-
-    const { data: existing } = await supabase
-      .from("substitute_requests")
-      .select("id")
-      .eq("slot_id", requestTarget.id)
-      .eq("requester_id", profileId)
-      .maybeSingle();
-
-    if (existing) {
-      toast.error("이미 대타 요청을 보냈어요", { description: "관리자의 처리를 기다려주세요." });
-      setSubmitting(false);
-      return;
-    }
-
-    const { error } = await supabase.from("substitute_requests").insert({
-      slot_id: requestTarget.id,
-      requester_id: profileId,
-      reason: requestReason || null,
-      status: "pending",
-    });
-
-    if (error) {
-      toast.error("요청에 실패했어요", { description: "잠시 후 다시 시도해주세요." });
-    } else {
-      await supabase.from("notifications").insert({
-        target_role: "admin",
-        type: "substitute_requested",
-        title: "대타 요청이 들어왔어요",
-        content: `${format(new Date(requestTarget.slot_date), "M월 d일", { locale: ko })} ${byId[requestTarget.store_id]?.label || ""} ${requestTarget.start_time.slice(0, 5)}~${requestTarget.end_time.slice(0, 5)} 대타 요청이 접수됐어요.`,
-        source_id: requestTarget.id,
-      });
-      toast.success("대타 요청을 보냈어요", { description: "관리자 승인 후 알림을 드려요." });
-      setRequestTarget(null);
-      setRequestReason("");
-      mutateMyRequests();
-    }
-    setSubmitting(false);
-  };
 
   return (
     <div className="flex min-h-screen flex-col bg-[#F2F4F6] font-pretendard">
@@ -486,7 +377,7 @@ function SchedulePageInner() {
                       )}
                     </div>
                     <button
-                      onClick={() => setRequestTarget(slot)}
+                      onClick={() => router.push("/requests")}
                       className="flex items-center gap-1.5 px-3 py-2 bg-[#F9FAFB] hover:bg-[#F2F4F6] border border-slate-200 text-[#4E5968] rounded-xl text-[12px] font-bold transition-all shrink-0 active:scale-[0.97]"
                     >
                       <ArrowRightLeft className="w-3.5 h-3.5" />
@@ -559,123 +450,7 @@ function SchedulePageInner() {
           </div>
         )}
 
-        {/* 내가 요청한 대타 현황 */}
-        {myRequests.length > 0 && (
-          <div className="mt-2">
-            <h2 className="text-[16px] font-bold text-[#191F28] mb-3">내가 요청한 대타</h2>
-            <div className="space-y-3">
-              {myRequests.map((req) => {
-                const slotDate = req.slot_date ? new Date(req.slot_date + "T00:00:00") : null;
-                const statusMap: Record<string, { label: string; bg: string; color: string }> = {
-                  pending: { label: "검토 중", bg: "#FFF7E6", color: "#F59E0B" },
-                  approved: { label: "구인 중", bg: "#E8F3FF", color: "#3182F6" },
-                  filled:   { label: "대타 확정", bg: "#E6FAF0", color: "#00B761" },
-                  rejected: { label: "요청 거절", bg: "#FFF0F0", color: "#E03131" },
-                };
-                const badge = statusMap[req.status] ?? { label: req.status, bg: "#F2F4F6", color: "#8B95A1" };
-
-                return (
-                  <div key={req.id} className="bg-white rounded-[20px] p-5 border border-slate-100">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-2 flex-wrap">
-                          <span
-                            className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[12px] font-bold shrink-0"
-                            style={{
-                              backgroundColor: byId[req.store_id]?.bg_color || "#F2F4F6",
-                              color: byId[req.store_id]?.color || "#4E5968",
-                            }}
-                          >
-                            <MapPin className="w-3 h-3" />
-                            {byId[req.store_id]?.label || ""}
-                          </span>
-                          {req.position_keys && req.position_keys.length > 0 && req.position_keys.map((pos) => (
-                            <span key={pos} className="px-2 py-0.5 bg-[#F2F4F6] text-[#4E5968] rounded-md text-[11px] font-bold shrink-0">
-                              {positionsOfStore(req.store_id).find(p => p.position_key === pos)?.label || pos}
-                            </span>
-                          ))}
-                          {slotDate && (
-                            <span className="text-[13px] font-bold text-[#4E5968]">
-                              {format(slotDate, "M월 d일 (EEE)", { locale: ko })}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-[14px] font-bold text-[#191F28]">
-                          {req.start_time?.slice(0, 5)} ~ {req.end_time?.slice(0, 5)}
-                        </p>
-                        {req.status === "filled" && req.acceptor_name && (
-                          <p className="text-[13px] text-[#00B761] font-semibold mt-1.5 flex items-center gap-1">
-                            <UserCheck className="w-3.5 h-3.5" />
-                            {req.acceptor_name}님이 대신 근무해요
-                          </p>
-                        )}
-                        {req.reason && (
-                          <p className="text-[12px] text-[#8B95A1] mt-0.5">사유: {req.reason}</p>
-                        )}
-                      </div>
-                      <span
-                        className="shrink-0 px-2.5 py-1 rounded-full text-[12px] font-bold"
-                        style={{ backgroundColor: badge.bg, color: badge.color }}
-                      >
-                        {badge.label}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
       </main>
-
-      {/* 대타 요청하기 모달 */}
-      {requestTarget && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-5">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setRequestTarget(null)} />
-          <div className="relative w-full max-w-sm bg-white rounded-[28px] px-5 pt-7 pb-7 shadow-2xl animate-in fade-in zoom-in-95 duration-250">
-            <div className="flex justify-between items-center mb-2">
-              <h3 className="text-[18px] font-bold text-[#191F28]">대타 요청하기</h3>
-              <button
-                aria-label="닫기"
-                onClick={() => { setRequestTarget(null); setRequestReason(""); }}
-                className="w-8 h-8 flex items-center justify-center rounded-full bg-[#F2F4F6]"
-              >
-                <X className="w-5 h-5 text-[#8B95A1]" />
-              </button>
-            </div>
-            <p className="text-[14px] text-[#4E5968] mb-4">
-              {format(new Date(requestTarget.slot_date + "T00:00:00"), "M월 d일", { locale: ko })}{" "}
-              {byId[requestTarget.store_id]?.label || ""}{" "}
-              {requestTarget.start_time.slice(0, 5)}~{requestTarget.end_time.slice(0, 5)} 근무예요.
-            </p>
-            <div className="mb-4">
-              <label className="block text-[12px] font-medium text-[#8B95A1] mb-1">요청 사유 (선택)</label>
-              <textarea
-                value={requestReason}
-                onChange={(e) => setRequestReason(e.target.value)}
-                placeholder="사유를 입력해요 (예: 개인 사정, 몸 상태 불량)"
-                rows={3}
-                className="w-full px-4 py-3 bg-[#F9FAFB] border border-slate-200 rounded-xl text-[14px] text-[#191F28] focus:outline-none focus:border-[#3182F6] resize-none"
-              />
-            </div>
-            <div className="flex flex-col gap-2.5">
-              <button
-                onClick={handleSubstituteRequest}
-                disabled={submitting}
-                className="w-full h-14 bg-[#3182F6] text-white rounded-2xl font-bold text-[16px] disabled:opacity-50 active:scale-[0.98] transition-all"
-              >
-                {submitting ? "요청하는 중이에요" : "대타 요청하기"}
-              </button>
-              <button
-                onClick={() => { setRequestTarget(null); setRequestReason(""); }}
-                className="w-full h-14 bg-[#F2F4F6] text-[#4E5968] rounded-2xl font-bold text-[16px]"
-              >
-                닫기
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* 대타 수락 확인 모달 */}
       {activeRequest && (
@@ -727,10 +502,9 @@ function SchedulePageInner() {
             <div className="flex gap-2.5">
               <button
                 onClick={() => handleDeclineSubstitute(activeRequest)}
-                disabled={respondingId === activeRequest.id}
-                className="flex-1 h-14 bg-[#F2F4F6] text-[#4E5968] rounded-2xl text-[15px] font-bold disabled:opacity-50 active:scale-[0.97] transition-all"
+                className="flex-1 h-14 bg-[#F2F4F6] text-[#4E5968] rounded-2xl text-[15px] font-bold active:scale-[0.97] transition-all"
               >
-                {respondingId === activeRequest.id ? "처리하는 중이에요" : "거절하기"}
+                닫기
               </button>
               <button
                 onClick={() => handleAcceptSubstitute(activeRequest)}

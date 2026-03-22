@@ -18,3 +18,15 @@ export interface AnnouncementRead {
   profile_id: string;
   read_at: string;
 }
+
+export const REACTION_EMOJIS = ["👍", "❤️", "😊", "🎉", "💪"] as const;
+export type ReactionEmoji = (typeof REACTION_EMOJIS)[number];
+
+export interface AnnouncementReaction {
+  id: string;
+  announcement_id: string;
+  profile_id: string;
+  emoji: string;
+  created_at: string;
+  profiles?: { name: string | null };
+}

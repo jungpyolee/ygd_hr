@@ -42,7 +42,7 @@ export default function AdminLayout({
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNoti, setShowNoti] = useState(false);
   const [notis, setNotis] = useState<any[]>([]);
-  const [pendingSubCount, setPendingSubCount] = useState(0);
+  const [pendingRequestCount, setPendingRequestCount] = useState(0);
 
   // 🚀 외부 클릭 감지를 위한 Ref 추가
   const notiRef = useRef<HTMLDivElement>(null);
@@ -86,7 +86,7 @@ export default function AdminLayout({
       if (profile?.role === "admin") {
         setIsAdmin(true);
         fetchNotis();
-        fetchPendingSubCount();
+        fetchPendingRequestCount();
         checkHealthCertExpiry();
       } else {
         toast.error("접근 권한이 없어요");
@@ -109,7 +109,7 @@ export default function AdminLayout({
         setNotis((prev) => [newNoti, ...prev].slice(0, 15));
         setUnreadCount((prev) => prev + 1);
         if (newNoti.type === "substitute_filled") {
-          fetchPendingSubCount();
+          fetchPendingRequestCount();
         }
       })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: "target_role=eq.all" }, (payload) => {
@@ -119,14 +119,14 @@ export default function AdminLayout({
       })
       .subscribe();
 
-    // substitute_requests 상태 변경(승인/반려) 시 pending 카운트 갱신
+    // requests 변경 시 pending 카운트 갱신
     const subChannel = supabase
-      .channel("substitute-requests-changes")
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "substitute_requests" }, () => {
-        fetchPendingSubCount();
+      .channel("requests-changes")
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "requests" }, () => {
+        fetchPendingRequestCount();
       })
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "substitute_requests" }, () => {
-        fetchPendingSubCount();
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "requests" }, () => {
+        fetchPendingRequestCount();
       })
       .subscribe();
 
@@ -176,12 +176,12 @@ export default function AdminLayout({
     }
   };
 
-  const fetchPendingSubCount = async () => {
+  const fetchPendingRequestCount = async () => {
     const { count } = await supabase
-      .from("substitute_requests")
+      .from("requests")
       .select("*", { count: "exact", head: true })
       .eq("status", "pending");
-    setPendingSubCount(count ?? 0);
+    setPendingRequestCount(count ?? 0);
   };
 
   const fetchNotis = async () => {
@@ -241,6 +241,11 @@ export default function AdminLayout({
       icon: <CalendarDays className="w-5 h-5" />,
     },
     {
+      name: "요청 관리",
+      path: "/admin/requests",
+      icon: <ClipboardList className="w-5 h-5" />,
+    },
+    {
       name: "레시피 관리",
       path: "/admin/recipes",
       icon: <BookOpen className="w-5 h-5" />,
@@ -271,6 +276,7 @@ export default function AdminLayout({
       case "attendance_out":
         return <CalendarClock className="w-4 h-4 text-orange-500" />;
       case "substitute_requested":
+      case "request_submitted":
         return <CalendarDays className="w-4 h-4 text-purple-500" />;
       case "health_cert_expiry":
         return <Info className="w-4 h-4 text-amber-500" />;
@@ -307,7 +313,8 @@ export default function AdminLayout({
         router.push("/admin/attendance");
         break;
       case "substitute_requested":
-        router.push("/admin/schedules/substitutes");
+      case "request_submitted":
+        router.push("/admin/requests");
         break;
       case "announcement":
         router.push("/admin/announcements");
@@ -330,7 +337,6 @@ export default function AdminLayout({
         <nav className="space-y-2 flex-1">
           {menus.map((menu) => {
             const isActive = pathname === menu.path;
-            const isSchedule = menu.name === "스케줄 관리";
             return (
               <Link
                 key={menu.name}
@@ -343,9 +349,9 @@ export default function AdminLayout({
               >
                 {menu.icon}
                 {menu.name}
-                {isSchedule && pendingSubCount > 0 && (
+                {menu.name === "요청 관리" && pendingRequestCount > 0 && (
                   <span className="ml-auto min-w-[20px] h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 leading-none">
-                    {pendingSubCount > 9 ? "9+" : pendingSubCount}
+                    {pendingRequestCount > 9 ? "9+" : pendingRequestCount}
                   </span>
                 )}
               </Link>
@@ -433,7 +439,7 @@ export default function AdminLayout({
         </header>
 
         {/* Main Content Area */}
-        <main className="flex-1 w-full max-w-full p-5 pb-24 md:p-10">
+        <main className="flex-1 w-full max-w-full overflow-hidden p-5 pb-24 md:p-10">
           {children}
         </main>
       </div>
@@ -466,7 +472,6 @@ export default function AdminLayout({
             </div>
             <nav className="space-y-3">
               {menus.map((menu) => {
-                const isSchedule = menu.name === "스케줄 관리";
                 return (
                   <Link
                     key={menu.name}
@@ -482,9 +487,9 @@ export default function AdminLayout({
                       {menu.icon}
                     </div>
                     {menu.name}
-                    {isSchedule && pendingSubCount > 0 && (
+                    {menu.name === "요청 관리" && pendingRequestCount > 0 && (
                       <span className="ml-auto min-w-[20px] h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 leading-none">
-                        {pendingSubCount > 9 ? "9+" : pendingSubCount}
+                        {pendingRequestCount > 9 ? "9+" : pendingRequestCount}
                       </span>
                     )}
                   </Link>

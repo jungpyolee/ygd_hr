@@ -234,14 +234,14 @@ export async function getMyHRStats(): Promise<HRStats> {
   };
 }
 
-/** 전체 누적 리더보드 TOP 10 */
+/** 최고기록 리더보드 TOP 10 */
 export async function getLeaderboard() {
   const supabase = createClient();
   const { data: scores } = await supabase
     .from("game_profiles")
     .select("id, total_score, best_run_score, highest_wave")
     .gt("play_count", 0)
-    .order("total_score", { ascending: false })
+    .order("best_run_score", { ascending: false })
     .limit(10);
 
   if (!scores || scores.length === 0) return { scores: [] };

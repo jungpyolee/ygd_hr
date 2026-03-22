@@ -862,6 +862,7 @@ export default function AdminEmployeesPage() {
                       <div className="flex gap-3">
                         {[
                           { value: "national", label: "2대보험" },
+                          { value: "4_major", label: "4대보험" },
                           { value: "3.3", label: "3.3% 원천징수" },
                         ].map((opt) => (
                           <button

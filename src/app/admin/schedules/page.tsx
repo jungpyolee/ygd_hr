@@ -461,13 +461,13 @@ export default function AdminSchedulesPage() {
     { dedupingInterval: 30_000, revalidateOnFocus: false },
   );
 
-  // 대기중 대타 요청 수
+  // 대기중 요청 수
   const { data: pendingSubCount = 0 } = useSWR(
-    "admin-schedules-pending-sub-count",
+    "admin-schedules-pending-request-count",
     async () => {
       const supabase = createClient();
       const { count } = await supabase
-        .from("substitute_requests")
+        .from("requests")
         .select("*", { count: "exact", head: true })
         .eq("status", "pending");
       return count ?? 0;
@@ -570,19 +570,24 @@ export default function AdminSchedulesPage() {
     return false;
   };
 
-  const getOrCreateWeeklySchedule = async (): Promise<string | null> => {
+  const getOrCreateWeeklySchedule = async (slotDate?: string): Promise<string | null> => {
     const supabase = createClient();
-    if (weeklySchedule) return weeklySchedule.id;
+    // slotDate가 주어지면 해당 날짜의 주차를 기준으로 — 일간 뷰에서 추가 시 weekStartStr(주간 뷰 기준)과 다를 수 있음
+    const targetWeekStart = slotDate
+      ? format(startOfWeek(new Date(slotDate + "T00:00:00"), { weekStartsOn: 0 }), "yyyy-MM-dd")
+      : weekStartStr;
+    if (!slotDate && weeklySchedule) return weeklySchedule.id;
+    if (slotDate && dailyWeeklySchedule?.week_start === targetWeekStart) return dailyWeeklySchedule.id;
     const { data: existing } = await supabase
       .from("weekly_schedules")
       .select("id")
-      .eq("week_start", weekStartStr)
+      .eq("week_start", targetWeekStart)
       .maybeSingle();
     if (existing) return existing.id;
 
     const { data: created, error } = await supabase
       .from("weekly_schedules")
-      .insert({ week_start: weekStartStr, status: "draft" })
+      .insert({ week_start: targetWeekStart, status: "draft" })
       .select("id")
       .single();
     if (error) {
@@ -638,7 +643,7 @@ export default function AdminSchedulesPage() {
       return;
     }
 
-    const wsId = await getOrCreateWeeklySchedule();
+    const wsId = await getOrCreateWeeklySchedule(data.slot_date);
     if (!wsId) return;
 
     if (isNew) {
@@ -1021,7 +1026,10 @@ export default function AdminSchedulesPage() {
     const currentConfirmed = dailyWeeklySchedule?.confirmed_dates ?? [];
     const { error } = await supabase
       .from("weekly_schedules")
-      .update({ confirmed_dates: [...currentConfirmed, dateStr] })
+      .update({
+        confirmed_dates: [...currentConfirmed, dateStr],
+        published_at: new Date().toISOString(),
+      })
       .eq("id", wsId!);
 
     if (error) {
@@ -1430,13 +1438,13 @@ export default function AdminSchedulesPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {/* 대체근무 관리 — pending 뱃지 */}
+          {/* 요청 관리 — pending 뱃지 */}
           <Link
-            href="/admin/schedules/substitutes"
+            href="/admin/requests"
             className="relative flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-[#4E5968] rounded-xl text-[13px] font-bold hover:bg-[#F2F4F6] transition-all"
           >
             <ArrowRightLeft className="w-4 h-4" />
-            대체근무 관리
+            요청 관리
             {pendingSubCount > 0 && (
               <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 leading-none">
                 {pendingSubCount > 9 ? "9+" : pendingSubCount}

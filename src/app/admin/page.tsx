@@ -8,6 +8,7 @@ import {
   ArrowRight,
   Clock,
   Users,
+  MessageSquare,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
@@ -137,6 +138,20 @@ export default function AdminDashboardPage() {
       return items.sort((a, b) => a.start_time.localeCompare(b.start_time));
     },
     { dedupingInterval: 60_000, revalidateOnFocus: false },
+  );
+
+  // 미처리 요청 수
+  const { data: pendingRequestCount = 0 } = useSWR(
+    "admin-pending-requests",
+    async () => {
+      const supabase = createClient();
+      const { count } = await supabase
+        .from("requests")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "pending");
+      return count ?? 0;
+    },
+    { dedupingInterval: 15_000, revalidateOnFocus: true }
   );
 
   // 보건증 만료 30일 이내
@@ -368,6 +383,29 @@ export default function AdminDashboardPage() {
             <div>
               <p className="text-[16px] font-bold text-[#191F28]">직원 관리</p>
               <p className="text-[12px] text-[#8B95A1]">인사 정보 및 서류</p>
+            </div>
+          </div>
+          <ArrowRight className="w-4 h-4 text-[#D1D6DB] group-hover:text-[#3182F6]" />
+        </button>
+
+        <button
+          onClick={() => router.push("/admin/requests")}
+          className="group flex items-center justify-between p-6 bg-white rounded-[24px] border border-slate-100 shadow-sm hover:shadow-md transition-all md:col-span-2"
+        >
+          <div className="flex items-center gap-4 text-left">
+            <div className="relative w-11 h-11 rounded-2xl bg-[#F2F4F6] flex items-center justify-center group-hover:bg-[#E8F3FF]">
+              <MessageSquare className="w-5 h-5 text-[#4E5968] group-hover:text-[#3182F6]" />
+              {pendingRequestCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#F04438] text-white text-[10px] font-bold flex items-center justify-center">
+                  {pendingRequestCount}
+                </span>
+              )}
+            </div>
+            <div>
+              <p className="text-[16px] font-bold text-[#191F28]">요청 관리</p>
+              <p className="text-[12px] text-[#8B95A1]">
+                {pendingRequestCount > 0 ? `${pendingRequestCount}건의 요청을 검토해 주세요` : "직원 조퇴·결근·시간변경·대타 요청"}
+              </p>
             </div>
           </div>
           <ArrowRight className="w-4 h-4 text-[#D1D6DB] group-hover:text-[#3182F6]" />

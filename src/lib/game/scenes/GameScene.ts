@@ -297,6 +297,14 @@ export default class GameScene extends Phaser.Scene {
   private runtimeSpeedMulti = 1.0;
   private runtimeDamageMulti = 1.0;
 
+  // 패시브 선택 횟수 제한 (각 패시브 최대 5회)
+  private passiveCounts: Record<string, number> = {};
+  private readonly PASSIVE_MAX = 5;
+
+  // 보스 위치 화살표 표시
+  private bossArrow?: Phaser.GameObjects.Graphics;
+  private bossArrowText?: Phaser.GameObjects.Text;
+
   // 콤보
   private combo = 0;
   private comboTimer?: Phaser.Time.TimerEvent;
@@ -488,6 +496,16 @@ export default class GameScene extends Phaser.Scene {
     // 대시 — 스페이스바
     this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE)
       .on("down", () => this.tryDash());
+
+    // 보스 위치 화살표 (화면 고정)
+    this.bossArrow = this.add.graphics().setScrollFactor(0).setDepth(100);
+    this.bossArrowText = this.add.text(0, 0, "", {
+      fontSize: "11px",
+      color: "#ffffff",
+      stroke: "#000000",
+      strokeThickness: 3,
+      fontStyle: "bold",
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(101);
 
     // 첫 웨이브
     this.startWave(this.wave);
@@ -1541,8 +1559,11 @@ export default class GameScene extends Phaser.Scene {
       });
     }
 
-    // ③ 패시브 (옵션이 3개 미만이면 보충)
-    const passivePool = Phaser.Utils.Array.Shuffle([...PASSIVE_UPGRADES]);
+    // ③ 패시브 (옵션이 3개 미만이면 보충, 각 패시브 최대 5회)
+    const availablePassives = PASSIVE_UPGRADES.filter(p =>
+      (this.passiveCounts[p.passiveId ?? ""] ?? 0) < this.PASSIVE_MAX
+    );
+    const passivePool = Phaser.Utils.Array.Shuffle([...availablePassives]);
     let pIdx = 0;
     while (opts.length < 3 && pIdx < passivePool.length) {
       opts.push(passivePool[pIdx++]);
@@ -1570,20 +1591,25 @@ export default class GameScene extends Phaser.Scene {
       }
 
     } else if (option.type === "passive" && option.passiveId) {
-      switch (option.passiveId) {
-        case "hp_regen":
-          this.playerHp = Math.min(this.playerMaxHp, this.playerHp + Math.round(this.playerMaxHp * 0.20));
-          break;
-        case "speed_up":
-          this.runtimeSpeedMulti += 0.10;
-          this.playerSpeed = PLAYER_SPEED * this.config.buffs.moveSpeedMulti * this.runtimeSpeedMulti;
-          break;
-        case "atk_power":
-          this.runtimeDamageMulti += 0.15;
-          break;
-        case "exp_boost":
-          this.runtimeExpMulti += 0.20;
-          break;
+      const pid = option.passiveId;
+      const taken = this.passiveCounts[pid] ?? 0;
+      if (taken < this.PASSIVE_MAX) {
+        this.passiveCounts[pid] = taken + 1;
+        switch (pid) {
+          case "hp_regen":
+            this.playerHp = Math.min(this.playerMaxHp, this.playerHp + Math.round(this.playerMaxHp * 0.20));
+            break;
+          case "speed_up":
+            this.runtimeSpeedMulti += 0.10;
+            this.playerSpeed = PLAYER_SPEED * this.config.buffs.moveSpeedMulti * this.runtimeSpeedMulti;
+            break;
+          case "atk_power":
+            this.runtimeDamageMulti += 0.15;
+            break;
+          case "exp_boost":
+            this.runtimeExpMulti += 0.20;
+            break;
+        }
       }
     }
     this.paused = false;
@@ -1699,6 +1725,7 @@ export default class GameScene extends Phaser.Scene {
     this.floorTile.tilePositionY = this.cameras.main.scrollY;
 
     this.updateBossHpBar();
+    this.updateBossArrow();
 
     if (this.paused) return;
 
@@ -1819,9 +1846,11 @@ export default class GameScene extends Phaser.Scene {
     const dy   = this.player.y - rat.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
     if (dist === 0) return;
-    const proj = this.add.text(rat.x, rat.y, "•", {
-      fontSize: "14px",
-      color: "#ff4444",
+    const proj = this.add.text(rat.x, rat.y, "●", {
+      fontSize: "20px",
+      color: "#ff2222",
+      stroke: "#ffaa00",
+      strokeThickness: 3,
     }).setOrigin(0.5);
     (proj as any).damage      = (rat as any).damage * 0.7;
     (proj as any).vx          = (dx / dist) * 180;
@@ -2021,6 +2050,78 @@ export default class GameScene extends Phaser.Scene {
     const fillColor = pct > 0.5 ? 0xf59e0b : pct > 0.25 ? 0xef4444 : 0xdc2626;
     this.bossHpGraphics.fillStyle(fillColor, 1);
     this.bossHpGraphics.fillRoundedRect(bx, by, BAR_W * pct, BAR_H, 2);
+  }
+
+  private updateBossArrow() {
+    if (!this.bossArrow || !this.bossArrowText) return;
+    this.bossArrow.clear();
+    this.bossArrowText.setVisible(false);
+
+    if (!this.currentBoss) return;
+
+    const cam    = this.cameras.main;
+    const sw     = cam.width;
+    const sh     = cam.height;
+    const MARGIN = 28; // 화면 가장자리로부터 화살표 중심까지의 거리
+
+    // 보스의 화면 좌표 계산
+    const bossScreenX = this.currentBoss.x - cam.scrollX;
+    const bossScreenY = this.currentBoss.y - cam.scrollY;
+
+    // 화면 안에 있으면 숨김
+    const PAD = 60;
+    if (
+      bossScreenX > PAD && bossScreenX < sw - PAD &&
+      bossScreenY > PAD && bossScreenY < sh - PAD
+    ) {
+      return;
+    }
+
+    // 화면 중심 → 보스 방향
+    const cx  = sw / 2;
+    const cy  = sh / 2;
+    const dx  = bossScreenX - cx;
+    const dy  = bossScreenY - cy;
+    const ang = Math.atan2(dy, dx);
+
+    // 화면 경계에서 화살표 위치 계산
+    const cos = Math.cos(ang);
+    const sin = Math.sin(ang);
+    let ax: number, ay: number;
+    const halfW = sw / 2 - MARGIN;
+    const halfH = sh / 2 - MARGIN;
+    if (Math.abs(cos) * halfH > Math.abs(sin) * halfW) {
+      // 좌우 경계
+      ax = cx + (cos > 0 ? halfW : -halfW);
+      ay = cy + (halfW * sin) / Math.abs(cos);
+    } else {
+      // 상하 경계
+      ax = cx + (halfH * cos) / Math.abs(sin);
+      ay = cy + (sin > 0 ? halfH : -halfH);
+    }
+
+    // 화살표 그리기 (삼각형)
+    const ARROW_SIZE = 10;
+    const tipX = ax + Math.cos(ang) * ARROW_SIZE;
+    const tipY = ay + Math.sin(ang) * ARROW_SIZE;
+    const leftX  = ax + Math.cos(ang + 2.4) * ARROW_SIZE;
+    const leftY  = ay + Math.sin(ang + 2.4) * ARROW_SIZE;
+    const rightX = ax + Math.cos(ang - 2.4) * ARROW_SIZE;
+    const rightY = ay + Math.sin(ang - 2.4) * ARROW_SIZE;
+
+    this.bossArrow.fillStyle(0xff3300, 1);
+    this.bossArrow.fillTriangle(tipX, tipY, leftX, leftY, rightX, rightY);
+    this.bossArrow.lineStyle(2, 0xffffff, 0.8);
+    this.bossArrow.strokeTriangle(tipX, tipY, leftX, leftY, rightX, rightY);
+
+    // 거리 텍스트
+    const worldDist = Math.round(Phaser.Math.Distance.Between(
+      this.player.x, this.player.y, this.currentBoss.x, this.currentBoss.y
+    ));
+    this.bossArrowText
+      .setPosition(ax, ay + (sin > 0 ? ARROW_SIZE + 10 : -(ARROW_SIZE + 10)))
+      .setText(`${worldDist}`)
+      .setVisible(true);
   }
 
   private emitStats() {

@@ -2,145 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronDown, Search, X } from "lucide-react";
+import dynamic from "next/dynamic";
+import { ChevronLeft, ChevronDown, Search, X, Gamepad2 } from "lucide-react";
 
-/* ─────────────────────────────────────────────
-   고양이 감정 단계 (클릭 0~9 → 10번째 😻 피날레)
-───────────────────────────────────────────── */
-const CAT_STAGES = [
-  "🐱", // 0  산책 중
-  "😺", // 1  나 발견됨?
-  "😸", // 2  기분 좋아짐
-  "😼", // 3  수상하다
-  "😽", // 4  관심 생김
-  "🙀", // 5  충격
-  "😹", // 6  어이없어서 웃음
-  "😿", // 7  슬퍼짐
-  "😾", // 8  삐짐
-  "😺", // 9  결국 좋아
-];
-
-function WalkingCat({ onGameStart }: { onGameStart: () => void }) {
-  const posRef = useRef({ x: 80, y: 400 });
-  const dirRef = useRef({ x: 1, y: 0.2 });
-  const phaseRef = useRef<"walking" | "hearts" | "hidden">("walking");
-  const clicksRef = useRef(0);
-
-  const [renderPos, setRenderPos] = useState({ x: 80, y: 400 });
-  const [goingRight, setGoingRight] = useState(true);
-  const [clicks, setClicks] = useState(0);
-  const [phase, setPhase] = useState<"walking" | "hearts" | "hidden">(
-    "walking",
-  );
-  const [popping, setPopping] = useState(false);
-  const [label, setLabel] = useState("");
-
-  useEffect(() => {
-    const id = setInterval(() => {
-      if (phaseRef.current !== "walking") return;
-
-      const speed = 1.2;
-      let { x, y } = posRef.current;
-      let { x: dx, y: dy } = dirRef.current;
-
-      x += dx * speed;
-      y += dy * speed;
-
-      const maxX = window.innerWidth - 36;
-      const maxY = window.innerHeight - 36;
-
-      if (x < 0) {
-        x = 0;
-        dx = Math.abs(dx);
-        setGoingRight(true);
-      }
-      if (x > maxX) {
-        x = maxX;
-        dx = -Math.abs(dx);
-        setGoingRight(false);
-      }
-      if (y < 80) {
-        y = 80;
-        dy = Math.abs(dy);
-      }
-      if (y > maxY) {
-        y = maxY;
-        dy = -Math.abs(dy);
-      }
-
-      if (Math.random() < 0.008) dy = (Math.random() - 0.5) * 0.8;
-
-      posRef.current = { x, y };
-      dirRef.current = { x: dx, y: dy };
-      setRenderPos({ x, y });
-    }, 40);
-
-    return () => clearInterval(id);
-  }, []);
-
-  const handleClick = () => {
-    if (phaseRef.current !== "walking") return;
-    clicksRef.current += 1;
-    const n = clicksRef.current;
-    setClicks(n);
-
-    // 팝 애니메이션
-    setPopping(true);
-    setTimeout(() => setPopping(false), 350);
-
-    if (n >= 10) {
-      phaseRef.current = "hearts";
-      setPhase("hearts");
-      setTimeout(() => {
-        phaseRef.current = "hidden";
-        setPhase("hidden");
-        onGameStart();
-      }, 1600);
-    }
-  };
-
-  if (phase === "hidden") return null;
-
-  const emoji =
-    phase === "hearts"
-      ? "😻"
-      : CAT_STAGES[Math.min(clicks, CAT_STAGES.length - 1)];
-
-  const fontSize = 20 + clicks * 2.5; // 20px → 45px (10번)
-
-  return (
-    <div
-      onClick={handleClick}
-      style={{
-        position: "fixed",
-        left: renderPos.x,
-        top: renderPos.y,
-        zIndex: 9999,
-        userSelect: "none",
-        cursor: "pointer",
-        transform: goingRight ? "scaleX(1)" : "scaleX(-1)",
-      }}
-    >
-      {/* 고양이 이모지 */}
-      <span
-        key={clicks}
-        style={{
-          display: "inline-block",
-          fontSize: `${fontSize}px`,
-          lineHeight: 1,
-          animation:
-            phase === "hearts"
-              ? "catHearts 1.6s ease-out forwards"
-              : popping
-                ? "catPop 0.35s ease-out"
-                : "catBob 0.35s ease-in-out infinite",
-        }}
-      >
-        {emoji}
-      </span>
-    </div>
-  );
-}
+const CatDodgeGame = dynamic(
+  () => import("@/components/CatDodgeGame"),
+  { ssr: false, loading: () => null }
+);
 
 /* ─────────────────────────────────────────────
    아코디언 섹션 컴포넌트
@@ -512,6 +380,24 @@ export default function GuidePage() {
   const [query, setQuery] = useState("");
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
+  const [showDodge, setShowDodge] = useState(false);
+  const [showGameModal, setShowGameModal] = useState(false);
+  const [dodgeLoading, setDodgeLoading] = useState(false);
+  const [rogueLoading, setRogueLoading] = useState(false);
+
+  const handleDodgeClick = async () => {
+    setShowGameModal(false);
+    setDodgeLoading(true);
+    await new Promise((r) => setTimeout(r, 300));
+    setDodgeLoading(false);
+    setShowDodge(true);
+  };
+
+  const handleRogueClick = () => {
+    setShowGameModal(false);
+    setRogueLoading(true);
+    router.push("/game");
+  };
 
   // 진입 시 레드닷 해제
   useEffect(() => {
@@ -575,29 +461,64 @@ export default function GuidePage() {
           60%  { background-color: #E8F3FF; box-shadow: 0 0 0 3px rgba(49,130,246,0.15); }
           100% { background-color: white;   box-shadow: 0 0 0 0px rgba(49,130,246,0); }
         }
-        @keyframes catBob {
-          0%, 100% { transform: translateY(0px); }
-          50%       { transform: translateY(-3px); }
-        }
-        @keyframes catPop {
-          0%   { transform: scale(1); }
-          45%  { transform: scale(1.55); }
-          100% { transform: scale(1); }
-        }
-        @keyframes catHearts {
-          0%   { transform: scale(1);   opacity: 1; }
-          40%  { transform: scale(2.2); opacity: 1; }
-          70%  { transform: scale(2.4); opacity: 0.8; }
-          100% { transform: scale(0.3); opacity: 0; }
-        }
-        @keyframes labelPop {
-          0%   { opacity: 0; transform: translateX(-50%) translateY(4px); }
-          15%  { opacity: 1; transform: translateX(-50%) translateY(0px); }
-          70%  { opacity: 1; transform: translateX(-50%) translateY(0px); }
-          100% { opacity: 0; transform: translateX(-50%) translateY(-6px); }
-        }
       `}</style>
-      <WalkingCat onGameStart={() => router.push("/game")} />
+      {/* 닷지 게임 오버레이 */}
+      {showDodge && (
+        <CatDodgeGame onClose={() => setShowDodge(false)} />
+      )}
+      {/* 게임 선택 모달 */}
+      {showGameModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-6"
+          onClick={() => setShowGameModal(false)}
+        >
+          <div className="absolute inset-0 bg-black/40" />
+          <div
+            className="relative w-full max-w-sm bg-white rounded-[28px] px-5 pt-5 pb-6 space-y-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[16px] font-bold text-[#191F28]">게임 선택</p>
+              <button
+                onClick={() => setShowGameModal(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-[#F2F4F6]"
+              >
+                <X className="w-4 h-4 text-[#8B95A1]" />
+              </button>
+            </div>
+            {/* 닷지 게임 */}
+            <button
+              onClick={handleDodgeClick}
+              disabled={dodgeLoading}
+              className="w-full flex items-center gap-4 p-4 rounded-[20px] bg-[#F2F4F6] active:bg-[#E5E8EB] transition-colors text-left"
+            >
+              <span className="text-[32px] leading-none">🎯</span>
+              <div className="flex-1">
+                <p className="text-[15px] font-bold text-[#191F28]">닷지 게임</p>
+                <p className="text-[13px] text-[#8B95A1] mt-0.5">한과를 피해 고양이를 구해요</p>
+              </div>
+              {dodgeLoading && (
+                <span className="w-4 h-4 rounded-full border-2 border-[#3182F6] border-t-transparent animate-spin" />
+              )}
+            </button>
+            {/* 로그라이크 게임 */}
+            <button
+              onClick={handleRogueClick}
+              disabled={rogueLoading}
+              className="w-full flex items-center gap-4 p-4 rounded-[20px] bg-[#F2F4F6] active:bg-[#E5E8EB] transition-colors text-left"
+            >
+              <span className="text-[32px] leading-none">⚔️</span>
+              <div className="flex-1">
+                <p className="text-[15px] font-bold text-[#191F28]">로그라이크</p>
+                <p className="text-[13px] text-[#8B95A1] mt-0.5">고양이로 몬스터를 물리쳐요</p>
+              </div>
+              {rogueLoading && (
+                <span className="w-4 h-4 rounded-full border-2 border-[#3182F6] border-t-transparent animate-spin" />
+              )}
+            </button>
+          </div>
+        </div>
+      )}
       {/* 헤더 */}
       <header className="sticky top-0 z-10 flex items-center gap-3 px-5 py-4 bg-white/90 backdrop-blur-md border-b border-[#E5E8EB]">
         <button
@@ -607,7 +528,14 @@ export default function GuidePage() {
         >
           <ChevronLeft className="w-5 h-5 text-[#191F28]" />
         </button>
-        <h1 className="text-[17px] font-bold text-[#191F28]">이용가이드</h1>
+        <h1 className="flex-1 text-[17px] font-bold text-[#191F28]">이용가이드</h1>
+        <button
+          onClick={() => setShowGameModal(true)}
+          className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-[#F2F4F6] active:bg-[#E5E8EB] transition-colors"
+          aria-label="게임"
+        >
+          <Gamepad2 className="w-5 h-5 text-[#8B95A1]" />
+        </button>
       </header>
 
       <main className="flex-1 px-5 pb-12 space-y-4 pt-4">

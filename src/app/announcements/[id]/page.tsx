@@ -7,6 +7,7 @@ import { ChevronLeft, Pin } from "lucide-react";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import type { Announcement } from "@/types/announcement";
+import AnnouncementReactions from "@/components/announcement/AnnouncementReactions";
 
 export default function AnnouncementDetailPage() {
   const supabase = useMemo(() => createClient(), []);
@@ -15,6 +16,7 @@ export default function AnnouncementDetailPage() {
   const id = params.id as string;
 
   const [announcement, setAnnouncement] = useState<Announcement | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -35,6 +37,7 @@ export default function AnnouncementDetailPage() {
       }
 
       setAnnouncement(data as Announcement);
+      if (user) setCurrentUserId(user.id);
       setLoading(false);
 
       // 읽음 처리 (upsert)
@@ -102,6 +105,14 @@ export default function AnnouncementDetailPage() {
           <p className="text-[15px] text-[#333D4B] leading-relaxed whitespace-pre-wrap">
             {announcement.content}
           </p>
+
+          {/* 리액션 */}
+          {currentUserId && (
+            <AnnouncementReactions
+              announcementId={id}
+              currentUserId={currentUserId}
+            />
+          )}
         </div>
       </main>
     </div>

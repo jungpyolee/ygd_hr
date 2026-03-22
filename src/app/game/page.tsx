@@ -721,7 +721,9 @@ export default function GamePage() {
             style={{ width: detailOpen ? "60%" : "0%", opacity: detailOpen ? 1 : 0, paddingRight: 16 }}
           >
             {detailOpen && (
-              <div key={selectedCat} className="detail-enter flex flex-col h-full pt-2 pb-6">
+              <div key={selectedCat} className="detail-enter flex flex-col h-full pt-2">
+                {/* 스크롤 가능한 콘텐츠 영역 */}
+                <div className="flex-1 overflow-y-auto pb-2">
                 {/* 캐릭터 스프라이트 */}
                 <div className="flex flex-col items-center pt-4 pb-3">
                   <div style={{ filter: selUnlocked ? "drop-shadow(0 0 16px rgba(245,158,11,0.5))" : "none", opacity: selUnlocked ? 1 : 0.4 }}>
@@ -768,15 +770,6 @@ export default function GamePage() {
                       style={{ color: "#64748b", animationDelay: "0.1s" }}>
                       {selCat.detail}
                     </p>
-
-                    {/* START */}
-                    <div className="mt-auto mx-1 fadeup" style={{ animationDelay: "0.15s" }}>
-                      <button onClick={handleStart}
-                        className="w-full py-3.5 rounded-xl font-mono font-black tracking-widest uppercase text-sm active:scale-95 transition-all"
-                        style={{ background: "linear-gradient(135deg, #d97706, #f59e0b)", color: "#07071a", letterSpacing: "0.2em", boxShadow: "0 0 20px rgba(245,158,11,0.4)" }}>
-                        ▶  START
-                      </button>
-                    </div>
                   </>
                 ) : (
                   /* ── 잠긴 캐릭터 — 해금 조건 패널 ── */
@@ -831,6 +824,18 @@ export default function GamePage() {
                       </div>
                     );
                   })()
+                )}
+                </div>{/* end 스크롤 가능한 콘텐츠 영역 */}
+
+                {/* 하단 고정 버튼 영역 */}
+                {selUnlocked && (
+                  <div className="shrink-0 pb-6 pt-2 mx-1 fadeup" style={{ animationDelay: "0.15s" }}>
+                    <button onClick={handleStart}
+                      className="w-full py-3.5 rounded-xl font-mono font-black tracking-widest uppercase text-sm active:scale-95 transition-all"
+                      style={{ background: "linear-gradient(135deg, #d97706, #f59e0b)", color: "#07071a", letterSpacing: "0.2em", boxShadow: "0 0 20px rgba(245,158,11,0.4)" }}>
+                      ▶  START
+                    </button>
+                  </div>
                 )}
               </div>
             )}
@@ -995,15 +1000,15 @@ export default function GamePage() {
                       </div>
                     </div>
 
-                    {/* 누적 점수 */}
+                    {/* 최고 점수 */}
                     <div className="shrink-0 text-right">
                       <p
                         className="font-mono font-black text-sm tabular-nums"
                         style={{ color: isMe ? "#f59e0b" : idx < 3 ? "#e2e8f0" : "#64748b" }}
                       >
-                        {entry.total_score.toLocaleString()}
+                        {entry.best_run_score.toLocaleString()}
                       </p>
-                      <p className="font-mono text-[9px]" style={{ color: "#1e293b" }}>TOTAL</p>
+                      <p className="font-mono text-[9px]" style={{ color: "#1e293b" }}>BEST</p>
                     </div>
                   </div>
                 );

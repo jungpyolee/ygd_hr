@@ -14,6 +14,7 @@ import {
   Info,
   Megaphone,
   ChevronRight,
+  MessageSquare,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import WeeklyScheduleCard, {
@@ -72,6 +73,20 @@ export default function HomeClient({
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNoti, setShowNoti] = useState(false);
   const notiRef = useRef<HTMLDivElement>(null);
+
+  // 미처리 요청 카운트
+  const { data: pendingRequestCount = 0 } = useSWR(
+    profile?.id ? ["pending-requests", profile.id] : null,
+    async ([, id]: [string, string]) => {
+      const { count } = await supabase
+        .from("requests")
+        .select("*", { count: "exact", head: true })
+        .eq("requester_id", id)
+        .eq("status", "pending");
+      return count ?? 0;
+    },
+    { dedupingInterval: 30_000, revalidateOnFocus: true }
+  );
 
   // 알림 SWR (클라이언트 로드)
   const { data: notisData } = useSWR(
@@ -185,11 +200,10 @@ const markAllRead = async (userId: string) => {
     setShowNoti(false);
     switch (noti.type) {
       case "substitute_approved":
-        router.push(`/schedule?request_id=${noti.source_id}`);
-        break;
-      case "substitute_rejected":
-      case "substitute_filled":
-        router.push("/schedule");
+      case "substitute_available":
+      case "request_approved":
+      case "request_rejected":
+        router.push("/requests");
         break;
       case "schedule_updated":
         router.push("/schedule");
@@ -286,6 +300,17 @@ const markAllRead = async (userId: string) => {
             )}
           </button>
 
+          {/* 요청 아이콘 */}
+          <button
+            onClick={() => router.push("/requests")}
+            className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center relative"
+          >
+            <MessageSquare className={`w-5 h-5 ${pendingRequestCount > 0 ? "text-[#3182F6]" : "text-[#4E5968]"}`} />
+            {pendingRequestCount > 0 && (
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white" />
+            )}
+          </button>
+
           {/* 알림 벨 */}
           <div className="relative" ref={notiRef}>
             <button
@@ -331,7 +356,7 @@ const markAllRead = async (userId: string) => {
                       >
                         <div className="flex gap-3 items-start">
                           <div className="mt-0.5">
-                            {n.type === "substitute_approved" ? (
+                            {["substitute_available", "request_approved", "request_rejected"].includes(n.type) ? (
                               <ArrowRightLeft className="w-4 h-4 text-purple-500" />
                             ) : (
                               <Info className="w-4 h-4 text-slate-400" />

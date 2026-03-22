@@ -4,12 +4,13 @@ import { useState } from "react";
 import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-import { Pin, PinOff, Pencil, Trash2, Plus, Megaphone } from "lucide-react";
+import { Pin, PinOff, Pencil, Trash2, Plus, Megaphone, Smile } from "lucide-react";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { toast } from "sonner";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
-import type { Announcement } from "@/types/announcement";
+import type { Announcement, AnnouncementReaction } from "@/types/announcement";
+import { REACTION_EMOJIS } from "@/types/announcement";
 
 const TARGET_LABEL: Record<string, string> = {
   all: "전체 직원",
@@ -17,9 +18,16 @@ const TARGET_LABEL: Record<string, string> = {
   part_time: "파트타임",
 };
 
+interface ReactionWithProfile extends AnnouncementReaction {
+  profiles?: { name: string | null };
+}
+
 export default function AdminAnnouncementsPage() {
   const router = useRouter();
   const [deleteTarget, setDeleteTarget] = useState<Announcement | null>(null);
+  const [reactionsTarget, setReactionsTarget] = useState<Announcement | null>(null);
+  const [reactionDetails, setReactionDetails] = useState<ReactionWithProfile[]>([]);
+  const [reactionsLoading, setReactionsLoading] = useState(false);
 
   const { data: announcements = [], isLoading: loading, mutate } = useSWR(
     "admin-announcements-list",
@@ -46,6 +54,19 @@ export default function AdminAnnouncementsPage() {
     } else {
       mutate();
     }
+  };
+
+  const openReactions = async (item: Announcement) => {
+    setReactionsTarget(item);
+    setReactionsLoading(true);
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("announcement_reactions")
+      .select("*, profiles(name)")
+      .eq("announcement_id", item.id)
+      .order("created_at", { ascending: true });
+    setReactionDetails((data as ReactionWithProfile[]) ?? []);
+    setReactionsLoading(false);
   };
 
   const deleteAnnouncement = async (item: Announcement) => {
@@ -115,6 +136,13 @@ export default function AdminAnnouncementsPage() {
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 <button
+                  onClick={(e) => { e.stopPropagation(); openReactions(item); }}
+                  className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-[#F2F4F6] transition-colors"
+                  aria-label="리액션 현황"
+                >
+                  <Smile className="w-4 h-4 text-[#8B95A1]" />
+                </button>
+                <button
                   onClick={(e) => { e.stopPropagation(); togglePin(item); }}
                   className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-[#F2F4F6] transition-colors"
                   aria-label={item.is_pinned ? "고정 해제" : "상단 고정"}
@@ -154,6 +182,56 @@ export default function AdminAnnouncementsPage() {
         onConfirm={() => deleteTarget && deleteAnnouncement(deleteTarget)}
         onCancel={() => setDeleteTarget(null)}
       />
+
+      {/* 리액션 현황 바텀시트 */}
+      {reactionsTarget && (
+        <div className="fixed inset-0 z-[300] flex items-end justify-center">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200"
+            onClick={() => setReactionsTarget(null)}
+          />
+          <div className="relative w-full max-w-md bg-white rounded-t-[28px] px-5 pt-8 pb-10 shadow-2xl animate-in slide-in-from-bottom-4 duration-250">
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 w-9 h-1 bg-[#D1D6DB] rounded-full" />
+            <h3 className="text-[18px] font-bold text-[#191F28] mb-1">리액션 현황</h3>
+            <p className="text-[13px] text-[#8B95A1] mb-5 truncate">{reactionsTarget.title}</p>
+
+            {reactionsLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-8 bg-slate-100 animate-pulse rounded-xl" />
+                ))}
+              </div>
+            ) : reactionDetails.length === 0 ? (
+              <p className="text-[14px] text-[#8B95A1] text-center py-6">아직 리액션이 없어요.</p>
+            ) : (
+              <div className="space-y-3">
+                {REACTION_EMOJIS.map((emoji) => {
+                  const names = reactionDetails
+                    .filter((r) => r.emoji === emoji)
+                    .map((r) => r.profiles?.name ?? "알 수 없음");
+                  if (names.length === 0) return null;
+                  return (
+                    <div key={emoji} className="flex items-start gap-3">
+                      <span className="text-[22px] leading-none mt-0.5">{emoji}</span>
+                      <div className="flex-1">
+                        <p className="text-[14px] text-[#191F28]">{names.join(", ")}</p>
+                        <p className="text-[12px] text-[#8B95A1]">{names.length}명</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <button
+              onClick={() => setReactionsTarget(null)}
+              className="w-full h-12 mt-6 rounded-2xl font-bold text-[15px] text-[#4E5968] bg-[#F2F4F6] hover:bg-[#E5E8EB] transition-all active:scale-[0.98]"
+            >
+              닫기
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
