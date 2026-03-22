@@ -125,6 +125,8 @@ function SlotBottomSheet({
     cafe_positions: [],
     notes: "",
     ...slot,
+    ...(slot?.start_time && { start_time: slot.start_time.slice(0, 5) }),
+    ...(slot?.end_time && { end_time: slot.end_time.slice(0, 5) }),
   });
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -1117,37 +1119,35 @@ export default function AdminSchedulesPage() {
                     (s) => s.profile_id === profile.id && s.slot_date === d,
                   );
                   return (
-                    // align-middle: 슬롯이 있어 행이 길어져도 + 버튼이 셀 중앙에 위치
-                    <td key={d} className="px-1 py-2 align-middle">
-                      <div className="flex flex-col items-stretch gap-1">
+                    <td key={d} className="px-1 py-1.5 align-top">
+                      <div className="flex flex-col items-stretch gap-1 min-h-[68px]">
                         {daySlots.map((slot) => {
                           const isSubstituted = slot.status === "substituted";
+                          const positions = slot.cafe_positions?.length
+                            ? slot.cafe_positions
+                                .map((p) => CAFE_POSITION_LABELS[p] || p)
+                                .join("·")
+                            : null;
                           return (
                             <button
                               key={slot.id}
                               onClick={() => setEditSlot({ slot })}
-                              className={`w-full text-left px-2 py-1.5 rounded-lg text-[12px] font-bold transition-all hover:opacity-80 active:scale-[0.97] ${isSubstituted ? "text-[#8B95A1] line-through" : "text-white"}`}
+                              className={`w-full text-left px-2 py-1.5 rounded-lg transition-all hover:opacity-80 active:scale-[0.97] ${isSubstituted ? "text-[#8B95A1] line-through" : "text-white"}`}
                               style={{
                                 backgroundColor: isSubstituted
                                   ? "#F2F4F6"
                                   : LOCATION_COLORS[slot.work_location],
                               }}
                             >
-                              <div>{LOCATION_LABELS[slot.work_location]}</div>
-                              {slot.cafe_positions &&
-                                slot.cafe_positions.length > 0 && (
-                                  <div className="flex gap-0.5 flex-wrap mt-0.5">
-                                    {slot.cafe_positions.map((pos) => (
-                                      <span
-                                        key={pos}
-                                        className="px-1 py-0.5 bg-white/20 rounded text-[10px] font-bold leading-none"
-                                      >
-                                        {CAFE_POSITION_LABELS[pos] || pos}
-                                      </span>
-                                    ))}
-                                  </div>
+                              <div className="text-[11px] font-bold truncate leading-tight">
+                                {LOCATION_LABELS[slot.work_location]}
+                                {positions && (
+                                  <span className="opacity-80 ml-0.5 font-normal">
+                                    ·{positions}
+                                  </span>
                                 )}
-                              <div className="opacity-90">
+                              </div>
+                              <div className="text-[10px] opacity-90 mt-0.5 leading-tight">
                                 {slot.start_time.slice(0, 5)}~
                                 {slot.end_time.slice(0, 5)}
                               </div>
@@ -1163,7 +1163,7 @@ export default function AdminSchedulesPage() {
                                 defaultProfileId: profile.id,
                               })
                             }
-                            className="w-full flex items-center justify-center py-1 rounded-lg text-[#D1D6DB] hover:text-[#3182F6] hover:bg-[#E8F3FF] transition-all"
+                            className="flex-1 min-h-[52px] flex items-center justify-center rounded-lg text-[#D1D6DB] hover:text-[#3182F6] hover:bg-[#E8F3FF] transition-all"
                           >
                             <Plus className="w-4 h-4" />
                           </button>

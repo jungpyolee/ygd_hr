@@ -78,3 +78,36 @@ curl -s -X POST "https://api.supabase.com/v1/projects/ymvdjxzkjodasctktunh/datab
 - [x] 인덱스 현황 파악
 - [x] 함수/트리거 파악
 - [x] Storage 버킷 구조 파악
+
+---
+
+## ⚠️ Storage 버킷 생성 시 필수 체크리스트
+
+Storage 버킷을 새로 만들 때 **반드시** 아래 4개 정책을 함께 생성해야 한다.
+버킷이 `public`이어도 `storage.objects` RLS 정책이 없으면 업로드(INSERT)가 전면 차단된다.
+
+```sql
+-- 1. 업로드 (어드민 전용이면 is_admin(), 전 직원이면 true)
+CREATE POLICY "업로드" ON storage.objects FOR INSERT
+  TO authenticated WITH CHECK (bucket_id = 'YOUR_BUCKET' AND is_admin());
+
+-- 2. 수정 (upsert 지원)
+CREATE POLICY "수정" ON storage.objects FOR UPDATE
+  TO authenticated USING (bucket_id = 'YOUR_BUCKET' AND is_admin());
+
+-- 3. 삭제 (orphan 파일 정리)
+CREATE POLICY "삭제" ON storage.objects FOR DELETE
+  TO authenticated USING (bucket_id = 'YOUR_BUCKET' AND is_admin());
+
+-- 4. 조회 (public 버킷도 명시적으로)
+CREATE POLICY "조회" ON storage.objects FOR SELECT
+  TO authenticated USING (bucket_id = 'YOUR_BUCKET');
+```
+
+정책 생성 후 반드시 검증:
+```sql
+SELECT policyname, cmd FROM pg_policies
+WHERE tablename = 'objects' AND schemaname = 'storage'
+  AND policyname LIKE '%YOUR_BUCKET%';
+-- → INSERT / UPDATE / DELETE / SELECT 4개 모두 확인
+```
