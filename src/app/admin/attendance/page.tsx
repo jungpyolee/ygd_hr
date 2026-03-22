@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useWorkplaces } from "@/lib/hooks/useWorkplaces";
+import { createNotification } from "@/lib/notifications";
 
 interface ProcessedLog {
   profile_id: string;
@@ -299,6 +300,14 @@ export default function AdminAttendanceCalendar() {
       toast.error("퇴근 처리에 실패했어요. 잠시 후 다시 시도해 주세요.");
     } else {
       toast.success(`${log.name}님 퇴근 처리가 완료됐어요.`);
+      await createNotification({
+        profile_id: log.profile_id,
+        target_role: "employee",
+        type: "attendance_fallback_out",
+        title: "퇴근 처리 완료",
+        content: "관리자가 퇴근 처리했어요.",
+        source_id: log.profile_id,
+      });
       setManualOutTarget(null);
       mutate();
     }
