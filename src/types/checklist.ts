@@ -3,7 +3,7 @@ export interface ChecklistTemplate {
   title: string;
   trigger: "check_in" | "check_out";
   work_location: string | null;
-  cafe_position: string | null;
+  position_key: string | null;
   order_index: number;
   is_active: boolean;
   created_at: string;

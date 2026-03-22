@@ -43,8 +43,7 @@ interface Profile {
   bank_name: string | null;
   health_cert_date: string | null;
   employment_type: string | null;
-  work_locations: string[] | null;
-  cafe_positions: string[] | null;
+  position_keys: string[] | null;
   hourly_wage: number | null;
   insurance_type: string | null;
 }
@@ -65,8 +64,8 @@ interface WorkDefault {
   day_of_week: number;
   start_time: string;
   end_time: string;
-  work_location: string;
-  cafe_positions: string[];
+  store_id: string;
+  position_keys: string[];
   is_active: boolean;
 }
 
@@ -82,7 +81,7 @@ function generateTimeOptions(startH: number, endH: number) {
 }
 
 export default function AdminEmployeesPage() {
-  const { workplaces, positionsOf, hasPositions } = useWorkplaces();
+  const { workplaces, byKey, byId, positionsOf, positionsOfStore, hasPositions, hasPositionsStore } = useWorkplaces();
   const [uploading, setUploading] = useState(false);
 
   const [editingEmployee, setEditingEmployee] = useState<Profile | null>(null);
@@ -96,6 +95,9 @@ export default function AdminEmployeesPage() {
 
   // 항목이 많으므로 객체 하나로 묶어서 폼 상태 관리
   const [editForm, setEditForm] = useState<Partial<Profile>>({});
+
+  // 근무지 배정 상태 (employee_store_assignments)
+  const [assignedStoreIds, setAssignedStoreIds] = useState<string[]>([]);
 
   // work_defaults 상태
   const [workDefaults, setWorkDefaults] = useState<WorkDefault[]>([]);
@@ -166,6 +168,12 @@ export default function AdminEmployeesPage() {
   const openEditModal = async (employee: Profile) => {
     setEditingEmployee(employee);
     setEditForm({ ...employee });
+    const supabase = createClient();
+    const { data: asgn } = await supabase
+      .from("employee_store_assignments")
+      .select("store_id")
+      .eq("profile_id", employee.id);
+    setAssignedStoreIds((asgn ?? []).map((a: { store_id: string }) => a.store_id));
     await fetchWorkDefaults(employee.id);
   };
 
@@ -189,11 +197,11 @@ export default function AdminEmployeesPage() {
       day_of_week,
       start_time,
       end_time,
-      work_location,
-      cafe_positions,
+      store_id,
+      position_keys,
       id,
     } = editingDefault;
-    if (!start_time || !end_time || !work_location) {
+    if (!start_time || !end_time || !store_id) {
       toast.error("시작 시간, 종료 시간, 근무 장소를 모두 입력해주세요.");
       setSavingDefault(false);
       return;
@@ -205,8 +213,8 @@ export default function AdminEmployeesPage() {
         .update({
           start_time,
           end_time,
-          work_location,
-          cafe_positions: cafe_positions || [],
+          store_id,
+          position_keys: position_keys || [],
         })
         .eq("id", id);
       if (error) {
@@ -221,8 +229,8 @@ export default function AdminEmployeesPage() {
         day_of_week,
         start_time,
         end_time,
-        work_location,
-        cafe_positions: cafe_positions || [],
+        store_id,
+        position_keys: position_keys || [],
       });
       if (error) {
         toast.error("저장에 실패했어요", { description: error.message });
@@ -270,6 +278,28 @@ export default function AdminEmployeesPage() {
       return toast.error("수정에 실패했어요", {
         description: "다시 시도해주세요",
       });
+
+    // 근무지 배정 동기화 (employee_store_assignments)
+    const profileId = editingEmployee.id;
+    const { data: existing } = await supabase
+      .from("employee_store_assignments")
+      .select("store_id")
+      .eq("profile_id", profileId);
+    const existingIds = (existing ?? []).map((a: { store_id: string }) => a.store_id);
+    const toDelete = existingIds.filter((id) => !assignedStoreIds.includes(id));
+    const toInsert = assignedStoreIds.filter((id) => !existingIds.includes(id));
+    if (toDelete.length > 0) {
+      await supabase
+        .from("employee_store_assignments")
+        .delete()
+        .eq("profile_id", profileId)
+        .in("store_id", toDelete);
+    }
+    if (toInsert.length > 0) {
+      await supabase
+        .from("employee_store_assignments")
+        .insert(toInsert.map((store_id) => ({ profile_id: profileId, store_id })));
+    }
 
     // 즉시 캐시 반영
     mutateEmployees((prev) =>
@@ -733,19 +763,18 @@ export default function AdminEmployeesPage() {
                   </label>
                   <div className="flex gap-2 flex-wrap">
                     {workplaces.map((w) => {
-                      const selected = (editForm.work_locations || []).includes(w.work_location_key);
+                      const selected = assignedStoreIds.includes(w.id);
                       return (
                         <button
-                          key={w.work_location_key}
+                          key={w.id}
                           type="button"
                           onClick={() => {
-                            const cur = editForm.work_locations || [];
                             const next = selected
-                              ? cur.filter((v) => v !== w.work_location_key)
-                              : [...cur, w.work_location_key];
-                            handleFormChange("work_locations", next);
-                            if (!next.some((loc) => hasPositions(loc))) {
-                              handleFormChange("cafe_positions", []);
+                              ? assignedStoreIds.filter((id) => id !== w.id)
+                              : [...assignedStoreIds, w.id];
+                            setAssignedStoreIds(next);
+                            if (!next.some((id) => hasPositionsStore(id))) {
+                              handleFormChange("position_keys", []);
                             }
                           }}
                           className={`px-4 py-2 rounded-xl text-[13px] font-bold transition-all ${
@@ -762,26 +791,26 @@ export default function AdminEmployeesPage() {
                 </div>
 
                 {/* 포지션 (포지션 있는 근무지 선택 시만 표시) */}
-                {(editForm.work_locations || []).some((loc) => hasPositions(loc)) && (
+                {assignedStoreIds.some((id) => hasPositionsStore(id)) && (
                   <div>
                     <label className="block text-[12px] font-medium text-[#8B95A1] mb-2">
                       담당 포지션
                     </label>
                     <div className="flex gap-2 flex-wrap">
-                      {(editForm.work_locations || [])
-                        .flatMap((loc) => positionsOf(loc))
+                      {assignedStoreIds
+                        .flatMap((id) => positionsOfStore(id))
                         .map((p) => {
-                          const selected = (editForm.cafe_positions || []).includes(p.position_key);
+                          const selected = (editForm.position_keys || []).includes(p.position_key);
                           return (
                             <button
                               key={p.position_key}
                               type="button"
                               onClick={() => {
-                                const cur = editForm.cafe_positions || [];
+                                const cur = editForm.position_keys || [];
                                 const next = selected
                                   ? cur.filter((v) => v !== p.position_key)
                                   : [...cur, p.position_key];
-                                handleFormChange("cafe_positions", next);
+                                handleFormChange("position_keys", next);
                               }}
                               className={`px-4 py-2 rounded-xl text-[13px] font-bold transition-all ${
                                 selected
@@ -1019,11 +1048,7 @@ export default function AdminEmployeesPage() {
                                 className="flex items-center gap-2 bg-[#F2F4F6] rounded-xl px-3 py-2"
                               >
                                 <span className="text-[12px] font-bold text-[#3182F6] bg-[#E8F3FF] px-2 py-0.5 rounded-md">
-                                  {wd.work_location === "cafe"
-                                    ? "카페"
-                                    : wd.work_location === "factory"
-                                      ? "공장"
-                                      : "케이터링"}
+                                  {byId[wd.store_id]?.label || wd.store_id}
                                 </span>
                                 <span className="text-[12px] text-[#4E5968] font-medium flex-1">
                                   {wd.start_time.slice(0, 5)} ~{" "}
@@ -1054,8 +1079,8 @@ export default function AdminEmployeesPage() {
                                   day_of_week: dow,
                                   start_time: "09:00",
                                   end_time: "18:00",
-                                  work_location: "cafe",
-                                  cafe_positions: [],
+                                  store_id: workplaces[0]?.id || "",
+                                  position_keys: [],
                                 })
                               }
                               className="text-[12px] text-[#8B95A1] hover:text-[#3182F6] font-bold px-3 py-1.5 hover:bg-[#F2F4F6] rounded-xl transition-all"
@@ -1144,47 +1169,47 @@ export default function AdminEmployeesPage() {
                 <div className="flex gap-2">
                   {workplaces.map((w) => (
                     <button
-                      key={w.work_location_key}
+                      key={w.id}
                       type="button"
                       onClick={() =>
                         setEditingDefault((prev) =>
                           prev
                             ? {
                                 ...prev,
-                                work_location: w.work_location_key,
-                                cafe_positions: !hasPositions(w.work_location_key)
+                                store_id: w.id,
+                                position_keys: !hasPositionsStore(w.id)
                                   ? []
-                                  : prev.cafe_positions,
+                                  : prev.position_keys,
                               }
                             : null,
                         )
                       }
-                      className={`flex-1 py-2 rounded-xl text-[13px] font-bold transition-all ${editingDefault.work_location === w.work_location_key ? "bg-[#3182F6] text-white" : "bg-[#F2F4F6] text-[#4E5968]"}`}
+                      className={`flex-1 py-2 rounded-xl text-[13px] font-bold transition-all ${editingDefault.store_id === w.id ? "bg-[#3182F6] text-white" : "bg-[#F2F4F6] text-[#4E5968]"}`}
                     >
                       {w.label}
                     </button>
                   ))}
                 </div>
               </div>
-              {editingDefault.work_location && hasPositions(editingDefault.work_location) && (
+              {editingDefault.store_id && hasPositionsStore(editingDefault.store_id) && (
                 <div>
                   <label className="block text-[12px] font-medium text-[#8B95A1] mb-2">
                     포지션
                   </label>
                   <div className="flex gap-2">
-                    {positionsOf(editingDefault.work_location).map((p) => {
-                      const sel = (editingDefault.cafe_positions || []).includes(p.position_key);
+                    {positionsOfStore(editingDefault.store_id).map((p) => {
+                      const sel = (editingDefault.position_keys || []).includes(p.position_key);
                       return (
                         <button
                           key={p.position_key}
                           type="button"
                           onClick={() => {
-                            const cur = editingDefault.cafe_positions || [];
+                            const cur = editingDefault.position_keys || [];
                             setEditingDefault((prev) =>
                               prev
                                 ? {
                                     ...prev,
-                                    cafe_positions: sel
+                                    position_keys: sel
                                       ? cur.filter((v) => v !== p.position_key)
                                       : [...cur, p.position_key],
                                   }

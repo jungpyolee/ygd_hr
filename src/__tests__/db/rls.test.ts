@@ -90,7 +90,7 @@ beforeAll(async () => {
       role: "admin",
       employment_type: "full_time",
       work_locations: [],
-      cafe_positions: [],
+      position_keys: [],
     },
     {
       id: T.ftId,
@@ -99,7 +99,7 @@ beforeAll(async () => {
       role: "employee",
       employment_type: "full_time",
       work_locations: [],
-      cafe_positions: [],
+      position_keys: [],
     },
     {
       id: T.ptId,
@@ -108,7 +108,7 @@ beforeAll(async () => {
       role: "employee",
       employment_type: "part_time",
       work_locations: [],
-      cafe_positions: [],
+      position_keys: [],
     },
   ]);
 

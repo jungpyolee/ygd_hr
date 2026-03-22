@@ -64,7 +64,7 @@ export default function HomeClient({
 }: HomeClientProps) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
-  const { byKey, positionsOf } = useWorkplaces();
+  const { byId, positionsOfStore } = useWorkplaces();
 
   const [showGuideRedDot, setShowGuideRedDot] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -407,7 +407,7 @@ const markAllRead = async (userId: string) => {
                     className="w-1 rounded-full self-stretch min-h-[44px] shrink-0"
                     style={{
                       backgroundColor:
-                        byKey[slot.work_location]?.color || "#8B95A1",
+                        byId[slot.store_id]?.color || "#8B95A1",
                     }}
                   />
                   <div className="flex-1 min-w-0">
@@ -417,20 +417,20 @@ const markAllRead = async (userId: string) => {
                         className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[12px] font-bold shrink-0"
                         style={{
                           backgroundColor:
-                            byKey[slot.work_location]?.bg_color || "#F2F4F6",
+                            byId[slot.store_id]?.bg_color || "#F2F4F6",
                           color:
-                            byKey[slot.work_location]?.color || "#4E5968",
+                            byId[slot.store_id]?.color || "#4E5968",
                         }}
                       >
                         <MapPin className="w-3 h-3" />
-                        {byKey[slot.work_location]?.label || slot.work_location}
+                        {byId[slot.store_id]?.label || slot.store_id}
                       </span>
-                      {slot.cafe_positions?.map((pos) => (
+                      {slot.position_keys?.map((pos) => (
                         <span
                           key={pos}
                           className="px-2 py-0.5 bg-[#F2F4F6] text-[#4E5968] rounded-full text-[11px] font-bold"
                         >
-                          {positionsOf(slot.work_location).find(p => p.position_key === pos)?.label || pos}
+                          {positionsOfStore(slot.store_id).find(p => p.position_key === pos)?.label || pos}
                         </span>
                       ))}
                     </div>
@@ -439,7 +439,7 @@ const markAllRead = async (userId: string) => {
                       {slot.start_time.slice(0, 5)} ~{" "}
                       {slot.end_time.slice(0, 5)}
                     </p>
-                    {slot.work_location === "catering" && (
+                    {byId[slot.store_id]?.is_gps_required === false && (
                       <p className="text-[12px] text-[#F59E0B] font-medium mt-1">
                         출장출근으로 기록해주세요
                       </p>

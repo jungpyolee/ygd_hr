@@ -35,7 +35,7 @@ interface SubstituteRequest {
   slot_date: string;
   start_time: string;
   end_time: string;
-  work_location: string;
+  store_id: string;
   requester_name: string;
   requester_color: string;
   accepted_name?: string;
@@ -45,7 +45,7 @@ interface Profile {
   id: string;
   name: string;
   color_hex: string;
-  work_locations: string[] | null;
+  assigned_store_ids: string[];
 }
 
 interface SubstituteRequestRow {
@@ -65,7 +65,7 @@ interface SubstituteRequestRow {
     slot_date: string;
     start_time: string;
     end_time: string;
-    work_location: string;
+    store_id: string;
   } | null;
   requester?: { name: string; color_hex: string } | null;
   accepted?: { name: string } | null;
@@ -73,7 +73,7 @@ interface SubstituteRequestRow {
 
 
 export default function AdminSubstitutesPage() {
-  const { byKey } = useWorkplaces();
+  const { byId } = useWorkplaces();
   const [tab, setTab] = useState<"pending" | "done">("pending");
   const { user } = useAuth();
   const currentAdminId = user?.id ?? null;
@@ -98,9 +98,14 @@ export default function AdminSubstitutesPage() {
       const supabase = createClient();
       const { data } = await supabase
         .from("profiles")
-        .select("id, name, color_hex, work_locations")
+        .select("id, name, color_hex, employee_store_assignments(store_id)")
         .order("name");
-      return (data as Profile[]) ?? [];
+      return ((data ?? []) as any[]).map((p) => ({
+        id: p.id,
+        name: p.name,
+        color_hex: p.color_hex,
+        assigned_store_ids: (p.employee_store_assignments ?? []).map((a: { store_id: string }) => a.store_id),
+      })) as Profile[];
     },
     { dedupingInterval: 60_000, revalidateOnFocus: false },
   );
@@ -119,7 +124,7 @@ export default function AdminSubstitutesPage() {
           `
           id, slot_id, requester_id, reason, status, reject_reason, rejected_at, approved_at,
           eligible_profile_ids, accepted_by, accepted_at, created_at,
-          schedule_slots!slot_id (slot_date, start_time, end_time, work_location),
+          schedule_slots!slot_id (slot_date, start_time, end_time, store_id),
           requester:profiles!requester_id (name, color_hex),
           accepted:profiles!accepted_by (name)
         `,
@@ -144,7 +149,7 @@ export default function AdminSubstitutesPage() {
         slot_date: r.schedule_slots?.slot_date || "",
         start_time: r.schedule_slots?.start_time || "",
         end_time: r.schedule_slots?.end_time || "",
-        work_location: r.schedule_slots?.work_location || "",
+        store_id: r.schedule_slots?.store_id || "",
         requester_name: r.requester?.name || "알 수 없음",
         requester_color: r.requester?.color_hex || "#8B95A1",
         accepted_name: r.accepted?.name,
@@ -189,11 +194,10 @@ export default function AdminSubstitutesPage() {
 
   const openApproveSheet = (req: SubstituteRequest) => {
     setApproveTarget(req);
-    // Auto-populate eligible profiles: work_location matches, not requester
+    // Auto-populate eligible profiles: store_id matches, not requester
     const eligible = profiles.filter((p) => {
       if (p.id === req.requester_id) return false;
-      if (!p.work_locations || !p.work_locations.includes(req.work_location))
-        return false;
+      if (!p.assigned_store_ids.includes(req.store_id)) return false;
       return true;
     });
     setEligibleIds(eligible.map((p) => p.id));
@@ -230,7 +234,7 @@ export default function AdminSubstitutesPage() {
         target_role: "employee" as const,
         type: "substitute_approved",
         title: "대타 요청이 왔어요",
-        content: `${format(new Date(approveTarget.slot_date + "T00:00:00"), "M월 d일", { locale: ko })} ${byKey[approveTarget.work_location]?.label || approveTarget.work_location} ${approveTarget.start_time.slice(0, 5)}~${approveTarget.end_time.slice(0, 5)} 대타를 설 수 있어요. 확인해보세요.`,
+        content: `${format(new Date(approveTarget.slot_date + "T00:00:00"), "M월 d일", { locale: ko })} ${byId[approveTarget.store_id]?.label || approveTarget.store_id} ${approveTarget.start_time.slice(0, 5)}~${approveTarget.end_time.slice(0, 5)} 대타를 설 수 있어요. 확인해보세요.`,
         source_id: approveTarget.id,
       }));
       await supabase.from("notifications").insert(notifications);
@@ -376,11 +380,11 @@ export default function AdminSubstitutesPage() {
                 <span
                   className="flex items-center gap-1 font-bold px-2 py-0.5 rounded-md text-white text-[12px]"
                   style={{
-                    backgroundColor: byKey[req.work_location]?.color,
+                    backgroundColor: byId[req.store_id]?.color,
                   }}
                 >
                   <MapPin className="w-3 h-3" />
-                  {byKey[req.work_location]?.label || req.work_location}
+                  {byId[req.store_id]?.label || req.store_id}
                 </span>
               </div>
 

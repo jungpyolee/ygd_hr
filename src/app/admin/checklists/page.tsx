@@ -38,7 +38,7 @@ function getExactItems(
       (t) =>
         t.trigger === trigger &&
         (t.work_location ?? null) === location &&
-        (t.cafe_position ?? null) === position
+        (t.position_key ?? null) === position
     )
     .sort((a, b) => a.order_index - b.order_index);
 }
@@ -53,7 +53,7 @@ function getVisibleCount(
   return templates.filter((t) => {
     if (t.trigger !== trigger || !t.is_active) return false;
     if (t.work_location && t.work_location !== location) return false;
-    if (t.cafe_position && t.cafe_position !== position) return false;
+    if (t.position_key && t.position_key !== position) return false;
     return true;
   }).length;
 }
@@ -69,7 +69,7 @@ function getPreviewItems(
     .filter((t) => {
       if (t.trigger !== trigger || !t.is_active) return false;
       if (t.work_location && t.work_location !== location) return false;
-      if (t.cafe_position && t.cafe_position !== position) return false;
+      if (t.position_key && t.position_key !== position) return false;
       return true;
     })
     .sort((a, b) => a.order_index - b.order_index);
@@ -133,7 +133,7 @@ export default function AdminChecklistsPage() {
     setEditingId(item.id);
     setEditTitle(item.title);
     setEditLocation(item.work_location ?? "");
-    setEditPosition(item.cafe_position ?? "");
+    setEditPosition(item.position_key ?? "");
     setAddingKey(null);
   };
 
@@ -148,7 +148,7 @@ export default function AdminChecklistsPage() {
       .update({
         title: editTitle.trim(),
         work_location: editLocation || null,
-        cafe_position: editPosition || null,
+        position_key: editPosition || null,
       })
       .eq("id", editingId);
     if (error) {
@@ -209,7 +209,7 @@ export default function AdminChecklistsPage() {
       title: newTitle.trim(),
       trigger,
       work_location: location,
-      cafe_position: position,
+      position_key: position,
       order_index: maxOrder + 1,
     });
     if (error) {

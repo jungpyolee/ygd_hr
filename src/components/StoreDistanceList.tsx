@@ -9,6 +9,15 @@ interface StoreDistanceListProps {
   radius: number;
 }
 
+function getStoreDistanceText(store: any, locationState: any, radius: number): string {
+  if (!store.is_gps_required) return "위치 무관";
+  if (locationState.status === "loading") return "위치 확인 중...";
+  if (locationState.status === "ready")
+    return formatDistance(getDistance(locationState.lat, locationState.lng, store.lat, store.lng), radius);
+  if (locationState.status === "denied") return "위치 권한 없음";
+  return "위치 알 수 없음";
+}
+
 // 거리 포맷팅 함수 (100m 이내, 약 500m, 약 1.2km 등)
 function formatDistance(meters: number, radius: number): string {
   if (meters <= radius) return `${radius}m 이내`;
@@ -35,21 +44,7 @@ export default function StoreDistanceList({
           )}
           <p className="text-[15px] font-bold text-[#191F28]">{store.name}</p>
           <p className="text-xs text-[#8B95A1] mt-1">
-            {locationState.status === "loading"
-              ? "위치 확인 중..."
-              : locationState.status === "ready"
-              ? formatDistance(
-                  getDistance(
-                    locationState.lat,
-                    locationState.lng,
-                    store.lat,
-                    store.lng
-                  ),
-                  radius
-                )
-              : locationState.status === "denied"
-              ? "위치 권한 없음"
-              : "위치 알 수 없음"}
+            {getStoreDistanceText(store, locationState, radius)}
           </p>
         </div>
       ))}

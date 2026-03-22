@@ -18,8 +18,8 @@ interface ScheduleSlot {
   slot_date: string;
   start_time: string;
   end_time: string;
-  work_location: string;
-  cafe_positions: string[];
+  store_id: string;
+  position_keys: string[];
   status: string;
   notes: string | null;
 }
@@ -33,8 +33,8 @@ interface MySubstituteRequest {
   slot_date: string;
   start_time: string;
   end_time: string;
-  work_location: string;
-  cafe_positions: string[];
+  store_id: string;
+  position_keys: string[];
 }
 
 interface SubstituteRequest {
@@ -49,8 +49,8 @@ interface SubstituteRequest {
   slot_date: string;
   start_time: string;
   end_time: string;
-  work_location: string;
-  cafe_positions: string[];
+  store_id: string;
+  position_keys: string[];
 }
 
 const DAY_LABELS_SHORT = ["일", "월", "화", "수", "목", "금", "토"];
@@ -62,7 +62,7 @@ function getWeekDates(weekStart: Date): Date[] {
 function SchedulePageInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { byKey, positionsOf } = useWorkplaces();
+  const { byId, positionsOfStore } = useWorkplaces();
 
   const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date(), { weekStartsOn: 0 }));
   const [selectedDay, setSelectedDay] = useState<Date>(new Date());
@@ -119,7 +119,7 @@ function SchedulePageInner() {
         .from("substitute_requests")
         .select(`
           id, slot_id, requester_id, reason, status, eligible_profile_ids, accepted_by,
-          schedule_slots!slot_id(slot_date, start_time, end_time, work_location, cafe_positions),
+          schedule_slots!slot_id(slot_date, start_time, end_time, store_id, position_keys),
           profiles!requester_id(name)
         `)
         .eq("status", "approved");
@@ -155,8 +155,8 @@ function SchedulePageInner() {
           slot_date: r.schedule_slots?.slot_date || "",
           start_time: r.schedule_slots?.start_time || "",
           end_time: r.schedule_slots?.end_time || "",
-          work_location: r.schedule_slots?.work_location || "",
-          cafe_positions: r.schedule_slots?.cafe_positions || [],
+          store_id: r.schedule_slots?.store_id || "",
+          position_keys: r.schedule_slots?.position_keys || [],
         })) as SubstituteRequest[];
     },
     { dedupingInterval: 30_000, revalidateOnFocus: true }
@@ -171,7 +171,7 @@ function SchedulePageInner() {
         .from("substitute_requests")
         .select(`
           id, reason, status, accepted_by,
-          schedule_slots!substitute_requests_slot_id_fkey(slot_date, start_time, end_time, work_location, cafe_positions),
+          schedule_slots!substitute_requests_slot_id_fkey(slot_date, start_time, end_time, store_id, position_keys),
           profiles!substitute_requests_accepted_by_fkey(name)
         `)
         .eq("requester_id", pid)
@@ -186,8 +186,8 @@ function SchedulePageInner() {
         slot_date: r.schedule_slots?.slot_date ?? "",
         start_time: r.schedule_slots?.start_time ?? "",
         end_time: r.schedule_slots?.end_time ?? "",
-        work_location: r.schedule_slots?.work_location ?? "",
-        cafe_positions: r.schedule_slots?.cafe_positions ?? [],
+        store_id: r.schedule_slots?.store_id ?? "",
+        position_keys: r.schedule_slots?.position_keys ?? [],
       })) as MySubstituteRequest[];
     },
     { dedupingInterval: 30_000, revalidateOnFocus: true }
@@ -218,7 +218,7 @@ function SchedulePageInner() {
     // 겹치거나 맞닿는 기존 슬롯 탐색 (위치·포지션 포함 조회)
     const { data: existingSlots } = await supabase
       .from("schedule_slots")
-      .select("start_time, end_time, work_location, cafe_positions")
+      .select("start_time, end_time, store_id, position_keys")
       .eq("profile_id", profileId)
       .eq("slot_date", req.slot_date)
       .eq("status", "active");
@@ -230,9 +230,9 @@ function SchedulePageInner() {
 
     if (overlapSlot) {
       // 병합 가능 조건: 같은 위치 + 포지션 일치
-      const sameLocation = overlapSlot.work_location === req.work_location;
-      const existingPos  = (overlapSlot.cafe_positions ?? []) as string[];
-      const reqPos       = (req.cafe_positions ?? []) as string[];
+      const sameLocation = overlapSlot.store_id === req.store_id;
+      const existingPos  = (overlapSlot.position_keys ?? []) as string[];
+      const reqPos       = (req.position_keys ?? []) as string[];
       const bothNoPos    = existingPos.length === 0 && reqPos.length === 0;
       const samePos      = bothNoPos ||
         (existingPos.length === reqPos.length &&
@@ -275,7 +275,7 @@ function SchedulePageInner() {
       target_role: "employee",
       type: "substitute_filled",
       title: "대타가 구해졌어요",
-      content: `${slotDateLabel} ${byKey[req.work_location]?.label || req.work_location} 대타가 확정됐어요.`,
+      content: `${slotDateLabel} ${byId[req.store_id]?.label || ""} 대타가 확정됐어요.`,
       source_id: req.id,
     });
 
@@ -351,7 +351,7 @@ function SchedulePageInner() {
         target_role: "admin",
         type: "substitute_requested",
         title: "대타 요청이 들어왔어요",
-        content: `${format(new Date(requestTarget.slot_date), "M월 d일", { locale: ko })} ${byKey[requestTarget.work_location]?.label || requestTarget.work_location} ${requestTarget.start_time.slice(0, 5)}~${requestTarget.end_time.slice(0, 5)} 대타 요청이 접수됐어요.`,
+        content: `${format(new Date(requestTarget.slot_date), "M월 d일", { locale: ko })} ${byId[requestTarget.store_id]?.label || ""} ${requestTarget.start_time.slice(0, 5)}~${requestTarget.end_time.slice(0, 5)} 대타 요청이 접수됐어요.`,
         source_id: requestTarget.id,
       });
       toast.success("대타 요청을 보냈어요", { description: "관리자 승인 후 알림을 드려요." });
@@ -460,18 +460,18 @@ function SchedulePageInner() {
                         <span
                           className="flex items-center gap-1 px-3 py-1 rounded-full text-[13px] font-bold"
                           style={{
-                            backgroundColor: byKey[slot.work_location]?.bg_color,
-                            color: byKey[slot.work_location]?.color,
+                            backgroundColor: byId[slot.store_id]?.bg_color,
+                            color: byId[slot.store_id]?.color,
                           }}
                         >
                           <MapPin className="w-3.5 h-3.5" />
-                          {byKey[slot.work_location]?.label || slot.work_location}
+                          {byId[slot.store_id]?.label || ""}
                         </span>
-                        {slot.cafe_positions && slot.cafe_positions.length > 0 && (
+                        {slot.position_keys && slot.position_keys.length > 0 && (
                           <div className="flex gap-1">
-                            {slot.cafe_positions.map((pos) => (
+                            {slot.position_keys.map((pos) => (
                               <span key={pos} className="px-2 py-0.5 bg-[#F2F4F6] text-[#4E5968] rounded-md text-[11px] font-bold">
-                                {positionsOf(slot.work_location).find(p => p.position_key === pos)?.label || pos}
+                                {positionsOfStore(slot.store_id).find(p => p.position_key === pos)?.label || pos}
                               </span>
                             ))}
                           </div>
@@ -522,16 +522,16 @@ function SchedulePageInner() {
                           <span
                             className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[12px] font-bold shrink-0"
                             style={{
-                              backgroundColor: byKey[req.work_location]?.bg_color || "#F2F4F6",
-                              color: byKey[req.work_location]?.color || "#4E5968",
+                              backgroundColor: byId[req.store_id]?.bg_color || "#F2F4F6",
+                              color: byId[req.store_id]?.color || "#4E5968",
                             }}
                           >
                             <MapPin className="w-3 h-3" />
-                            {byKey[req.work_location]?.label || req.work_location}
+                            {byId[req.store_id]?.label || ""}
                           </span>
-                          {req.cafe_positions && req.cafe_positions.length > 0 && req.cafe_positions.map((pos) => (
+                          {req.position_keys && req.position_keys.length > 0 && req.position_keys.map((pos) => (
                             <span key={pos} className="px-2 py-0.5 bg-[#F2F4F6] text-[#4E5968] rounded-md text-[11px] font-bold shrink-0">
-                              {positionsOf(req.work_location).find(p => p.position_key === pos)?.label || pos}
+                              {positionsOfStore(req.store_id).find(p => p.position_key === pos)?.label || pos}
                             </span>
                           ))}
                           {slotDate && (
@@ -582,16 +582,16 @@ function SchedulePageInner() {
                           <span
                             className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[12px] font-bold shrink-0"
                             style={{
-                              backgroundColor: byKey[req.work_location]?.bg_color || "#F2F4F6",
-                              color: byKey[req.work_location]?.color || "#4E5968",
+                              backgroundColor: byId[req.store_id]?.bg_color || "#F2F4F6",
+                              color: byId[req.store_id]?.color || "#4E5968",
                             }}
                           >
                             <MapPin className="w-3 h-3" />
-                            {byKey[req.work_location]?.label || req.work_location}
+                            {byId[req.store_id]?.label || ""}
                           </span>
-                          {req.cafe_positions && req.cafe_positions.length > 0 && req.cafe_positions.map((pos) => (
+                          {req.position_keys && req.position_keys.length > 0 && req.position_keys.map((pos) => (
                             <span key={pos} className="px-2 py-0.5 bg-[#F2F4F6] text-[#4E5968] rounded-md text-[11px] font-bold shrink-0">
-                              {positionsOf(req.work_location).find(p => p.position_key === pos)?.label || pos}
+                              {positionsOfStore(req.store_id).find(p => p.position_key === pos)?.label || pos}
                             </span>
                           ))}
                           {slotDate && (
@@ -645,7 +645,7 @@ function SchedulePageInner() {
             </div>
             <p className="text-[14px] text-[#4E5968] mb-4">
               {format(new Date(requestTarget.slot_date + "T00:00:00"), "M월 d일", { locale: ko })}{" "}
-              {byKey[requestTarget.work_location]?.label || requestTarget.work_location}{" "}
+              {byId[requestTarget.store_id]?.label || ""}{" "}
               {requestTarget.start_time.slice(0, 5)}~{requestTarget.end_time.slice(0, 5)} 근무예요.
             </p>
             <div className="mb-4">
@@ -695,12 +695,12 @@ function SchedulePageInner() {
                 <span
                   className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[13px] font-bold"
                   style={{
-                    backgroundColor: byKey[activeRequest.work_location]?.bg_color || "#F2F4F6",
-                    color: byKey[activeRequest.work_location]?.color || "#4E5968",
+                    backgroundColor: byId[activeRequest.store_id]?.bg_color || "#F2F4F6",
+                    color: byId[activeRequest.store_id]?.color || "#4E5968",
                   }}
                 >
                   <MapPin className="w-3.5 h-3.5" />
-                  {byKey[activeRequest.work_location]?.label || activeRequest.work_location}
+                  {byId[activeRequest.store_id]?.label || ""}
                 </span>
                 {activeRequest.slot_date && (
                   <span className="text-[14px] font-bold text-[#191F28]">

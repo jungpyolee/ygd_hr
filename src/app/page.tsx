@@ -11,8 +11,8 @@ export interface TodaySlot {
   slot_date: string;
   start_time: string;
   end_time: string;
-  work_location: string;
-  cafe_positions: string[];
+  store_id: string;
+  position_keys: string[];
   notes: string | null;
 }
 
@@ -69,7 +69,7 @@ export default async function HomePage() {
     supabase
       .from("schedule_slots")
       .select(
-        "id, slot_date, start_time, end_time, work_location, cafe_positions, notes, weekly_schedules!inner(status)",
+        "id, slot_date, start_time, end_time, store_id, position_keys, notes, weekly_schedules!inner(status)",
       )
       .eq("profile_id", user.id)
       .eq("slot_date", todayStr)
@@ -82,7 +82,7 @@ export default async function HomePage() {
     supabase
       .from("schedule_slots")
       .select(
-        "slot_date, start_time, end_time, work_location, weekly_schedules!inner(status)",
+        "slot_date, start_time, end_time, store_id, weekly_schedules!inner(status)",
       )
       .eq("profile_id", user.id)
       .eq("status", "active")

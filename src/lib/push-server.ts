@@ -39,11 +39,22 @@ export async function sendPushToProfile(
     getSubscriptions(profileId),
   ]);
 
-  if (!prefs?.enabled) return;
-  if (!isTypeEnabled(prefs.type_settings, payload.type)) return;
-  if (!subs.length) return;
+  if (!prefs?.enabled) {
+    console.log("[Push] 스킵 — enabled 꺼짐 또는 설정 없음:", profileId);
+    return;
+  }
+  if (!isTypeEnabled(prefs.type_settings, payload.type)) {
+    console.log("[Push] 스킵 — 타입 OFF:", payload.type, profileId);
+    return;
+  }
+  if (!subs.length) {
+    console.log("[Push] 스킵 — 구독 없음:", profileId);
+    return;
+  }
 
+  console.log("[Push] 발송 시도:", { profileId, type: payload.type, subCount: subs.length });
   await deliverPush(subs, payload);
+  console.log("[Push] 발송 완료:", profileId);
 }
 
 /**
@@ -158,12 +169,18 @@ async function deliverPush(
           pushData,
           { TTL: 86400 }
         )
-        .catch(async (err: { statusCode?: number }) => {
+        .catch(async (err: { statusCode?: number; body?: string }) => {
           if (err?.statusCode === 410 || err?.statusCode === 404) {
             await adminSupabase
               .from("push_subscriptions")
               .delete()
               .eq("endpoint", sub.endpoint);
+          } else {
+            console.error("[Push] 발송 실패:", {
+              statusCode: err?.statusCode,
+              body: err?.body,
+              endpoint: sub.endpoint.slice(0, 60) + "...",
+            });
           }
         })
     )

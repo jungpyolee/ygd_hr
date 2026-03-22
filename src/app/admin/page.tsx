@@ -21,7 +21,7 @@ interface TodayAttendanceItem {
   color_hex: string;
   start_time: string;
   end_time: string;
-  work_location: string;
+  store_id: string;
   clock_in_time: string | null;
   status: "attended" | "late" | "scheduled" | "absent";
   late_minutes: number;
@@ -39,7 +39,7 @@ interface HealthCertItem {
 
 export default function AdminDashboardPage() {
   const router = useRouter();
-  const { byKey } = useWorkplaces();
+  const { byId } = useWorkplaces();
 
   const todayText = new Intl.DateTimeFormat("ko-KR", {
     month: "long",
@@ -68,7 +68,7 @@ export default function AdminDashboardPage() {
       const { data: slotsData } = await supabase
         .from("schedule_slots")
         .select(
-          "profile_id, start_time, end_time, work_location, profiles!profile_id(name, color_hex)",
+          "profile_id, start_time, end_time, store_id, profiles!profile_id(name, color_hex)",
         )
         .eq("slot_date", todayStr)
         .eq("status", "active")
@@ -127,7 +127,7 @@ export default function AdminDashboardPage() {
           color_hex: slot.profiles?.color_hex || "#8B95A1",
           start_time: slot.start_time,
           end_time: slot.end_time,
-          work_location: slot.work_location,
+          store_id: slot.store_id,
           clock_in_time: clockIn,
           status,
           late_minutes,
@@ -198,14 +198,14 @@ export default function AdminDashboardPage() {
             {Object.entries(
               todayAttendance.reduce(
                 (acc, item) => {
-                  acc[item.work_location] = (acc[item.work_location] || 0) + 1;
+                  acc[item.store_id] = (acc[item.store_id] || 0) + 1;
                   return acc;
                 },
                 {} as Record<string, number>,
               ),
-            ).map(([loc, cnt]) => (
-              <span key={loc} style={{ color: byKey[loc]?.color }}>
-                {byKey[loc]?.label || loc} {cnt}명
+            ).map(([storeId, cnt]) => (
+              <span key={storeId} style={{ color: byId[storeId]?.color }}>
+                {byId[storeId]?.label || storeId} {cnt}명
               </span>
             ))}
           </div>
@@ -237,9 +237,9 @@ export default function AdminDashboardPage() {
                       </p>
                       <div className="flex items-center gap-1.5 text-[12px] text-[#8B95A1]">
                         <span
-                          style={{ color: byKey[item.work_location]?.color }}
+                          style={{ color: byId[item.store_id]?.color }}
                         >
-                          {byKey[item.work_location]?.label || item.work_location}
+                          {byId[item.store_id]?.label || item.store_id}
                         </span>
                         <span>·</span>
                         <span>

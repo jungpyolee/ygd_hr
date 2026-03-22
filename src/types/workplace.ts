@@ -9,8 +9,9 @@ export interface StorePosition {
 export interface WorkLocation {
   id: string;
   name: string;
-  lat: number;
-  lng: number;
+  lat: number | null;
+  lng: number | null;
+  is_gps_required: boolean;
   work_location_key: string;
   label: string;
   color: string;

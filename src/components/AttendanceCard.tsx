@@ -14,14 +14,15 @@ import ChecklistSheet from "@/components/ChecklistSheet";
 import StoreSelectorSheet from "@/components/StoreSelectorSheet";
 import type { GeoState } from "@/lib/hooks/useGeolocation";
 import type { ChecklistTemplate, ChecklistDraft } from "@/types/checklist";
+import { useWorkplaces } from "@/lib/hooks/useWorkplaces";
 
 interface TodaySlot {
   id: string;
   slot_date: string;
   start_time: string;
   end_time: string;
-  work_location: string;
-  cafe_positions: string[];
+  store_id: string;
+  position_keys: string[];
   notes: string | null;
 }
 
@@ -52,6 +53,7 @@ export default function AttendanceCard({
   onRetryLocation,
   onFetchForAttendance,
 }: AttendanceCardProps) {
+  const { byId } = useWorkplaces();
   const [loading, setLoading] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
 
@@ -136,12 +138,12 @@ export default function AttendanceCard({
 
     const all = (data as ChecklistTemplate[]) ?? [];
 
-    // 오늘 슬롯의 work_location / cafe_positions 기준으로 필터링
-    // cafe_positions가 빈 배열이면 cafe_position=null인 공통 항목만 표시
+    // 오늘 슬롯의 work_location / position_keys 기준으로 필터링
+    // position_keys가 빈 배열이면 position_key=null인 공통 항목만 표시
     return all.filter((item) => {
-      if (item.work_location && item.work_location !== todaySlot.work_location)
+      if (item.work_location && item.work_location !== byId[todaySlot.store_id]?.work_location_key)
         return false;
-      if (item.cafe_position && !todaySlot.cafe_positions.includes(item.cafe_position))
+      if (item.position_key && !todaySlot.position_keys.includes(item.position_key))
         return false;
       return true;
     });
@@ -694,9 +696,9 @@ export default function AttendanceCard({
                   ✈️ 출장중
                 </span>
               )}
-            {todaySlots[0]?.cafe_positions && todaySlots[0].cafe_positions.length > 0 && (
+            {todaySlots[0]?.position_keys && todaySlots[0].position_keys.length > 0 && (
               <div className="flex gap-1 mt-1">
-                {todaySlots[0].cafe_positions.map((pos) => (
+                {todaySlots[0].position_keys.map((pos) => (
                   <span
                     key={pos}
                     className="inline-block text-[11px] font-bold bg-[#E8F3FF] text-[#3182F6] px-2 py-0.5 rounded-md"

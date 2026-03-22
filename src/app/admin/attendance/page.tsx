@@ -58,7 +58,7 @@ interface ProcessedLog {
 
 
 export default function AdminAttendanceCalendar() {
-  const { byKey } = useWorkplaces();
+  const { byId } = useWorkplaces();
   const [viewType, setViewType] = useState<"week" | "month">("week");
   const [baseDate, setBaseDate] = useState<Date>(new Date());
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -100,7 +100,7 @@ export default function AdminAttendanceCalendar() {
       const { data: slotsData } = await supabase
         .from("schedule_slots")
         .select(
-          "profile_id, slot_date, start_time, end_time, work_location, profiles!profile_id(name, color_hex)",
+          "profile_id, slot_date, start_time, end_time, store_id, profiles!profile_id(name, color_hex)",
         )
         .eq("status", "active")
         .gte("slot_date", start)
@@ -128,7 +128,7 @@ export default function AdminAttendanceCalendar() {
             reason_out: null,
             scheduled_start: slot.start_time,
             scheduled_end: slot.end_time,
-            scheduled_location: slot.work_location,
+            scheduled_location: slot.store_id,
             late_minutes: null,
             is_absent: true,
             early_leave_minutes: null,
@@ -518,7 +518,7 @@ export default function AdminAttendanceCalendar() {
                           {log.scheduled_location && (
                             <span className="ml-1">
                               (
-                              {byKey[log.scheduled_location]?.label ??
+                              {byId[log.scheduled_location]?.label ??
                                 log.scheduled_location}
                               )
                             </span>
@@ -595,18 +595,12 @@ export default function AdminAttendanceCalendar() {
                         className="text-[12px] font-bold"
                         style={{
                           color: log.scheduled_location
-                            ? (
-                                {
-                                  cafe: "#3182F6",
-                                  factory: "#00B761",
-                                  catering: "#F59E0B",
-                                } as Record<string, string>
-                              )[log.scheduled_location] || "#4E5968"
+                            ? byId[log.scheduled_location]?.color || "#4E5968"
                             : "#4E5968",
                         }}
                       >
                         {log.scheduled_location
-                          ? byKey[log.scheduled_location]?.label || log.scheduled_location
+                          ? byId[log.scheduled_location]?.label || log.scheduled_location
                           : ""}
                       </span>
                       <span className="text-[12px] text-[#4E5968] font-medium">

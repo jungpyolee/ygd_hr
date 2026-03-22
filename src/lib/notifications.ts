@@ -104,6 +104,7 @@ async function dispatchPush({
   source_id,
   notificationId,
 }: CreateNotificationParams & { notificationId?: string }) {
+  console.log("[Push] dispatchPush 시작:", { type, profile_id, target_role });
   try {
     if (profile_id) {
       await sendPushToProfile(profile_id, {

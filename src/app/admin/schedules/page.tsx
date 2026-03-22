@@ -40,8 +40,8 @@ interface ScheduleSlot {
   slot_date: string;
   start_time: string;
   end_time: string;
-  work_location: string;
-  cafe_positions: string[];
+  store_id: string;
+  position_keys: string[];
   status: string;
   notes: string | null;
 }
@@ -102,14 +102,14 @@ function SlotBottomSheet({
   defaultProfileId,
 }: SlotBottomSheetProps) {
   const isNew = !slot?.id;
-  const { workplaces, positionsOf, hasPositions } = useWorkplaces();
+  const { workplaces, byId, positionsOfStore, hasPositionsStore } = useWorkplaces();
   const [form, setForm] = useState<Partial<ScheduleSlot>>({
     profile_id: defaultProfileId || profiles[0]?.id || "",
     slot_date: defaultDate || weekDates[0] || "",
     start_time: "09:00",
     end_time: "18:00",
-    work_location: "cafe",
-    cafe_positions: [],
+    store_id: workplaces[0]?.id || "",
+    position_keys: [],
     notes: "",
     ...slot,
     ...(slot?.start_time && { start_time: slot.start_time.slice(0, 5) }),
@@ -125,7 +125,7 @@ function SlotBottomSheet({
       !form.slot_date ||
       !form.start_time ||
       !form.end_time ||
-      !form.work_location
+      !form.store_id
     ) {
       toast.error("모든 필드를 입력해주세요.");
       return;
@@ -258,18 +258,18 @@ function SlotBottomSheet({
             <div className="flex gap-2">
               {workplaces.map((w) => (
                 <button
-                  key={w.work_location_key}
+                  key={w.id}
                   type="button"
                   onClick={() =>
                     setForm((p) => ({
                       ...p,
-                      work_location: w.work_location_key,
-                      cafe_positions: !hasPositions(w.work_location_key) ? [] : p.cafe_positions,
+                      store_id: w.id,
+                      position_keys: !hasPositionsStore(w.id) ? [] : p.position_keys,
                     }))
                   }
-                  className={`flex-1 py-2.5 rounded-xl text-[13px] font-bold transition-all ${form.work_location === w.work_location_key ? "text-white" : "bg-[#F2F4F6] text-[#4E5968]"}`}
+                  className={`flex-1 py-2.5 rounded-xl text-[13px] font-bold transition-all ${form.store_id === w.id ? "text-white" : "bg-[#F2F4F6] text-[#4E5968]"}`}
                   style={
-                    form.work_location === w.work_location_key
+                    form.store_id === w.id
                       ? { backgroundColor: w.color }
                       : {}
                   }
@@ -281,23 +281,23 @@ function SlotBottomSheet({
           </div>
 
           {/* 포지션 (포지션 있는 근무지만 표시) */}
-          {form.work_location && hasPositions(form.work_location) && (
+          {form.store_id && hasPositionsStore(form.store_id) && (
             <div>
               <label className="block text-[12px] font-medium text-[#8B95A1] mb-2">
                 포지션
               </label>
               <div className="flex gap-2">
-                {positionsOf(form.work_location).map((p) => {
-                  const sel = (form.cafe_positions || []).includes(p.position_key);
+                {positionsOfStore(form.store_id).map((p) => {
+                  const sel = (form.position_keys || []).includes(p.position_key);
                   return (
                     <button
                       key={p.position_key}
                       type="button"
                       onClick={() => {
-                        const cur = form.cafe_positions || [];
+                        const cur = form.position_keys || [];
                         setForm((prev) => ({
                           ...prev,
-                          cafe_positions: sel
+                          position_keys: sel
                             ? cur.filter((v) => v !== p.position_key)
                             : [...cur, p.position_key],
                         }));
@@ -399,7 +399,7 @@ interface AttLogRow {
 
 // --------------- Main Page ---------------
 export default function AdminSchedulesPage() {
-  const { byKey, positionsOf } = useWorkplaces();
+  const { byId, positionsOfStore } = useWorkplaces();
   const [tab, setTab] = useState<"weekly" | "daily">("weekly");
   const [weekStart, setWeekStart] = useState<Date>(() =>
     startOfWeek(new Date(), { weekStartsOn: 0 }),
@@ -646,8 +646,8 @@ export default function AdminSchedulesPage() {
         slot_date: data.slot_date,
         start_time: data.start_time,
         end_time: data.end_time,
-        work_location: data.work_location,
-        cafe_positions: data.cafe_positions || [],
+        store_id: data.store_id,
+        position_keys: data.position_keys || [],
         notes: data.notes || null,
         status: "active",
       });
@@ -679,8 +679,8 @@ export default function AdminSchedulesPage() {
           slot_date: data.slot_date,
           start_time: data.start_time,
           end_time: data.end_time,
-          work_location: data.work_location,
-          cafe_positions: data.cafe_positions || [],
+          store_id: data.store_id,
+          position_keys: data.position_keys || [],
           notes: data.notes || null,
         })
         .eq("id", data.id!);
@@ -803,8 +803,8 @@ export default function AdminSchedulesPage() {
           slot_date: weekDates[dayIndex],
           start_time: s.start_time,
           end_time: s.end_time,
-          work_location: s.work_location,
-          cafe_positions: s.cafe_positions,
+          store_id: s.store_id,
+          position_keys: s.position_keys,
           notes: s.notes,
           status: "active",
         };
@@ -860,14 +860,14 @@ export default function AdminSchedulesPage() {
     // 3. Fetch existing active slots for this week to check duplicates
     const { data: existingSlots } = await supabase
       .from("schedule_slots")
-      .select("profile_id, slot_date, work_location")
+      .select("profile_id, slot_date, store_id")
       .eq("weekly_schedule_id", wsId)
       .neq("status", "cancelled");
 
     const existingSet = new Set(
       (existingSlots || []).map(
-        (s: { profile_id: string; slot_date: string; work_location: string }) =>
-          `${s.profile_id}_${s.slot_date}_${s.work_location}`,
+        (s: { profile_id: string; slot_date: string; store_id: string }) =>
+          `${s.profile_id}_${s.slot_date}_${s.store_id}`,
       ),
     );
 
@@ -879,8 +879,8 @@ export default function AdminSchedulesPage() {
       slot_date: string;
       start_time: string;
       end_time: string;
-      work_location: string;
-      cafe_positions: string[];
+      store_id: string;
+      position_keys: string[];
       status: string;
     }> = [];
 
@@ -888,7 +888,7 @@ export default function AdminSchedulesPage() {
       const dow = wd.day_of_week;
       if (typeof dow !== "number" || dow < 0 || dow > 6) continue;
       const targetDate = weekDates[dow]; // 0=일,1=월...6=토
-      const key = `${wd.profile_id}_${targetDate}_${wd.work_location}`;
+      const key = `${wd.profile_id}_${targetDate}_${wd.store_id}`;
       if (existingSet.has(key)) continue; // skip duplicate
 
       newSlots.push({
@@ -897,8 +897,8 @@ export default function AdminSchedulesPage() {
         slot_date: targetDate,
         start_time: wd.start_time,
         end_time: wd.end_time,
-        work_location: wd.work_location,
-        cafe_positions: wd.cafe_positions || [],
+        store_id: wd.store_id,
+        position_keys: wd.position_keys || [],
         status: "active",
       });
     }
@@ -1111,9 +1111,9 @@ export default function AdminSchedulesPage() {
                       <div className="flex flex-col items-stretch gap-1 min-h-[68px]">
                         {daySlots.map((slot) => {
                           const isSubstituted = slot.status === "substituted";
-                          const positions = slot.cafe_positions?.length
-                            ? slot.cafe_positions
-                                .map((p) => positionsOf(slot.work_location).find(pp => pp.position_key === p)?.label || p)
+                          const positions = slot.position_keys?.length
+                            ? slot.position_keys
+                                .map((p) => positionsOfStore(slot.store_id).find(pp => pp.position_key === p)?.label || p)
                                 .join("·")
                             : null;
                           return (
@@ -1124,11 +1124,11 @@ export default function AdminSchedulesPage() {
                               style={{
                                 backgroundColor: isSubstituted
                                   ? "#F2F4F6"
-                                  : byKey[slot.work_location]?.color,
+                                  : byId[slot.store_id]?.color,
                               }}
                             >
                               <div className="text-[11px] font-bold truncate leading-tight">
-                                {byKey[slot.work_location]?.label || slot.work_location}
+                                {byId[slot.store_id]?.label || slot.store_id}
                                 {positions && (
                                   <span className="opacity-80 ml-0.5 font-normal">
                                     ·{positions}
@@ -1272,15 +1272,15 @@ export default function AdminSchedulesPage() {
                             left: `${leftPct}%`,
                             width: `${widthPct}%`,
                             backgroundColor:
-                              byKey[slot.work_location]?.color,
+                              byId[slot.store_id]?.color,
                             minWidth: "4px",
                           }}
                         >
                           <span className="truncate">
-                            {slot.cafe_positions &&
-                            slot.cafe_positions.length > 0
-                              ? slot.cafe_positions
-                                  .map((p) => positionsOf(slot.work_location).find(pp => pp.position_key === p)?.label || p)
+                            {slot.position_keys &&
+                            slot.position_keys.length > 0
+                              ? slot.position_keys
+                                  .map((p) => positionsOfStore(slot.store_id).find(pp => pp.position_key === p)?.label || p)
                                   .join("·") + " "
                               : ""}
                             {slot.start_time.slice(0, 5)}~

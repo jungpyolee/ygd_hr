@@ -12,7 +12,7 @@ export interface ScheduleSlot {
   slot_date: string;
   start_time: string;
   end_time: string;
-  work_location: string;
+  store_id: string;
 }
 
 interface Props {
@@ -20,7 +20,7 @@ interface Props {
 }
 
 export default function WeeklyScheduleCard({ slots }: Props) {
-  const { byKey } = useWorkplaces();
+  const { byId } = useWorkplaces();
   const todayIdx = (new Date().getDay() + 6) % 7; // 0=월 ~ 6=일
   const weekStartSun = startOfWeek(new Date(), { weekStartsOn: 0 });
   const weekDates = Array.from({ length: 7 }, (_, i) => addDays(weekStartSun, i + 1));
@@ -85,7 +85,7 @@ export default function WeeklyScheduleCard({ slots }: Props) {
                       key={si}
                       className="w-1.5 h-1.5 rounded-full"
                       style={{
-                        backgroundColor: byKey[slot.work_location]?.color || "#8B95A1",
+                        backgroundColor: byId[slot.store_id]?.color || "#8B95A1",
                       }}
                     />
                   ))}
@@ -122,7 +122,7 @@ export default function WeeklyScheduleCard({ slots }: Props) {
                     <div
                       className="w-1.5 h-1.5 rounded-full shrink-0"
                       style={{
-                        backgroundColor: byKey[slot.work_location]?.color || "#8B95A1",
+                        backgroundColor: byId[slot.store_id]?.color || "#8B95A1",
                       }}
                     />
                     <span className="flex-1 text-[13px] font-semibold text-[#191F28] tabular-nums">
@@ -131,11 +131,11 @@ export default function WeeklyScheduleCard({ slots }: Props) {
                     <span
                       className="text-[11px] font-bold px-2.5 py-0.5 rounded-full shrink-0"
                       style={{
-                        backgroundColor: byKey[slot.work_location]?.bg_color || "#F2F4F6",
-                        color: byKey[slot.work_location]?.color || "#4E5968",
+                        backgroundColor: byId[slot.store_id]?.bg_color || "#F2F4F6",
+                        color: byId[slot.store_id]?.color || "#4E5968",
                       }}
                     >
-                      {byKey[slot.work_location]?.label || slot.work_location}
+                      {byId[slot.store_id]?.label || slot.store_id}
                     </span>
                   </div>
                 );

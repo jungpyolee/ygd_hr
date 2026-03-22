@@ -1,7 +1,7 @@
 # DB 스키마 (최신 상태)
 
 > **프로젝트**: ymvdjxzkjodasctktunh
-> **최종 갱신**: 2026-03-22 (레거시/미사용 컬럼 4개 제거 — DB-005)
+> **최종 갱신**: 2026-03-22 (DB-033: profiles.work_locations 제거 + employee_store_assignments 테이블 추가)
 > **DB 시간대**: `Asia/Seoul` (KST, UTC+9) — 모든 롤에 적용됨
 > **timestamptz 저장**: UTC로 저장, 날짜 함수(`DATE_TRUNC`, `CURRENT_DATE` 등)는 KST 기준 동작
 > **연결 방식**: Supabase Management API
@@ -53,8 +53,7 @@
 | `account_number` | text | YES | - | 계좌번호 |
 | `bank_name` | text | YES | - | 은행명 |
 | `employment_type` | text | YES | `'part_time_fixed'` | `'full_time'` / `'part_time_fixed'` / `'part_time_daily'` |
-| `work_locations` | text[] | YES | `'{}'` | `'cafe'` / `'factory'` / `'catering'` 복수 선택 |
-| `cafe_positions` | text[] | YES | `'{}'` | `'hall'` / `'kitchen'` / `'showroom'` 복수 선택 |
+| `position_keys` | text[] | YES | `'{}'` | `'hall'` / `'kitchen'` / `'showroom'` 복수 선택 |
 | `hourly_wage` | integer | YES | - | 시급 (원, 알바만) |
 | `insurance_type` | text | YES | - | `'national'` (2대보험) / `'3.3'` (원천징수) |
 | `created_at` | timestamptz | YES | `now()` | 생성일 |
@@ -117,6 +116,11 @@
 | `color` | text | NO | `'#8B95A1'` | UI 색상 |
 | `bg_color` | text | NO | `'#F2F4F6'` | UI 배경색 |
 | `display_order` | integer | NO | `0` | 정렬 순서 |
+| `is_gps_required` | boolean | NO | `true` | GPS 위치 체크 필요 여부 (케이터링 등 이동형 근무지는 false) |
+
+**비고**
+- `lat`/`lng`는 nullable — `is_gps_required=false`인 근무지는 null 허용
+- `is_gps_required=false`인 경우 코드에서 거리 체크 건너뜀
 
 **제약조건**
 - PK: `id`
@@ -141,6 +145,23 @@
 - UNIQUE: `(store_id, position_key)`
 - FK: `store_id` → `stores.id` ON DELETE CASCADE
 - RLS: anon/authenticated SELECT, admin ALL
+
+---
+
+## employee_store_assignments
+
+직원-근무지 배정 테이블. `profiles.work_locations text[]`를 관계형으로 전환.
+
+| 컬럼 | 타입 | NULL | 기본값 | 설명 |
+|------|------|------|--------|------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `profile_id` | uuid | NO | - | FK → auth.users(id) CASCADE |
+| `store_id` | uuid | NO | - | FK → stores.id CASCADE |
+| `created_at` | timestamptz | YES | `now()` | 생성일 |
+
+**제약조건**
+- UNIQUE: `(profile_id, store_id)`
+- RLS: admin ALL, 본인 SELECT
 
 ---
 
@@ -415,12 +436,12 @@ DELETE FROM auth.users WHERE id = target_user_id
 | `day_of_week` | int | NO | - | 0=일, 1=월 … 6=토 |
 | `start_time` | time | NO | - | 시작 시간 |
 | `end_time` | time | NO | - | 종료 시간 |
-| `work_location` | text | NO | - | `'cafe'` / `'factory'` / `'catering'` |
-| `cafe_positions` | text[] | YES | `'{}'` | `'hall'` / `'kitchen'` / `'showroom'` |
+| `store_id` | uuid | NO | - | FK → stores.id |
+| `position_keys` | text[] | YES | `'{}'` | DB 기반 position_key 목록 |
 | `is_active` | boolean | YES | `true` | 활성 여부 |
 | `created_at` | timestamptz | YES | `now()` | 생성일 |
 
-**제약**: UNIQUE(profile_id, day_of_week, work_location)
+**제약**: UNIQUE(profile_id, day_of_week, store_id)
 **RLS**: 어드민 ALL / 본인 SELECT
 
 ---
@@ -455,8 +476,8 @@ DELETE FROM auth.users WHERE id = target_user_id
 | `slot_date` | date | NO | - | 근무 날짜 |
 | `start_time` | time | NO | - | 시작 시간 |
 | `end_time` | time | NO | - | 종료 시간 |
-| `work_location` | text | NO | - | `'cafe'` / `'factory'` / `'catering'` |
-| `cafe_positions` | text[] | YES | `'{}'` | `'hall'` / `'kitchen'` / `'showroom'` |
+| `store_id` | uuid | NO | - | FK → stores.id |
+| `position_keys` | text[] | YES | `'{}'` | DB 기반 position_key 목록 |
 | `status` | text | YES | `'active'` | `'active'` / `'cancelled'` / `'substituted'` |
 | `notes` | text | YES | - | 메모 |
 | `created_at` | timestamptz | YES | `now()` | 생성일 |
