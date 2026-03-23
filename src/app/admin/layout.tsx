@@ -231,6 +231,11 @@ export default function AdminLayout({
       icon: <Users className="w-5 h-5" />,
     },
     {
+      name: "통합 캘린더",
+      path: "/admin/calendar",
+      icon: <CalendarDays className="w-5 h-5" />,
+    },
+    {
       name: "근태 조회",
       path: "/admin/attendance",
       icon: <Clock className="w-5 h-5" />,
@@ -329,7 +334,10 @@ export default function AdminLayout({
         </h1>
         <nav className="space-y-2 flex-1">
           {menus.map((menu) => {
-            const isActive = pathname === menu.path;
+            const isActive =
+              menu.path === "/admin"
+                ? pathname === "/admin"
+                : pathname === menu.path || pathname.startsWith(menu.path + "/");
             const isSchedule = menu.name === "스케줄 관리";
             return (
               <Link
@@ -467,18 +475,22 @@ export default function AdminLayout({
             <nav className="space-y-3">
               {menus.map((menu) => {
                 const isSchedule = menu.name === "스케줄 관리";
+                const isMobileActive =
+                  menu.path === "/admin"
+                    ? pathname === "/admin"
+                    : pathname === menu.path || pathname.startsWith(menu.path + "/");
                 return (
                   <Link
                     key={menu.name}
                     href={menu.path}
                     onClick={() => setIsMobileMenuOpen(false)}
                     className={`flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-[16px] border ${
-                      pathname === menu.path
+                      isMobileActive
                         ? "bg-[#E8F3FF] border-[#E8F3FF] text-[#3182F6]"
                         : "bg-white border-slate-100 text-[#4E5968]"
                     }`}
                   >
-                    <div className={pathname === menu.path ? "text-[#3182F6]" : "text-[#8B95A1]"}>
+                    <div className={isMobileActive ? "text-[#3182F6]" : "text-[#8B95A1]"}>
                       {menu.icon}
                     </div>
                     {menu.name}

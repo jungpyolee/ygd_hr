@@ -451,6 +451,23 @@ const markAllRead = async (userId: string) => {
           </button>
         )}
 
+        {/* 캘린더 진입 버튼 */}
+        <button
+          onClick={() => router.push("/calendar")}
+          className="w-full flex items-center justify-between bg-white rounded-[24px] px-5 py-4 border border-slate-100 shadow-sm active:scale-[0.99] transition-transform"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-[#E8F3FF] rounded-full flex items-center justify-center shrink-0">
+              <ChevronRight className="w-5 h-5 text-[#3182F6]" />
+            </div>
+            <div className="text-left">
+              <p className="text-[15px] font-bold text-[#191F28]">통합 캘린더</p>
+              <p className="text-[12px] text-[#8B95A1]">내 스케줄 · 팀 · 회사 일정을 한눈에</p>
+            </div>
+          </div>
+          <ChevronRight className="w-5 h-5 text-[#D1D6DB] shrink-0" />
+        </button>
+
         {/* 공지사항 + 레시피 2열 그리드 */}
         <div className="grid grid-cols-2 gap-3">
           <button

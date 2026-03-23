@@ -1,7 +1,7 @@
 # DB 스키마 (최신 상태)
 
 > **프로젝트**: ymvdjxzkjodasctktunh
-> **최종 갱신**: 2026-03-22 (DB-033: profiles.work_locations 제거 + employee_store_assignments 테이블 추가)
+> **최종 갱신**: 2026-03-23 (DB-035: company_events 테이블 추가 + schedule_slots 팀뷰 RLS)
 > **DB 시간대**: `Asia/Seoul` (KST, UTC+9) — 모든 롤에 적용됨
 > **timestamptz 저장**: UTC로 저장, 날짜 함수(`DATE_TRUNC`, `CURRENT_DATE` 등)는 KST 기준 동작
 > **연결 방식**: Supabase Management API
@@ -26,6 +26,7 @@
 | `schedule_slots` | 개별 근무 슬롯 (날짜·시간·장소·포지션) |
 | `substitute_requests` | 대타 요청 (pending→approved/rejected→filled) |
 | `substitute_responses` | 대타 수락/거절 응답 |
+| `company_events` | 회사 공지 일정 (어드민 등록, 직원 캘린더 표시) |
 
 ---
 
