@@ -138,12 +138,10 @@ export default function AdminAttendanceCalendar() {
       });
 
       // [3] attendance_logs 조회
-      const startDateObj = new Date(start);
-      const endDateObj = new Date(end);
-      const startStr = startDateObj.toISOString();
-      const endStr = new Date(
-        endDateObj.setHours(23, 59, 59, 999),
-      ).toISOString();
+      // KST(UTC+9) 자정 기준으로 변환 — new Date("yyyy-MM-dd")는 UTC 자정이므로
+      // 오전 9시 이전 KST 출근 로그가 누락되는 버그 방지
+      const startStr = new Date(`${start}T00:00:00+09:00`).toISOString();
+      const endStr = new Date(`${end}T23:59:59.999+09:00`).toISOString();
 
       const { data, error } = await supabase
         .from("attendance_logs")

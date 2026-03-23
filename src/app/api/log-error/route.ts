@@ -2,18 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-);
-
-const resend = new Resend(process.env.RESEND_API_KEY);
-const ALERT_EMAIL = process.env.ERROR_ALERT_EMAIL!;
+const getSupabaseAdmin = () =>
+  createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
 
 // 동일 메시지 5분 내 중복 발송 방지
 async function isRecentDuplicate(message: string): Promise<boolean> {
   const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-  const { count } = await supabaseAdmin
+  const { count } = await getSupabaseAdmin()
     .from("error_logs")
     .select("*", { count: "exact", head: true })
     .eq("message", message)
@@ -22,6 +20,9 @@ async function isRecentDuplicate(message: string): Promise<boolean> {
 }
 
 export async function POST(req: NextRequest) {
+  const supabaseAdmin = getSupabaseAdmin();
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  const ALERT_EMAIL = process.env.ERROR_ALERT_EMAIL!;
   try {
     const body = await req.json();
     const { message, stack, source, context, profileId, url, level = "error" } = body;

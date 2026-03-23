@@ -2,13 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase-server";
 import { createClient } from "@supabase/supabase-js";
 
-const adminSupabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const getAdminSupabase = () =>
+  createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
 
 // POST — 구독 저장 (최초 구독 + 재구독 upsert)
 export async function POST(req: NextRequest) {
+  const adminSupabase = getAdminSupabase();
   const supabase = await createServerSupabase();
   const {
     data: { user },
@@ -83,6 +85,7 @@ export async function POST(req: NextRequest) {
 
 // DELETE — 구독 해제
 export async function DELETE(req: NextRequest) {
+  const adminSupabase = getAdminSupabase();
   const supabase = await createServerSupabase();
   const {
     data: { user },
