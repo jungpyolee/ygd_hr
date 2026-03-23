@@ -26,7 +26,7 @@ export default function IosInstallPrompt() {
   if (!isIos || !showPrompt) return null;
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 p-4 mx-auto max-w-md animate-in slide-in-from-bottom-10 fade-in duration-500">
+    <div className="fixed bottom-0 left-0 right-0 z-[60] p-4 pb-24 mx-auto max-w-md animate-in slide-in-from-bottom-10 fade-in duration-500">
       <div className="bg-white/90 backdrop-blur-md border border-slate-200 shadow-2xl rounded-2xl p-5 relative">
         <button
           onClick={() => setShowPrompt(false)}

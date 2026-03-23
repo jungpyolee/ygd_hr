@@ -365,7 +365,7 @@ export default function StorePage() {
           {canCreate && (
             <button
               onClick={() => router.push("/recipes/new")}
-              className="fixed bottom-20 right-6 w-14 h-14 bg-[#3182F6] text-white rounded-full shadow-lg shadow-blue-500/30 flex items-center justify-center active:scale-95 transition-all z-40"
+              className="fixed bottom-24 right-6 w-14 h-14 bg-[#3182F6] text-white rounded-full shadow-lg shadow-blue-500/30 flex items-center justify-center active:scale-95 transition-all z-[55]"
               aria-label="레시피 추가하기"
             >
               <Plus className="w-6 h-6" />
