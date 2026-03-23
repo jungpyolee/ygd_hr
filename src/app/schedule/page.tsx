@@ -365,18 +365,11 @@ function SchedulePageInner() {
   return (
     <div className="flex min-h-screen flex-col bg-[#F2F4F6] font-pretendard">
       {/* 헤더 */}
-      <header className="sticky top-0 z-10 flex items-center gap-3 px-5 py-4 bg-white/80 backdrop-blur-md border-b border-[#E5E8EB]">
-        <button
-          onClick={() => router.back()}
-          aria-label="뒤로가기"
-          className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-[#F2F4F6] transition-colors"
-        >
-          <ChevronLeft className="w-5 h-5 text-[#191F28]" />
-        </button>
-        <h1 className="text-[17px] font-bold text-[#191F28]">내 스케줄</h1>
+      <header className="sticky top-0 z-10 px-5 pt-5 pb-4 bg-[#F2F4F6]">
+        <h1 className="text-[22px] font-bold text-[#191F28]">스케줄</h1>
       </header>
 
-      <main className="flex-1 px-5 pb-10 space-y-4">
+      <main className="flex-1 px-5 pb-24 space-y-4">
         {/* Week navigator */}
         <div className="flex items-center justify-between py-2">
           <button
