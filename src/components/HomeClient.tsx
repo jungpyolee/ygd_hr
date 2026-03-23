@@ -12,13 +12,14 @@ import {
   Info,
   ChevronRight,
   CalendarDays,
+  Check,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import OnboardingFunnel from "@/components/OnboardingFunnel";
 import AttendanceCard from "@/components/AttendanceCard";
 import { useRouter } from "next/navigation";
 import { useGeolocation } from "@/lib/hooks/useGeolocation";
-import { differenceInMinutes, startOfMonth, format } from "date-fns";
+import { differenceInMinutes, startOfMonth, startOfWeek, addDays, format } from "date-fns";
 import type { TodaySlot, RawLogData } from "@/app/page";
 import PushPromptModal from "@/components/PushPromptModal";
 import { useWorkplaces } from "@/lib/hooks/useWorkplaces";
@@ -143,6 +144,54 @@ export default function HomeClient({
         overtimeMinutes: overtimeMinutes % 60,
         hasOvertime: overtimeMinutes > 0,
       };
+    },
+    { dedupingInterval: 60_000 },
+  );
+
+  // 이번 주 근무 현황 + 다가오는 스케줄 SWR
+  const { data: weekData } = useSWR(
+    profile?.id ? ["week-data", profile.id] : null,
+    async ([, profileId]) => {
+      const supabase = createClient();
+      const now = new Date();
+      const weekStart = startOfWeek(now, { weekStartsOn: 1 });
+      const weekEnd = addDays(weekStart, 6);
+      weekEnd.setHours(23, 59, 59, 999);
+
+      const [{ data: logs }, { data: upcomingRaw }] = await Promise.all([
+        supabase
+          .from("attendance_logs")
+          .select("type, created_at")
+          .eq("profile_id", profileId)
+          .gte("created_at", weekStart.toISOString())
+          .lte("created_at", weekEnd.toISOString())
+          .order("created_at", { ascending: true }),
+        supabase
+          .from("schedule_slots")
+          .select("slot_date, start_time, end_time, store_id, weekly_schedules!inner(status)")
+          .eq("profile_id", profileId)
+          .eq("status", "active")
+          .eq("weekly_schedules.status", "confirmed")
+          .gt("slot_date", format(now, "yyyy-MM-dd"))
+          .order("slot_date", { ascending: true })
+          .limit(1),
+      ]);
+
+      const dayLogs: Record<string, { in?: string; out?: string }> = {};
+      (logs ?? []).forEach((log: any) => {
+        const d = format(new Date(log.created_at), "yyyy-MM-dd");
+        if (!dayLogs[d]) dayLogs[d] = {};
+        const t = format(new Date(log.created_at), "HH:mm");
+        if (log.type === "IN" && !dayLogs[d].in) dayLogs[d].in = t;
+        if (log.type === "OUT") dayLogs[d].out = t;
+      });
+
+      const raw = upcomingRaw?.[0] as any;
+      const upcomingSlot = raw
+        ? { slot_date: raw.slot_date, start_time: raw.start_time, end_time: raw.end_time, store_id: raw.store_id }
+        : null;
+
+      return { dayLogs, weekStartDate: format(weekStart, "yyyy-MM-dd"), upcomingSlot };
     },
     { dedupingInterval: 60_000 },
   );
@@ -273,6 +322,17 @@ export default function HomeClient({
   }
 
   const currentMonth = format(new Date(), "M월");
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+
+  const formatUpcomingDate = (dateStr: string) => {
+    const tomorrow = format(addDays(new Date(), 1), "yyyy-MM-dd");
+    const dayAfter = format(addDays(new Date(), 2), "yyyy-MM-dd");
+    const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
+    const date = new Date(dateStr + "T00:00:00");
+    if (dateStr === tomorrow) return "내일";
+    if (dateStr === dayAfter) return "모레";
+    return `${format(date, "M/d")} (${DAY_LABELS[date.getDay()]})`;
+  };
 
   return (
     <div className="flex min-h-screen flex-col bg-[#F2F4F6] font-pretendard">
@@ -438,6 +498,114 @@ export default function HomeClient({
             </div>
           </button>
         )}
+
+        {/* 이번 주 근무 카드 */}
+        <div className="bg-white rounded-[28px] p-5 border border-slate-100 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-[15px] font-bold text-[#191F28]">이번 주 근무</h3>
+            <button
+              onClick={() => router.push("/attendances")}
+              className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-[#F2F4F6] transition-colors"
+            >
+              <ChevronRight className="w-4 h-4 text-[#D1D6DB]" />
+            </button>
+          </div>
+
+          {weekData ? (
+            <>
+              {/* 요일 도트 */}
+              <div className="grid grid-cols-7 gap-1">
+                {["월", "화", "수", "목", "금", "토", "일"].map((label, i) => {
+                  const dateStr = format(
+                    addDays(new Date(weekData.weekStartDate + "T00:00:00"), i),
+                    "yyyy-MM-dd",
+                  );
+                  const isToday = dateStr === todayStr;
+                  const isPast = dateStr < todayStr;
+                  const log = weekData.dayLogs[dateStr];
+                  const worked = !!log?.in;
+                  return (
+                    <div key={label} className="flex flex-col items-center gap-1.5">
+                      <span
+                        className={`text-[11px] font-semibold ${isToday ? "text-[#3182F6]" : "text-[#8B95A1]"}`}
+                      >
+                        {label}
+                      </span>
+                      <div
+                        className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                          worked
+                            ? "bg-[#3182F6]"
+                            : isToday
+                              ? "border-2 border-[#3182F6] bg-white"
+                              : "bg-[#F2F4F6]"
+                        }`}
+                      >
+                        {worked ? (
+                          <Check className="w-4 h-4 text-white" strokeWidth={2.5} />
+                        ) : isToday ? (
+                          <div className="w-1.5 h-1.5 rounded-full bg-[#3182F6]" />
+                        ) : isPast ? (
+                          <div className="w-1.5 h-1.5 rounded-full bg-[#D1D6DB]" />
+                        ) : null}
+                      </div>
+                      <span
+                        className={`text-[9px] tabular-nums ${worked ? "text-[#8B95A1]" : "text-transparent"}`}
+                      >
+                        {log?.in ?? "00:00"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* 오늘 출퇴근 + 다음 근무 */}
+              {(weekData.dayLogs[todayStr]?.in || weekData.upcomingSlot) && (
+                <div className="mt-4 space-y-3">
+                  {weekData.dayLogs[todayStr]?.in && (
+                    <div className="flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-[#3182F6] shrink-0" />
+                      <span className="text-[13px] text-[#4E5968]">
+                        {weekData.dayLogs[todayStr].in} 출근
+                        {weekData.dayLogs[todayStr].out
+                          ? ` · ${weekData.dayLogs[todayStr].out} 퇴근`
+                          : " · 근무 중"}
+                      </span>
+                    </div>
+                  )}
+                  {weekData.upcomingSlot && (
+                    <>
+                      {weekData.dayLogs[todayStr]?.in && (
+                        <div className="border-t border-[#F2F4F6]" />
+                      )}
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-[11px] text-[#8B95A1] mb-0.5">다음 근무</p>
+                          <p className="text-[13px] font-bold text-[#191F28]">
+                            {formatUpcomingDate(weekData.upcomingSlot.slot_date)}&nbsp;
+                            {weekData.upcomingSlot.start_time.slice(0, 5)}~{weekData.upcomingSlot.end_time.slice(0, 5)}
+                          </p>
+                        </div>
+                        <span
+                          className="text-[11px] font-bold px-2.5 py-1 rounded-full shrink-0"
+                          style={{
+                            backgroundColor:
+                              byId[weekData.upcomingSlot.store_id]?.bg_color || "#F2F4F6",
+                            color: byId[weekData.upcomingSlot.store_id]?.color || "#4E5968",
+                          }}
+                        >
+                          {byId[weekData.upcomingSlot.store_id]?.label ||
+                            weekData.upcomingSlot.store_id}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="h-20 bg-[#F2F4F6] rounded-xl animate-pulse" />
+          )}
+        </div>
 
         {/* 이번 달 근무 요약 */}
         <button

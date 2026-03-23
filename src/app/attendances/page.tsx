@@ -10,9 +10,10 @@ import {
   endOfWeek,
   startOfMonth,
   endOfMonth,
+  parseISO,
 } from "date-fns";
 import { ko } from "date-fns/locale";
-import { ChevronLeft, Clock, Timer } from "lucide-react";
+import { ChevronLeft, Clock, Timer, CalendarDays } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 interface DayRecord {
@@ -21,27 +22,48 @@ interface DayRecord {
   actualOut: Date | null;
   scheduledMinutes: number; // 인정 시간 (스케줄 기준)
   overtimeMinutes: number;  // 승인된 추가근무
+  scheduleStart: string | null; // "HH:mm"
+  scheduleEnd: string | null;   // "HH:mm"
 }
+
+type ViewType = "weekly" | "monthly" | "custom";
 
 export default function AttendancesPage() {
   const router = useRouter();
-  const [viewType, setViewType] = useState<"weekly" | "monthly">("monthly");
+  const [viewType, setViewType] = useState<ViewType>("monthly");
+  const today = format(new Date(), "yyyy-MM-dd");
+  const [customStart, setCustomStart] = useState(format(startOfMonth(new Date()), "yyyy-MM-dd"));
+  const [customEnd, setCustomEnd] = useState(today);
   const { user } = useAuth();
 
+  const swrKey = user
+    ? ["attendance-schedule", viewType, user.id, customStart, customEnd]
+    : null;
+
   const { data, isLoading: loading } = useSWR(
-    user ? ["attendance-schedule", viewType, user.id] : null,
-    async ([, vt, userId]) => {
+    swrKey,
+    async ([, vt, userId, csStart, csEnd]) => {
       const supabase = createClient();
       const now = new Date();
 
-      const periodStart = vt === "weekly"
-        ? startOfWeek(now, { weekStartsOn: 1 })
-        : startOfMonth(now);
-      const periodEnd = vt === "weekly"
-        ? endOfWeek(now, { weekStartsOn: 1 })
-        : endOfMonth(now);
+      let periodStart: Date;
+      let periodEnd: Date;
+
+      if (vt === "weekly") {
+        periodStart = startOfWeek(now, { weekStartsOn: 1 });
+        periodEnd = endOfWeek(now, { weekStartsOn: 1 });
+      } else if (vt === "monthly") {
+        periodStart = startOfMonth(now);
+        periodEnd = endOfMonth(now);
+      } else {
+        periodStart = parseISO(csStart as string);
+        periodEnd = parseISO(csEnd as string);
+      }
+
       const startStr = format(periodStart, "yyyy-MM-dd");
-      const endStr = format(now, "yyyy-MM-dd"); // 오늘까지만
+      const endStr = vt === "custom"
+        ? format(periodEnd, "yyyy-MM-dd")
+        : format(now, "yyyy-MM-dd"); // 퀵 설정은 오늘까지만
 
       // 1. 출근 기록 (IN) — 날짜별 첫 출근 시간
       const { data: inLogs } = await supabase
@@ -83,7 +105,7 @@ export default function AttendancesPage() {
         .eq("status", "confirmed")
         .gte("week_start", startStr);
 
-      const slotsByDate = new Map<string, number>(); // date → scheduled minutes
+      const slotsByDate = new Map<string, { minutes: number; start: string | null; end: string | null }>();
       if (wsData && wsData.length > 0) {
         const wsIds = wsData.map((w: any) => w.id);
         const { data: slots } = await supabase
@@ -99,7 +121,21 @@ export default function AttendancesPage() {
           const [sh, sm] = slot.start_time.split(":").map(Number);
           const [eh, em] = slot.end_time.split(":").map(Number);
           const mins = (eh * 60 + em) - (sh * 60 + sm);
-          slotsByDate.set(slot.slot_date, (slotsByDate.get(slot.slot_date) ?? 0) + mins);
+          const existing = slotsByDate.get(slot.slot_date);
+          if (!existing) {
+            slotsByDate.set(slot.slot_date, {
+              minutes: mins,
+              start: slot.start_time.slice(0, 5),
+              end: slot.end_time.slice(0, 5),
+            });
+          } else {
+            // 복수 슬롯: 시간 합산, 시작은 더 이른 것, 종료는 더 늦은 것
+            slotsByDate.set(slot.slot_date, {
+              minutes: existing.minutes + mins,
+              start: existing.start && slot.start_time < existing.start ? slot.start_time.slice(0, 5) : existing.start,
+              end: existing.end && slot.end_time > existing.end ? slot.end_time.slice(0, 5) : existing.end,
+            });
+          }
         });
       }
 
@@ -128,7 +164,8 @@ export default function AttendancesPage() {
       Array.from(inByDate.entries())
         .sort(([a], [b]) => b.localeCompare(a)) // 최신순
         .forEach(([date, actualIn]) => {
-          const scheduledMins = slotsByDate.get(date) ?? 0;
+          const slot = slotsByDate.get(date);
+          const scheduledMins = slot?.minutes ?? 0;
           const overtimeMins = overtimeByDate.get(date) ?? 0;
           totalMinutes += scheduledMins + overtimeMins;
           totalOvertimeMinutes += overtimeMins;
@@ -138,6 +175,8 @@ export default function AttendancesPage() {
             actualOut: outByDate.get(date) ?? null,
             scheduledMinutes: scheduledMins,
             overtimeMinutes: overtimeMins,
+            scheduleStart: slot?.start ?? null,
+            scheduleEnd: slot?.end ?? null,
           });
         });
 
@@ -160,6 +199,11 @@ export default function AttendancesPage() {
   const otHours = Math.floor(summary.overtimeMinutes / 60);
   const otMins = summary.overtimeMinutes % 60;
 
+  const periodLabel =
+    viewType === "weekly" ? "이번 주" :
+    viewType === "monthly" ? "이번 달" :
+    `${customStart} ~ ${customEnd}`;
+
   return (
     <div className="min-h-screen bg-[#F2F4F6] font-pretendard pb-10">
       {/* 헤더 */}
@@ -171,7 +215,7 @@ export default function AttendancesPage() {
       </header>
 
       {/* 탭 스위처 */}
-      <div className="p-4">
+      <div className="p-4 pb-2">
         <div className="flex bg-white p-1 rounded-2xl border border-[#E5E8EB] gap-1">
           <button
             onClick={() => setViewType("weekly")}
@@ -189,17 +233,52 @@ export default function AttendancesPage() {
           >
             이번 달
           </button>
+          <button
+            onClick={() => setViewType("custom")}
+            className={`flex-1 py-2.5 text-[13px] font-bold rounded-xl transition-all flex items-center justify-center gap-1 ${
+              viewType === "custom" ? "bg-[#3182F6] text-white" : "text-[#8B95A1]"
+            }`}
+          >
+            <CalendarDays className="w-3.5 h-3.5" />
+            직접 설정
+          </button>
         </div>
+
+        {/* 기간 직접 설정 */}
+        {viewType === "custom" && (
+          <div className="mt-3 flex items-center gap-2 bg-white rounded-2xl border border-[#E5E8EB] px-4 py-3">
+            <input
+              type="date"
+              value={customStart}
+              max={customEnd}
+              onChange={(e) => setCustomStart(e.target.value)}
+              className="flex-1 text-[14px] font-semibold text-[#191F28] bg-transparent outline-none"
+            />
+            <span className="text-[13px] text-[#8B95A1] font-medium">~</span>
+            <input
+              type="date"
+              value={customEnd}
+              min={customStart}
+              max={today}
+              onChange={(e) => setCustomEnd(e.target.value)}
+              className="flex-1 text-[14px] font-semibold text-[#191F28] bg-transparent outline-none"
+            />
+          </div>
+        )}
       </div>
 
       {/* 요약 카드 */}
       <div className="px-4 mb-4">
         <div className="bg-white rounded-[28px] p-6 border border-slate-100">
           <p className="text-[13px] font-semibold text-[#8B95A1] mb-3">
-            {viewType === "weekly" ? "이번 주" : "이번 달"} · 스케줄 기준
+            {periodLabel} · 스케줄 기준
           </p>
           {loading ? (
-            <div className="h-10 bg-[#F2F4F6] rounded-xl animate-pulse" />
+            <div className="h-10 flex items-center">
+              <div className="h-3 w-3 rounded-full bg-[#3182F6] animate-bounce mr-1" style={{ animationDelay: "0ms" }} />
+              <div className="h-3 w-3 rounded-full bg-[#3182F6] animate-bounce mr-1" style={{ animationDelay: "150ms" }} />
+              <div className="h-3 w-3 rounded-full bg-[#3182F6] animate-bounce" style={{ animationDelay: "300ms" }} />
+            </div>
           ) : (
             <div className="space-y-3">
               <div className="flex items-end gap-6">
@@ -238,33 +317,56 @@ export default function AttendancesPage() {
       <div className="px-4 space-y-3">
         <p className="text-[13px] font-bold text-[#8B95A1] px-1">상세 내역</p>
         {loading ? (
-          <div className="py-16 text-center text-[#8B95A1] text-[14px]">불러오는 중...</div>
+          <div className="py-16 flex flex-col items-center gap-4">
+            <style>{`
+              @keyframes catRunFrames2 {
+                from { background-position: 0 0; }
+                to   { background-position: 0 -432px; }
+              }
+              @keyframes catWalkLR2 {
+                0%   { transform: translateX(-32px) scaleX(1);  }
+                48%  { transform: translateX(32px)  scaleX(1);  }
+                50%  { transform: translateX(32px)  scaleX(-1); }
+                98%  { transform: translateX(-32px) scaleX(-1); }
+                100% { transform: translateX(-32px) scaleX(1);  }
+              }
+              .cat-walk { animation: catWalkLR2 2.4s linear infinite; }
+              .cat-sprite {
+                width: 72px; height: 72px;
+                background-image: url('/game/WhiteCatRun.png');
+                background-size: 72px 432px;
+                background-repeat: no-repeat;
+                image-rendering: pixelated;
+                animation: catRunFrames2 0.6s steps(6) infinite;
+              }
+            `}</style>
+            <div className="cat-walk">
+              <div className="cat-sprite" />
+            </div>
+            <p className="text-[13px] text-[#8B95A1]">근무 기록 불러오는 중...</p>
+          </div>
         ) : records.length > 0 ? (
           records.map((rec) => {
             const recognizedMins = rec.scheduledMinutes + rec.overtimeMinutes;
             const recH = Math.floor(recognizedMins / 60);
             const recM = recognizedMins % 60;
             const isWorking = !rec.actualOut;
+            const hasSchedule = rec.scheduleStart && rec.scheduleEnd;
 
             return (
               <div
                 key={rec.date}
                 className="bg-white rounded-[20px] px-5 py-4 border border-slate-100"
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${isWorking ? "bg-[#E8F3FF]" : "bg-[#F2F4F6]"}`}>
-                      <Clock className={`w-5 h-5 ${isWorking ? "text-[#3182F6]" : "text-[#B0B8C1]"}`} />
+                {/* 날짜 + 인정시간 */}
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${isWorking ? "bg-[#E8F3FF]" : "bg-[#F2F4F6]"}`}>
+                      <Clock className={`w-4 h-4 ${isWorking ? "text-[#3182F6]" : "text-[#B0B8C1]"}`} />
                     </div>
-                    <div>
-                      <p className="text-[13px] text-[#8B95A1] font-medium">
-                        {format(new Date(rec.date), "M월 d일 (eeee)", { locale: ko })}
-                      </p>
-                      <p className="text-[15px] font-bold text-[#333D4B] mt-0.5">
-                        {format(rec.actualIn, "HH:mm")} —{" "}
-                        {rec.actualOut ? format(rec.actualOut, "HH:mm") : "근무 중"}
-                      </p>
-                    </div>
+                    <p className="text-[14px] font-bold text-[#191F28]">
+                      {format(new Date(rec.date), "M월 d일 (eeee)", { locale: ko })}
+                    </p>
                   </div>
                   <div className="text-right shrink-0">
                     {isWorking ? (
@@ -283,6 +385,24 @@ export default function AttendancesPage() {
                     ) : (
                       <p className="text-[13px] text-[#B0B8C1]">스케줄 없음</p>
                     )}
+                  </div>
+                </div>
+
+                {/* 시간 상세 */}
+                <div className="space-y-1.5 pl-10">
+                  {hasSchedule && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-semibold text-[#8B95A1] w-10 shrink-0">스케줄</span>
+                      <span className="text-[13px] font-semibold text-[#4E5968]">
+                        {rec.scheduleStart} — {rec.scheduleEnd}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-semibold text-[#8B95A1] w-10 shrink-0">실제</span>
+                    <span className={`text-[13px] font-bold ${isWorking ? "text-[#3182F6]" : "text-[#191F28]"}`}>
+                      {format(rec.actualIn, "HH:mm")} — {rec.actualOut ? format(rec.actualOut, "HH:mm") : "근무 중"}
+                    </span>
                   </div>
                 </div>
               </div>
