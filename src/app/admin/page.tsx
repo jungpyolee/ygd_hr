@@ -8,6 +8,7 @@ import {
   ArrowRight,
   Clock,
   Users,
+  TimerIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
@@ -368,6 +369,22 @@ export default function AdminDashboardPage() {
             <div>
               <p className="text-[16px] font-bold text-[#191F28]">직원 관리</p>
               <p className="text-[12px] text-[#8B95A1]">인사 정보 및 서류</p>
+            </div>
+          </div>
+          <ArrowRight className="w-4 h-4 text-[#D1D6DB] group-hover:text-[#3182F6]" />
+        </button>
+
+        <button
+          onClick={() => router.push("/admin/overtime")}
+          className="group flex items-center justify-between p-6 bg-white rounded-[24px] border border-slate-100 shadow-sm hover:shadow-md transition-all"
+        >
+          <div className="flex items-center gap-4 text-left">
+            <div className="w-11 h-11 rounded-2xl bg-[#F2F4F6] flex items-center justify-center group-hover:bg-[#E8F3FF]">
+              <TimerIcon className="w-5 h-5 text-[#4E5968] group-hover:text-[#3182F6]" />
+            </div>
+            <div>
+              <p className="text-[16px] font-bold text-[#191F28]">추가근무 관리</p>
+              <p className="text-[12px] text-[#8B95A1]">요청 승인 및 직접 할당</p>
             </div>
           </div>
           <ArrowRight className="w-4 h-4 text-[#D1D6DB] group-hover:text-[#3182F6]" />

@@ -68,42 +68,80 @@ export default function HomeClient({
     { dedupingInterval: 30_000, revalidateOnFocus: false },
   );
 
-  // 이번 달 근무 요약 SWR
+  // 이번 달 근무 요약 SWR (B방식: 출근한 날의 스케줄 시간 기준 + 승인된 추가근무)
   const { data: monthStats } = useSWR(
     profile?.id ? ["month-stats", profile.id] : null,
     async ([, profileId]) => {
       const supabase = createClient();
-      const start = startOfMonth(new Date());
+      const now = new Date();
+      const monthStart = startOfMonth(now);
+      const monthStartStr = format(monthStart, "yyyy-MM-dd");
+      const monthEndStr = format(now, "yyyy-MM-dd");
+
+      // 이번 달 출근 기록 (날짜별 출근 여부 확인용)
       const { data: logs } = await supabase
         .from("attendance_logs")
         .select("type, created_at")
         .eq("profile_id", profileId)
-        .gte("created_at", start.toISOString())
+        .eq("type", "IN")
+        .gte("created_at", monthStart.toISOString())
         .order("created_at", { ascending: true });
 
-      if (!logs) return { days: 0, hours: 0, minutes: 0 };
+      const workedDays = new Set<string>(
+        (logs ?? []).map((l: any) => format(new Date(l.created_at), "yyyy-MM-dd"))
+      );
 
-      const workDays = new Set<string>();
-      let totalMinutes = 0;
-      let tempIn: any = null;
+      // 이번 달 확정된 스케줄 슬롯
+      const { data: wsData } = await supabase
+        .from("weekly_schedules")
+        .select("id")
+        .eq("status", "confirmed")
+        .gte("week_start", monthStartStr);
 
-      logs.forEach((log) => {
-        if (log.type === "IN") {
-          tempIn = log;
-          workDays.add(format(new Date(log.created_at), "yyyy-MM-dd"));
-        } else if (log.type === "OUT" && tempIn) {
-          totalMinutes += differenceInMinutes(
-            new Date(log.created_at),
-            new Date(tempIn.created_at),
-          );
-          tempIn = null;
-        }
+      let scheduleMinutes = 0;
+      if (wsData && wsData.length > 0) {
+        const wsIds = wsData.map((w: any) => w.id);
+        const { data: slots } = await supabase
+          .from("schedule_slots")
+          .select("slot_date, start_time, end_time")
+          .eq("profile_id", profileId)
+          .eq("status", "active")
+          .in("weekly_schedule_id", wsIds)
+          .gte("slot_date", monthStartStr)
+          .lte("slot_date", monthEndStr);
+
+        (slots ?? []).forEach((slot: any) => {
+          if (!workedDays.has(slot.slot_date)) return; // 결근한 날 제외
+          const [sh, sm] = slot.start_time.split(":").map(Number);
+          const [eh, em] = slot.end_time.split(":").map(Number);
+          scheduleMinutes += (eh * 60 + em) - (sh * 60 + sm);
+        });
+      }
+
+      // 승인된 추가근무
+      const { data: overtimes } = await supabase
+        .from("overtime_requests")
+        .select("start_time, end_time")
+        .eq("profile_id", profileId)
+        .eq("status", "approved")
+        .gte("date", monthStartStr)
+        .lte("date", monthEndStr);
+
+      let overtimeMinutes = 0;
+      (overtimes ?? []).forEach((ot: any) => {
+        const [sh, sm] = ot.start_time.split(":").map(Number);
+        const [eh, em] = ot.end_time.split(":").map(Number);
+        overtimeMinutes += (eh * 60 + em) - (sh * 60 + sm);
       });
 
+      const totalMinutes = scheduleMinutes + overtimeMinutes;
       return {
-        days: workDays.size,
+        days: workedDays.size,
         hours: Math.floor(totalMinutes / 60),
         minutes: totalMinutes % 60,
+        overtimeHours: Math.floor(overtimeMinutes / 60),
+        overtimeMinutes: overtimeMinutes % 60,
+        hasOvertime: overtimeMinutes > 0,
       };
     },
     { dedupingInterval: 60_000 },
@@ -435,30 +473,41 @@ export default function HomeClient({
             <ChevronRight className="w-4 h-4 text-[#D1D6DB]" />
           </div>
           {monthStats ? (
-            <div className="flex items-end gap-6">
-              <div>
-                <p className="text-[12px] text-[#8B95A1] mb-0.5">출근 일수</p>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-[28px] font-bold text-[#191F28] tabular-nums leading-none">
-                    {monthStats.days}
-                  </span>
-                  <span className="text-[14px] font-semibold text-[#4E5968]">일</span>
+            <div className="space-y-3">
+              <div className="flex items-end gap-6">
+                <div>
+                  <p className="text-[12px] text-[#8B95A1] mb-0.5">출근 일수</p>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-[28px] font-bold text-[#191F28] tabular-nums leading-none">
+                      {monthStats.days}
+                    </span>
+                    <span className="text-[14px] font-semibold text-[#4E5968]">일</span>
+                  </div>
+                </div>
+                <div className="w-px h-10 bg-[#E5E8EB]" />
+                <div>
+                  <p className="text-[12px] text-[#8B95A1] mb-0.5">총 근무 시간</p>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-[28px] font-bold text-[#191F28] tabular-nums leading-none">
+                      {monthStats.hours}
+                    </span>
+                    <span className="text-[14px] font-semibold text-[#4E5968]">시간</span>
+                    <span className="text-[20px] font-bold text-[#191F28] tabular-nums leading-none ml-1">
+                      {monthStats.minutes}
+                    </span>
+                    <span className="text-[14px] font-semibold text-[#4E5968]">분</span>
+                  </div>
                 </div>
               </div>
-              <div className="w-px h-10 bg-[#E5E8EB]" />
-              <div>
-                <p className="text-[12px] text-[#8B95A1] mb-0.5">총 근무 시간</p>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-[28px] font-bold text-[#191F28] tabular-nums leading-none">
-                    {monthStats.hours}
+              {monthStats.hasOvertime && (
+                <div className="flex items-center gap-1.5 bg-[#E8F3FF] rounded-[10px] px-3 py-2 self-start w-fit">
+                  <CalendarDays className="w-3.5 h-3.5 text-[#3182F6]" />
+                  <span className="text-[12px] font-bold text-[#3182F6]">
+                    추가근무 +{monthStats.overtimeHours}시간
+                    {monthStats.overtimeMinutes > 0 ? ` ${monthStats.overtimeMinutes}분` : ""} 포함
                   </span>
-                  <span className="text-[14px] font-semibold text-[#4E5968]">시간</span>
-                  <span className="text-[20px] font-bold text-[#191F28] tabular-nums leading-none ml-1">
-                    {monthStats.minutes}
-                  </span>
-                  <span className="text-[14px] font-semibold text-[#4E5968]">분</span>
                 </div>
-              </div>
+              )}
             </div>
           ) : (
             <div className="h-10 bg-[#F2F4F6] rounded-xl animate-pulse" />

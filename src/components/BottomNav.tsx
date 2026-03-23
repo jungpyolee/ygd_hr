@@ -6,12 +6,12 @@ import { Home, Calendar, Store, User } from "lucide-react";
 
 const tabs = [
   { href: "/", label: "홈", icon: Home },
-  { href: "/schedule", label: "스케줄", icon: Calendar },
+  { href: "/calendar", label: "스케줄", icon: Calendar },
   { href: "/store", label: "매장", icon: Store },
   { href: "/my", label: "마이", icon: User },
 ];
 
-const SHOW_PATHS = new Set(["/", "/schedule", "/store", "/my"]);
+const SHOW_PATHS = new Set(["/", "/calendar", "/store", "/my"]);
 
 export default function BottomNav() {
   const pathname = usePathname();

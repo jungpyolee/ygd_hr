@@ -456,14 +456,10 @@ export default function EmployeeCalendarPage() {
   const today = startOfToday();
 
   return (
-    <div className="min-h-screen bg-[#F9FAFB] pb-20">
+    <div className="min-h-screen bg-[#F9FAFB] pb-24">
       {/* 헤더 */}
-      <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-md px-4 h-14 flex items-center justify-between border-b border-slate-100">
-        <button onClick={() => router.back()} className="p-2 -ml-2">
-          <ChevronLeft className="w-6 h-6 text-[#191F28]" />
-        </button>
-        <h1 className="text-[17px] font-bold text-[#191F28]">캘린더</h1>
-        <div className="w-10" />
+      <header className="sticky top-0 z-10 px-5 pt-5 pb-4 bg-[#F9FAFB]">
+        <h1 className="text-[22px] font-bold text-[#191F28]">스케줄</h1>
       </header>
 
       {/* 레이어 토글 */}
