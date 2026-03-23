@@ -10,10 +10,8 @@ import {
   Clock,
   MapPin,
   Users,
-  Building2,
   CheckCircle2,
   X,
-  CalendarDays,
 } from "lucide-react";
 import {
   format,
@@ -26,6 +24,8 @@ import {
   eachDayOfInterval,
   isSameMonth,
   isToday,
+  isBefore,
+  startOfToday,
   parseISO,
   differenceInMinutes,
 } from "date-fns";
@@ -107,10 +107,9 @@ function DayDetailSheet({ dateStr, dayInfo, layers, onClose }: DayDetailSheetPro
   const { mySlots, teamSlots, attendance, events } = dayInfo;
 
   return (
-    <div className="fixed inset-0 z-[150] flex items-end justify-center">
+    <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-white rounded-t-[28px] px-5 pt-8 pb-10 shadow-2xl animate-in slide-in-from-bottom-4 duration-250 max-h-[80vh] overflow-y-auto scrollbar-hide">
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 w-9 h-1 bg-[#D1D6DB] rounded-full" />
+      <div className="relative w-full max-w-md bg-white rounded-[28px] px-5 pt-6 pb-6 shadow-2xl animate-in zoom-in-95 fade-in-0 duration-200 max-h-[80vh] overflow-y-auto scrollbar-hide">
         <div className="flex justify-between items-center mb-5">
           <h3 className="text-[17px] font-bold text-[#191F28]">{dateLabel}</h3>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-[#F2F4F6]">
@@ -177,28 +176,33 @@ function DayDetailSheet({ dateStr, dayInfo, layers, onClose }: DayDetailSheetPro
                       )}
                     </div>
 
-                    {/* 실제 출근 시간 */}
+                    {/* 실제 출퇴근 시간 */}
                     {layers.myAttendance && attendance.clock_in && (
-                      <div className="mt-2 pt-2 border-t border-slate-100 text-[12px] text-[#8B95A1]">
-                        실제 출근{" "}
-                        <span className="font-bold text-[#4E5968]">
-                          {format(attendance.clock_in, "HH:mm")}
-                        </span>
-                        {attendance.clock_out && (
-                          <>
-                            {" — "}
+                      <div className="mt-2 pt-2 border-t border-slate-100">
+                        <div className="flex items-center gap-3 text-[12px]">
+                          <div className="flex items-center gap-1">
+                            <span className="text-[#8B95A1]">출근</span>
                             <span className="font-bold text-[#4E5968]">
-                              {format(attendance.clock_out, "HH:mm")}
+                              {format(attendance.clock_in, "HH:mm")}
                             </span>
-                            {" "}
-                            <span className="text-[#3182F6] font-bold">
-                              ({formatDuration(differenceInMinutes(attendance.clock_out, attendance.clock_in))})
-                            </span>
-                          </>
-                        )}
-                        {!attendance.clock_out && (
-                          <span className="text-[#3182F6] font-bold"> (근무 중)</span>
-                        )}
+                          </div>
+                          {attendance.clock_out ? (
+                            <>
+                              <span className="text-[#D1D6DB]">→</span>
+                              <div className="flex items-center gap-1">
+                                <span className="text-[#8B95A1]">퇴근</span>
+                                <span className="font-bold text-[#4E5968]">
+                                  {format(attendance.clock_out, "HH:mm")}
+                                </span>
+                              </div>
+                              <span className="text-[#3182F6] font-bold ml-auto">
+                                {formatDuration(differenceInMinutes(attendance.clock_out, attendance.clock_in))}
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-[#3182F6] font-bold ml-auto">근무 중</span>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -211,17 +215,28 @@ function DayDetailSheet({ dateStr, dayInfo, layers, onClose }: DayDetailSheetPro
         {/* 근태만 있는 경우 (스케줄 없이 출근) */}
         {layers.myAttendance && mySlots.length === 0 && attendance.clock_in && (
           <div className="mb-4 p-3 rounded-2xl bg-green-50 border-l-[3px] border-green-400">
-            <div className="flex items-center gap-2 text-[14px] font-bold text-green-700">
+            <div className="flex items-center gap-2 text-[14px] font-bold text-green-700 mb-1">
               <CheckCircle2 className="w-4 h-4" />
               출근 기록
             </div>
-            <div className="text-[13px] text-[#4E5968] mt-1">
-              {format(attendance.clock_in, "HH:mm")}
-              {attendance.clock_out && ` — ${format(attendance.clock_out, "HH:mm")}`}
-              {attendance.clock_out && (
-                <span className="ml-1 text-[#3182F6] font-bold">
-                  ({formatDuration(differenceInMinutes(attendance.clock_out, attendance.clock_in))})
-                </span>
+            <div className="flex items-center gap-3 text-[12px]">
+              <div className="flex items-center gap-1">
+                <span className="text-[#8B95A1]">출근</span>
+                <span className="font-bold text-[#4E5968]">{format(attendance.clock_in, "HH:mm")}</span>
+              </div>
+              {attendance.clock_out ? (
+                <>
+                  <span className="text-[#D1D6DB]">→</span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[#8B95A1]">퇴근</span>
+                    <span className="font-bold text-[#4E5968]">{format(attendance.clock_out, "HH:mm")}</span>
+                  </div>
+                  <span className="text-[#3182F6] font-bold ml-auto">
+                    {formatDuration(differenceInMinutes(attendance.clock_out, attendance.clock_in))}
+                  </span>
+                </>
+              ) : (
+                <span className="text-[#3182F6] font-bold ml-auto">근무 중</span>
               )}
             </div>
           </div>
@@ -288,7 +303,7 @@ interface LayerState {
 export default function EmployeeCalendarPage() {
   const router = useRouter();
   const { user } = useAuth();
-  const { byId, positionsOfStore } = useWorkplaces();
+  const { byId } = useWorkplaces();
 
   const [baseDate, setBaseDate] = useState(new Date());
   const [layers, setLayers] = useState<LayerState>({
@@ -318,40 +333,42 @@ export default function EmployeeCalendarPage() {
       const supabase = createClient();
       const [start, end] = range.split("_");
 
-      // 1. 내 근무 스케줄 (확정된 주만)
-      const { data: myWs } = await supabase
-        .from("weekly_schedules")
-        .select("id")
-        .eq("status", "confirmed")
-        .gte("week_start", format(startOfWeek(startDate, { weekStartsOn: 0 }), "yyyy-MM-dd"))
-        .lte("week_start", format(startOfWeek(endDate, { weekStartsOn: 0 }), "yyyy-MM-dd"));
-
-      const wsIds = (myWs || []).map((ws: any) => ws.id);
-      let mySlots: MySlot[] = [];
-      if (wsIds.length > 0) {
-        const { data: slotsData } = await supabase
-          .from("schedule_slots")
-          .select("*")
-          .eq("profile_id", uid)
-          .in("weekly_schedule_id", wsIds)
-          .eq("status", "active");
-        mySlots = (slotsData || []) as MySlot[];
-      }
+      // 1. 내 슬롯 — slot_date 직접 조회 (어드민 포함, 주 상태 무관)
+      const { data: slotsData } = await supabase
+        .from("schedule_slots")
+        .select("*")
+        .eq("profile_id", uid)
+        .eq("status", "active")
+        .gte("slot_date", start)
+        .lte("slot_date", end);
+      const mySlots: MySlot[] = (slotsData || []) as MySlot[];
 
       // 2. 내 근무지 파악
       const { data: myAssignments } = await supabase
         .from("employee_store_assignments")
         .select("store_id")
         .eq("profile_id", uid);
-      const myStoreIds = (myAssignments || []).map((a: any) => a.store_id);
+      let myStoreIds: string[] = (myAssignments || []).map((a: any) => a.store_id);
+      // 어드민은 employee_store_assignments가 없을 수 있으므로 슬롯에서 추론
+      if (myStoreIds.length === 0 && mySlots.length > 0) {
+        myStoreIds = [...new Set(mySlots.map((s) => s.store_id))];
+      }
 
-      // 3. 팀 스케줄 (같은 근무지, 확정된 주)
+      // 3. 팀 슬롯 — 확정된 주만
+      const { data: confirmedWs } = await supabase
+        .from("weekly_schedules")
+        .select("id")
+        .eq("status", "confirmed")
+        .gte("week_start", start)
+        .lte("week_start", end);
+      const confirmedWsIds = (confirmedWs || []).map((ws: any) => ws.id);
+
       let teamSlots: TeamSlot[] = [];
-      if (wsIds.length > 0 && myStoreIds.length > 0) {
+      if (confirmedWsIds.length > 0 && myStoreIds.length > 0) {
         const { data: teamData } = await supabase
           .from("schedule_slots")
           .select("*, profiles!profile_id(name, color_hex)")
-          .in("weekly_schedule_id", wsIds)
+          .in("weekly_schedule_id", confirmedWsIds)
           .in("store_id", myStoreIds)
           .eq("status", "active")
           .neq("profile_id", uid);
@@ -380,13 +397,13 @@ export default function EmployeeCalendarPage() {
         .lte("created_at", endStr)
         .order("created_at", { ascending: true });
 
-      // 5. 회사 일정 (내 근무지 or 전체)
+      // 5. 회사 일정
       const { data: eventsData } = await supabase
         .from("company_events")
         .select("*")
         .or(`start_date.lte.${end},end_date.gte.${start}`);
 
-      // 출퇴근 맵 (date → { clock_in, clock_out })
+      // 출퇴근 맵
       const attMap: Record<string, { clock_in: Date | null; clock_out: Date | null; is_working: boolean }> = {};
       (logsData || []).forEach((log: any) => {
         const dateKey = format(new Date(log.created_at), "yyyy-MM-dd");
@@ -397,6 +414,7 @@ export default function EmployeeCalendarPage() {
         }
         if (log.type === "OUT" && !attMap[dateKey].clock_out) {
           attMap[dateKey].clock_out = new Date(log.created_at);
+          attMap[dateKey].is_working = false;
         }
       });
 
@@ -430,12 +448,12 @@ export default function EmployeeCalendarPage() {
     setLayers((p) => ({ ...p, [key]: !p[key] }));
   };
 
-  // 캘린더 그리드
   const calDays = useMemo(() => {
     return eachDayOfInterval({ start: startDate, end: endDate });
   }, [startDate, endDate]);
 
   const selectedDayInfo = selectedDay ? getDayInfo(selectedDay) : null;
+  const today = startOfToday();
 
   return (
     <div className="min-h-screen bg-[#F9FAFB] pb-20">
@@ -524,8 +542,11 @@ export default function EmployeeCalendarPage() {
                 const hasTeam = dayInfo.teamSlots.length > 0;
                 const hasEvent = dayInfo.events.length > 0;
                 const att = attendance[dateStr];
-                const checkedIn = att?.clock_in != null;
-                const isAbsent = hasMySlot && !checkedIn;
+                const worked = att?.clock_in != null;
+                const done = att?.clock_out != null;
+                // 결근: 과거 날짜 + 이번 달 + 스케줄 있음 + 출근 없음
+                const isPastDay = isBefore(day, today);
+                const isAbsent = hasMySlot && !worked && isPastDay && isCurrentMonth;
 
                 return (
                   <button
@@ -557,9 +578,9 @@ export default function EmployeeCalendarPage() {
                     {/* 회사 일정 뱃지 */}
                     {hasEvent && (
                       <div
-                        className="text-[9px] font-bold px-1 py-0.5 rounded mb-0.5 truncate mx-0.5"
+                        className="text-[8px] font-bold px-1 py-0.5 rounded mb-0.5 truncate mx-0.5 leading-tight"
                         style={{
-                          backgroundColor: dayInfo.events[0].color + "22",
+                          backgroundColor: dayInfo.events[0].color + "20",
                           color: dayInfo.events[0].color,
                         }}
                       >
@@ -567,40 +588,84 @@ export default function EmployeeCalendarPage() {
                       </div>
                     )}
 
-                    {/* 내 스케줄 블록 */}
-                    {hasMySlot && (
+                    {/* 내 스케줄 / 근태 통합 블록 */}
+                    {hasMySlot ? (
                       <div className="space-y-0.5">
                         {dayInfo.mySlots.map((slot) => {
                           const store = byId[slot.store_id];
+                          const storeColor = store?.color || "#3182F6";
+                          let bg: string, textCol: string, blockText: string;
+
+                          if (layers.myAttendance) {
+                            if (done) {
+                              // 퇴근 완료
+                              bg = "#DCFCE7";
+                              textCol = "#16A34A";
+                              blockText = `✓ ${format(att!.clock_in!, "HH:mm")}`;
+                            } else if (worked) {
+                              // 출근 중
+                              bg = storeColor;
+                              textCol = "white";
+                              blockText = `↑ ${format(att!.clock_in!, "HH:mm")}`;
+                            } else if (isAbsent) {
+                              // 결근 (과거 날짜만)
+                              bg = "#FEE2E2";
+                              textCol = "#EF4444";
+                              blockText = "결근";
+                            } else {
+                              // 예정 (미래 or 오늘)
+                              bg = isCurrentMonth ? storeColor : storeColor + "66";
+                              textCol = "white";
+                              blockText = slot.start_time.slice(0, 5);
+                            }
+                          } else {
+                            bg = isCurrentMonth ? storeColor : storeColor + "66";
+                            textCol = "white";
+                            blockText = slot.start_time.slice(0, 5);
+                          }
+
                           return (
                             <div
                               key={slot.id}
-                              className="text-[9px] font-bold px-1 py-0.5 rounded truncate mx-0.5"
-                              style={{
-                                backgroundColor: store?.color || "#3182F6",
-                                color: "white",
-                                opacity: isAbsent && isCurrentMonth ? 0.5 : 1,
-                              }}
+                              className="text-[9px] font-bold px-1 py-0.5 rounded truncate mx-0.5 leading-tight"
+                              style={{ backgroundColor: bg, color: textCol }}
                             >
-                              {slot.start_time.slice(0, 5)}
+                              {blockText}
                             </div>
                           );
                         })}
                       </div>
+                    ) : (
+                      /* 스케줄 없이 출근한 경우 */
+                      layers.myAttendance && worked && (
+                        <div
+                          className="text-[9px] font-bold px-1 py-0.5 rounded mx-0.5 leading-tight truncate"
+                          style={{ backgroundColor: "#DCFCE7", color: "#16A34A" }}
+                        >
+                          {done
+                            ? `✓ ${format(att!.clock_in!, "HH:mm")}`
+                            : `↑ ${format(att!.clock_in!, "HH:mm")}`}
+                        </div>
+                      )
                     )}
 
-                    {/* 근태 + 팀 인디케이터 */}
-                    <div className="flex items-center gap-0.5 mt-0.5 px-0.5 flex-wrap">
-                      {layers.myAttendance && checkedIn && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#00B761]" />
-                      )}
-                      {layers.myAttendance && isAbsent && isCurrentMonth && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
-                      )}
-                      {layers.team && hasTeam && (
-                        <span className="text-[8px] text-[#8B95A1] font-bold">+{dayInfo.teamSlots.length}</span>
-                      )}
-                    </div>
+                    {/* 팀 멤버 컬러 점 */}
+                    {layers.team && hasTeam && (
+                      <div className="flex items-center gap-0.5 mt-0.5 px-0.5">
+                        {dayInfo.teamSlots.slice(0, 3).map((ts) => (
+                          <span
+                            key={ts.id}
+                            className="w-1.5 h-1.5 rounded-full shrink-0"
+                            style={{ backgroundColor: ts.profile_color || "#8B95A1" }}
+                          />
+                        ))}
+                        {dayInfo.teamSlots.length > 3 && (
+                          <span className="text-[7px] text-[#8B95A1] font-medium">
+                            +{dayInfo.teamSlots.length - 3}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </button>
                 );
               })}
@@ -610,18 +675,30 @@ export default function EmployeeCalendarPage() {
       </div>
 
       {/* 범례 */}
-      <div className="px-5 mt-4 flex flex-wrap items-center gap-3 text-[11px] text-[#8B95A1]">
+      <div className="px-5 mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] text-[#8B95A1]">
         {layers.mySchedule && (
-          <span className="flex items-center gap-1"><span className="w-3 h-1.5 rounded-sm bg-[#3182F6]" />내 근무</span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-3 h-2 rounded-sm bg-[#3182F6]" />예정 근무
+          </span>
         )}
         {layers.myAttendance && (
           <>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#00B761]" />출근</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400" />결근</span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-3 h-2 rounded-sm bg-[#DCFCE7]" style={{ border: "1px solid #16A34A" }} />출근 완료
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-3 h-2 rounded-sm bg-[#FEE2E2]" style={{ border: "1px solid #EF4444" }} />결근
+            </span>
           </>
         )}
         {layers.team && (
-          <span className="flex items-center gap-1 text-[#8B95A1]">+N 팀 동료 근무</span>
+          <span className="flex items-center gap-1.5">
+            <span className="flex gap-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#8B95A1]" />
+              <span className="w-1.5 h-1.5 rounded-full bg-[#8B95A1]" />
+            </span>
+            팀 동료
+          </span>
         )}
       </div>
 
@@ -633,27 +710,22 @@ export default function EmployeeCalendarPage() {
             <div className="grid grid-cols-3 gap-3">
               <div className="text-center">
                 <div className="text-[22px] font-bold text-[#191F28]">
-                  {mySlots.filter((s) => {
-                    const m = s.slot_date.slice(0, 7);
-                    return m === format(baseDate, "yyyy-MM");
-                  }).length}
+                  {mySlots.filter((s) => s.slot_date.slice(0, 7) === format(baseDate, "yyyy-MM")).length}
                 </div>
                 <div className="text-[11px] text-[#8B95A1] mt-0.5">예정 근무</div>
               </div>
               <div className="text-center">
                 <div className="text-[22px] font-bold text-[#00B761]">
-                  {Object.entries(attendance).filter(([date]) => {
-                    return date.slice(0, 7) === format(baseDate, "yyyy-MM") && attendance[date]?.clock_in;
-                  }).length}
+                  {Object.entries(attendance).filter(
+                    ([date, att]) =>
+                      date.slice(0, 7) === format(baseDate, "yyyy-MM") && att?.clock_in
+                  ).length}
                 </div>
                 <div className="text-[11px] text-[#8B95A1] mt-0.5">출근 완료</div>
               </div>
               <div className="text-center">
                 <div className="text-[22px] font-bold text-[#8B95A1]">
-                  {events.filter((e) => {
-                    const m = e.start_date.slice(0, 7);
-                    return m === format(baseDate, "yyyy-MM");
-                  }).length}
+                  {events.filter((e) => e.start_date.slice(0, 7) === format(baseDate, "yyyy-MM")).length}
                 </div>
                 <div className="text-[11px] text-[#8B95A1] mt-0.5">회사 일정</div>
               </div>

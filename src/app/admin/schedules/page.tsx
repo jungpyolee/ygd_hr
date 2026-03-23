@@ -151,13 +151,12 @@ function SlotBottomSheet({
   };
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-end justify-center">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
       <div
         className="absolute inset-0 bg-black/40 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative w-full max-w-md bg-white rounded-t-[28px] px-5 pt-8 pb-10 shadow-2xl animate-in slide-in-from-bottom-4 duration-250 max-h-[85vh] overflow-y-auto scrollbar-hide">
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 w-9 h-1 bg-[#D1D6DB] rounded-full" />
+      <div className="relative w-full max-w-md bg-white rounded-[28px] px-5 pt-6 pb-6 shadow-2xl animate-in zoom-in-95 fade-in-0 duration-200 max-h-[85vh] overflow-y-auto scrollbar-hide">
         <div className="flex justify-between items-center mb-6">
           <h3 className="text-[18px] font-bold text-[#191F28]">
             {isNew ? "근무 슬롯 추가" : "근무 슬롯 수정"}
