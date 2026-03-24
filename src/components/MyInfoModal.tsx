@@ -168,13 +168,13 @@ export default function MyInfoModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[49] flex items-center justify-center p-5">
+    <div className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center sm:p-5">
       <div
         className="absolute inset-0 bg-black/40 backdrop-blur-sm"
         onClick={onClose}
       />
 
-      <div className="relative w-full max-w-sm bg-white rounded-[32px] px-6 pb-6 shadow-2xl animate-in slide-in-from-bottom-5 duration-300 max-h-[90vh] overflow-y-auto scrollbar-hide">
+      <div className="relative w-full max-w-sm bg-white rounded-t-[32px] sm:rounded-[32px] px-6 pb-safe shadow-2xl animate-in slide-in-from-bottom-5 duration-300 overflow-y-auto scrollbar-hide" style={{ maxHeight: "calc(100dvh - 80px)", paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom))" }}>
         {/* 헤더 */}
         <div className="flex justify-between items-center mb-6 sticky top-0 bg-white z-20 pt-4 border-b border-slate-50 pb-3">
           <h2 className="text-xl font-bold text-[#191F28]">내 정보 수정</h2>

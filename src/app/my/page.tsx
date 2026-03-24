@@ -55,11 +55,12 @@ export default function MyPage() {
 
       {/* 프로필 카드 */}
       <div className="px-5 mb-4">
-        <button
-          onClick={() => profile && setIsEditModalOpen(true)}
-          className="w-full bg-white rounded-[24px] p-5 border border-slate-100 flex items-center gap-4 active:scale-[0.99] transition-transform text-left"
-        >
-          <div className="relative shrink-0">
+        <div className="w-full bg-white rounded-[24px] p-5 border border-slate-100 flex items-center gap-4">
+          {/* 아바타 + 연필 → 아바타 편집 */}
+          <button
+            onClick={() => profile && setIsAvatarEditorOpen(true)}
+            className="relative shrink-0 active:scale-95 transition-transform"
+          >
             {profile && (
               <AvatarDisplay
                 userId={profile.id}
@@ -67,22 +68,23 @@ export default function MyPage() {
                 size={56}
               />
             )}
-            <button
-              onClick={(e) => { e.stopPropagation(); profile && setIsAvatarEditorOpen(true); }}
-              className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-[#3182F6] flex items-center justify-center shadow"
-            >
+            <span className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-[#3182F6] flex items-center justify-center shadow pointer-events-none">
               <Pencil className="w-2.5 h-2.5 text-white" />
-            </button>
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-[17px] font-bold text-[#191F28]">{profile?.name ?? "이름 없음"}</p>
-            <p className="text-[13px] text-[#8B95A1] mt-0.5">{profile?.phone ?? "전화번호 미등록"}</p>
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="text-[13px] font-semibold text-[#3182F6]">편집하기</span>
-            <ChevronRight className="w-4 h-4 text-[#3182F6]" />
-          </div>
-        </button>
+            </span>
+          </button>
+
+          {/* 프로필 정보 + 연필 → 내 정보 수정 */}
+          <button
+            onClick={() => profile && setIsEditModalOpen(true)}
+            className="flex-1 min-w-0 flex items-center gap-2 text-left active:opacity-70 transition-opacity"
+          >
+            <div className="flex-1 min-w-0">
+              <p className="text-[17px] font-bold text-[#191F28]">{profile?.name ?? "이름 없음"}</p>
+              <p className="text-[13px] text-[#8B95A1] mt-0.5">{profile?.phone ?? "전화번호 미등록"}</p>
+            </div>
+            <Pencil className="w-4 h-4 text-[#3182F6] shrink-0" />
+          </button>
+        </div>
       </div>
 
       {/* 메뉴 */}
