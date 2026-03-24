@@ -1,59 +1,51 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
-import { useRouter } from "next/navigation";
 import { format, subDays } from "date-fns";
 import { ko } from "date-fns/locale";
 import { toast } from "sonner";
-import {
-  ChevronLeft,
-  Plus,
-  X,
-  CheckCircle2,
-  Check,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight, CheckCircle2, X } from "lucide-react";
 
-interface ApprovedRecord {
-  id: string;
-  start_time: string; // "HH:mm"
-  end_time: string;   // "HH:mm"
+// ── 타입 ──────────────────────────────────────────────────────────────
+
+interface StoreSettings {
+  overtime_unit: number; // 15 | 30 | 60 | 0(자유)
+  overtime_include_early: boolean;
+  overtime_min_minutes: number;
 }
 
-interface OvertimeEmployee {
+interface EmpDay {
   profile_id: string;
   name: string;
   color_hex: string;
   date: string; // "yyyy-MM-dd"
-  actual_in: string;
+  actual_in: string; // "HH:mm"
   actual_out: string;
   actual_minutes: number;
-  scheduled_minutes: number;
   schedule_start: string | null;
   schedule_end: string | null;
-  overtime_minutes: number;
-  approved_minutes: number;
-  last_approved_end: string | null;
-  approved_records: ApprovedRecord[];
+  late_out_minutes: number; // 늦게 퇴근한 분
+  early_in_minutes: number; // 일찍 출근한 분
+  case_type: "A" | "B"; // A=스케줄 초과, B=스케줄 없음
+  ot_status: "pending" | "approved" | "dismissed";
+  ot_record_id: string | null;
+  ot_minutes: number | null;
 }
 
-interface Employee {
-  id: string;
-  name: string;
-  color_hex: string | null;
+interface DaySummary {
+  date: string;
+  pending_count: number;
+  approved_count: number;
+  dismissed_count: number;
 }
 
-const QUICK_MINS = [1, 5, 10, 30, 60] as const;
+// ── 헬퍼 ──────────────────────────────────────────────────────────────
 
 function timeToMins(t: string): number {
   const [h, m] = t.split(":").map(Number);
   return h * 60 + m;
-}
-
-function addMinutesToTime(timeStr: string, mins: number): string {
-  const total = timeToMins(timeStr) + mins;
-  return `${String(Math.floor(total / 60) % 24).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
 }
 
 function minsToLabel(mins: number): string {
@@ -64,154 +56,58 @@ function minsToLabel(mins: number): string {
   return `${m}분`;
 }
 
-function TimelineBar({
-  actualIn, actualOut, scheduleStart, scheduleEnd, approvedRecords,
-}: {
-  actualIn: string;
-  actualOut: string;
-  scheduleStart: string | null;
-  scheduleEnd: string | null;
-  approvedRecords: ApprovedRecord[];
-}) {
-  const allMins = [
-    timeToMins(actualIn),
-    timeToMins(actualOut),
-    scheduleStart ? timeToMins(scheduleStart) : null,
-    scheduleEnd ? timeToMins(scheduleEnd) : null,
-    ...approvedRecords.map((r) => timeToMins(r.end_time)),
-  ].filter((t): t is number => t !== null);
-
-  const rangeStart = Math.min(...allMins) - 20;
-  const rangeEnd = Math.max(...allMins) + 20;
-  const range = rangeEnd - rangeStart;
-
-  const pct = (t: string) => (((timeToMins(t) - rangeStart) / range) * 100).toFixed(2);
-  const pctNum = (t: string) => (timeToMins(t) - rangeStart) / range * 100;
-
-  const actualInPct = pctNum(actualIn);
-  const actualOutPct = pctNum(actualOut);
-  const schedStartPct = scheduleStart ? pctNum(scheduleStart) : actualInPct;
-  const schedEndPct = scheduleEnd ? pctNum(scheduleEnd) : actualOutPct;
-
-  // overtime portion start = scheduleEnd (or actualIn if no schedule)
-  const otStartPct = scheduleEnd ? schedEndPct : actualInPct;
-
-  return (
-    <div className="mt-3 mb-1">
-      {/* Bar */}
-      <div className="relative h-5">
-        {/* Background track */}
-        <div className="absolute top-1.5 left-0 right-0 h-2 bg-[#F2F4F6] rounded-full" />
-
-        {/* Schedule zone — light blue */}
-        {scheduleStart && scheduleEnd && (
-          <div
-            className="absolute top-1.5 h-2 rounded-sm bg-[#DBEAFE]"
-            style={{ left: `${schedStartPct}%`, width: `${schedEndPct - schedStartPct}%` }}
-          />
-        )}
-
-        {/* Actual regular work (in → min(schedEnd, actualOut)) */}
-        <div
-          className="absolute top-1.5 h-2 rounded-sm bg-[#94A3B8]/50"
-          style={{
-            left: `${actualInPct}%`,
-            width: `${Math.max(0, Math.min(otStartPct, actualOutPct) - actualInPct)}%`,
-          }}
-        />
-
-        {/* Overtime portion (schedEnd → actualOut) */}
-        {actualOutPct > otStartPct && (
-          <div
-            className="absolute top-1.5 h-2 rounded-sm bg-[#F59E0B]/70"
-            style={{ left: `${otStartPct}%`, width: `${actualOutPct - otStartPct}%` }}
-          />
-        )}
-
-        {/* Approved OT blocks — solid blue, slightly taller */}
-        {approvedRecords.map((rec) => {
-          const s = pctNum(rec.start_time);
-          const e = pctNum(rec.end_time);
-          return (
-            <div
-              key={rec.id}
-              className="absolute top-1 h-3 rounded-sm bg-[#3182F6] opacity-80"
-              style={{ left: `${s}%`, width: `${e - s}%` }}
-            />
-          );
-        })}
-
-        {/* Dot: actual in */}
-        <div
-          className="absolute top-1 w-3 h-3 rounded-full bg-[#4E5968] border-2 border-white shadow-sm"
-          style={{ left: `${pct(actualIn)}%`, transform: "translateX(-50%)" }}
-        />
-        {/* Dot: actual out */}
-        <div
-          className="absolute top-1 w-3 h-3 rounded-full bg-[#F59E0B] border-2 border-white shadow-sm"
-          style={{ left: `${pct(actualOut)}%`, transform: "translateX(-50%)" }}
-        />
-        {/* Tick: schedule start */}
-        {scheduleStart && (
-          <div
-            className="absolute top-0.5 w-0.5 h-4 bg-[#3182F6]/40 rounded-full"
-            style={{ left: `${pct(scheduleStart)}%` }}
-          />
-        )}
-        {/* Tick: schedule end */}
-        {scheduleEnd && (
-          <div
-            className="absolute top-0.5 w-0.5 h-4 bg-[#3182F6]/40 rounded-full"
-            style={{ left: `${pct(scheduleEnd)}%` }}
-          />
-        )}
-      </div>
-
-      {/* Legend */}
-      <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
-        {scheduleStart && scheduleEnd && (
-          <span className="flex items-center gap-1 text-[10px] text-[#8B95A1]">
-            <span className="inline-block w-2 h-1.5 rounded-sm bg-[#DBEAFE]" />
-            스케줄 {scheduleStart}~{scheduleEnd}
-          </span>
-        )}
-        <span className="flex items-center gap-1 text-[10px] text-[#8B95A1]">
-          <span className="inline-block w-2 h-1.5 rounded-sm bg-[#94A3B8]/50" />
-          근무 {actualIn}~{actualOut}
-        </span>
-        {approvedRecords.length > 0 && (
-          <span className="flex items-center gap-1 text-[10px] text-[#3182F6]">
-            <span className="inline-block w-2 h-1.5 rounded-sm bg-[#3182F6]/80" />
-            승인 {minsToLabel(approvedRecords.reduce((s, r) => s + timeToMins(r.end_time) - timeToMins(r.start_time), 0))}
-          </span>
-        )}
-      </div>
-    </div>
-  );
+function quickButtons(unit: number): number[] {
+  if (unit === 15) return [15, 30, 45, 60];
+  if (unit === 30) return [30, 60, 90];
+  if (unit === 60) return [60, 120, 180];
+  return []; // unit=0: 자유입력만
 }
 
-export default function AdminOvertimePage() {
-  const router = useRouter();
-  const [pendingMins, setPendingMins] = useState<Record<string, number>>({});
-  const [submitting, setSubmitting] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [cancelTarget, setCancelTarget] = useState<ApprovedRecord | null>(null);
-  const [showAssignForm, setShowAssignForm] = useState(false);
-  const [assignForm, setAssignForm] = useState({
-    profile_id: "",
-    date: format(new Date(), "yyyy-MM-dd"),
-    start_time: "",
-    end_time: "",
-    reason: "",
-  });
-  const [assignSubmitting, setAssignSubmitting] = useState(false);
+// ── 메인 컴포넌트 ─────────────────────────────────────────────────────
 
-  const { data: overtimeEmployees = [], mutate: mutateOT } = useSWR(
-    "admin-overtime-employees-all",
+export default function AdminOvertimePage() {
+  const [view, setView] = useState<"list" | "detail">("list");
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [directInput, setDirectInput] = useState<{
+    emp: EmpDay;
+    hours: string;
+    mins: string;
+  } | null>(null);
+  const [submitting, setSubmitting] = useState<string | null>(null);
+
+  // 매장 설정
+  const { data: storeSettings } = useSWR<StoreSettings>(
+    "store-overtime-settings",
+    async () => {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("stores")
+        .select("overtime_unit, overtime_include_early, overtime_min_minutes")
+        .order("display_order")
+        .limit(1)
+        .single();
+      return (
+        data ?? {
+          overtime_unit: 30,
+          overtime_include_early: false,
+          overtime_min_minutes: 10,
+        }
+      );
+    },
+    { dedupingInterval: 60_000 }
+  );
+
+  // 추가근무 데이터
+  const {
+    data: empDays = [],
+    mutate,
+    isLoading,
+  } = useSWR<EmpDay[]>(
+    storeSettings ? ["admin-overtime-v2", storeSettings] : null,
     async () => {
       const supabase = createClient();
       const today = new Date();
-      const startDate = format(subDays(today, 13), "yyyy-MM-dd");
+      const startDate = format(subDays(today, 29), "yyyy-MM-dd");
       const endDate = format(today, "yyyy-MM-dd");
       const startStr = new Date(`${startDate}T00:00:00+09:00`).toISOString();
       const endStr = new Date(`${endDate}T23:59:59.999+09:00`).toISOString();
@@ -219,18 +115,26 @@ export default function AdminOvertimePage() {
       // 출퇴근 로그
       const { data: logs } = await supabase
         .from("attendance_logs")
-        .select("profile_id, type, created_at, profiles!profile_id(name, color_hex)")
+        .select(
+          "profile_id, type, created_at, profiles!profile_id(name, color_hex)"
+        )
         .gte("created_at", startStr)
         .lte("created_at", endStr)
         .order("created_at", { ascending: true });
 
-      // date_profileId → { in_time, out_time, name, color }
-      const pairMap = new Map<string, {
-        date: string; profile_id: string; name: string; color: string;
-        in_time: Date; out_time: Date | null;
-      }>();
-
-      (logs || []).forEach((log: any) => {
+      // (date, profile_id) 별 in/out 쌍
+      const pairMap = new Map<
+        string,
+        {
+          date: string;
+          profile_id: string;
+          name: string;
+          color: string;
+          in_time: Date;
+          out_time: Date | null;
+        }
+      >();
+      (logs ?? []).forEach((log: any) => {
         const d = format(new Date(log.created_at), "yyyy-MM-dd");
         const key = `${d}_${log.profile_id}`;
         if (log.type === "IN") {
@@ -238,8 +142,8 @@ export default function AdminOvertimePage() {
             pairMap.set(key, {
               date: d,
               profile_id: log.profile_id,
-              name: log.profiles?.name || "알 수 없음",
-              color: log.profiles?.color_hex || "#8B95A1",
+              name: log.profiles?.name ?? "알 수 없음",
+              color: log.profiles?.color_hex ?? "#8B95A1",
               in_time: new Date(log.created_at),
               out_time: null,
             });
@@ -258,465 +162,720 @@ export default function AdminOvertimePage() {
         .lte("slot_date", endDate)
         .eq("status", "active");
 
-      const slotMap = new Map<string, { mins: number; start: string; end: string }>();
-      (slots || []).forEach((slot: any) => {
+      const slotMap = new Map<string, { start: string; end: string }>();
+      (slots ?? []).forEach((slot: any) => {
         const key = `${slot.slot_date}_${slot.profile_id}`;
-        const [sh, sm] = slot.start_time.split(":").map(Number);
-        const [eh, em] = slot.end_time.split(":").map(Number);
-        const mins = (eh * 60 + em) - (sh * 60 + sm);
         const s = slot.start_time.slice(0, 5);
         const e = slot.end_time.slice(0, 5);
-        const existing = slotMap.get(key);
-        if (!existing) {
-          slotMap.set(key, { mins, start: s, end: e });
+        const ex = slotMap.get(key);
+        if (!ex) {
+          slotMap.set(key, { start: s, end: e });
         } else {
           slotMap.set(key, {
-            mins: existing.mins + mins,
-            start: s < existing.start ? s : existing.start,
-            end: e > existing.end ? e : existing.end,
+            start: s < ex.start ? s : ex.start,
+            end: e > ex.end ? e : ex.end,
           });
         }
       });
 
-      // 승인된 추가근무
-      const { data: approved } = await supabase
+      // 추가근무 기록 (approved + dismissed)
+      const { data: otRecords } = await supabase
         .from("overtime_requests")
-        .select("id, profile_id, date, start_time, end_time")
+        .select("id, profile_id, date, minutes, status")
         .gte("date", startDate)
         .lte("date", endDate)
-        .eq("status", "approved")
-        .order("end_time", { ascending: true });
+        .in("status", ["approved", "dismissed"]);
 
-      const approvedMap = new Map<string, {
-        total_mins: number; last_end: string;
-        records: ApprovedRecord[];
-      }>();
-      (approved || []).forEach((ot: any) => {
-        const key = `${ot.date}_${ot.profile_id}`;
-        const [sh, sm] = ot.start_time.split(":").map(Number);
-        const [eh, em] = ot.end_time.split(":").map(Number);
-        const mins = (eh * 60 + em) - (sh * 60 + sm);
-        const rec: ApprovedRecord = {
-          id: ot.id,
-          start_time: ot.start_time.slice(0, 5),
-          end_time: ot.end_time.slice(0, 5),
-        };
-        const existing = approvedMap.get(key);
-        if (!existing) {
-          approvedMap.set(key, { total_mins: mins, last_end: rec.end_time, records: [rec] });
-        } else {
-          approvedMap.set(key, {
-            total_mins: existing.total_mins + mins,
-            last_end: rec.end_time > existing.last_end ? rec.end_time : existing.last_end,
-            records: [...existing.records, rec],
-          });
-        }
+      const otMap = new Map<
+        string,
+        { id: string; minutes: number; status: "approved" | "dismissed" }
+      >();
+      (otRecords ?? []).forEach((r: any) => {
+        otMap.set(`${r.date}_${r.profile_id}`, {
+          id: r.id,
+          minutes: r.minutes,
+          status: r.status,
+        });
       });
 
-      const result: OvertimeEmployee[] = [];
+      const result: EmpDay[] = [];
+      const settings = storeSettings!;
+
       pairMap.forEach((pair, key) => {
-        if (!pair.out_time) return;
-        const actualMins = Math.floor((pair.out_time.getTime() - pair.in_time.getTime()) / 60000);
+        if (!pair.out_time) return; // 퇴근 기록 없으면 건너뜀
+        const actualMins = Math.floor(
+          (pair.out_time.getTime() - pair.in_time.getTime()) / 60000
+        );
         const slot = slotMap.get(key);
-        const scheduledMins = slot?.mins ?? 0;
-        const overtimeMins = Math.max(0, actualMins - scheduledMins);
-        const approvedData = approvedMap.get(key);
-        const approvedMins = approvedData?.total_mins ?? 0;
-        if (overtimeMins > 0 || approvedMins > 0) {
-          result.push({
-            profile_id: pair.profile_id,
-            name: pair.name,
-            color_hex: pair.color,
-            date: pair.date,
-            actual_in: format(pair.in_time, "HH:mm"),
-            actual_out: format(pair.out_time, "HH:mm"),
-            actual_minutes: actualMins,
-            scheduled_minutes: scheduledMins,
-            schedule_start: slot?.start ?? null,
-            schedule_end: slot?.end ?? null,
-            overtime_minutes: overtimeMins,
-            approved_minutes: approvedMins,
-            last_approved_end: approvedData?.last_end ?? null,
-            approved_records: approvedData?.records ?? [],
-          });
+        const otRecord = otMap.get(key);
+
+        let lateOut = 0;
+        let earlyIn = 0;
+        let caseType: "A" | "B";
+
+        if (slot) {
+          // Case A: 스케줄 있음
+          caseType = "A";
+          const schedEnd = timeToMins(slot.end);
+          const schedStart = timeToMins(slot.start);
+          const actualOut = timeToMins(
+            format(pair.out_time, "HH:mm")
+          );
+          const actualIn = timeToMins(format(pair.in_time, "HH:mm"));
+          lateOut = Math.max(0, actualOut - schedEnd);
+          earlyIn = settings.overtime_include_early
+            ? Math.max(0, schedStart - actualIn)
+            : 0;
+          const candidateMins = lateOut + earlyIn;
+
+          // 최소 기준 미달 + 기록도 없으면 표시 안 함
+          if (candidateMins < settings.overtime_min_minutes && !otRecord) {
+            return;
+          }
+        } else {
+          // Case B: 스케줄 없음
+          caseType = "B";
         }
+
+        const otStatus = otRecord?.status ?? "pending";
+
+        result.push({
+          profile_id: pair.profile_id,
+          name: pair.name,
+          color_hex: pair.color,
+          date: pair.date,
+          actual_in: format(pair.in_time, "HH:mm"),
+          actual_out: format(pair.out_time, "HH:mm"),
+          actual_minutes: actualMins,
+          schedule_start: slot?.start ?? null,
+          schedule_end: slot?.end ?? null,
+          late_out_minutes: lateOut,
+          early_in_minutes: earlyIn,
+          case_type: caseType,
+          ot_status: otStatus,
+          ot_record_id: otRecord?.id ?? null,
+          ot_minutes: otRecord?.minutes ?? null,
+        });
       });
 
-      return result.sort((a, b) =>
-        b.date.localeCompare(a.date) || b.overtime_minutes - a.overtime_minutes
+      return result.sort(
+        (a, b) =>
+          b.date.localeCompare(a.date) || a.name.localeCompare(b.name)
       );
     },
     { dedupingInterval: 30_000, revalidateOnFocus: true }
   );
 
-  const { data: employees = [] } = useSWR("admin-employees-list", async () => {
-    const supabase = createClient();
-    const { data } = await supabase
-      .from("profiles")
-      .select("id, name, color_hex")
-      .neq("role", "admin")
-      .order("name");
-    return (data ?? []) as Employee[];
-  });
+  // 날짜별 요약
+  const daySummaries = useMemo<DaySummary[]>(() => {
+    const map = new Map<string, DaySummary>();
+    empDays.forEach((e) => {
+      if (!map.has(e.date)) {
+        map.set(e.date, {
+          date: e.date,
+          pending_count: 0,
+          approved_count: 0,
+          dismissed_count: 0,
+        });
+      }
+      const s = map.get(e.date)!;
+      if (e.ot_status === "pending") s.pending_count++;
+      else if (e.ot_status === "approved") s.approved_count++;
+      else if (e.ot_status === "dismissed") s.dismissed_count++;
+    });
+    return Array.from(map.values()).sort((a, b) =>
+      b.date.localeCompare(a.date)
+    );
+  }, [empDays]);
 
-  const handleAddMinutes = async (emp: OvertimeEmployee, mins: number) => {
-    const empKey = `${emp.date}_${emp.profile_id}`;
+  const pendingDays = daySummaries.filter((d) => d.pending_count > 0);
+  const confirmedDays = daySummaries.filter((d) => d.pending_count === 0);
+
+  const selectedDayEmps = useMemo(
+    () => empDays.filter((e) => e.date === selectedDate),
+    [empDays, selectedDate]
+  );
+
+  // ── 액션 ──────────────────────────────────────────────────────────
+
+  const handleApprove = async (emp: EmpDay, minutes: number) => {
+    const key = `${emp.date}_${emp.profile_id}`;
     if (submitting) return;
-    setSubmitting(empKey);
+    setSubmitting(key);
     try {
       const supabase = createClient();
-      const startTime = emp.last_approved_end ?? emp.schedule_end ?? "18:00";
-      const endTime = addMinutesToTime(startTime, mins);
-      const { error } = await supabase.from("overtime_requests").insert({
+
+      if (emp.ot_record_id) {
+        // dismissed → approved: UPDATE
+        const { error } = await supabase
+          .from("overtime_requests")
+          .update({ status: "approved", minutes })
+          .eq("id", emp.ot_record_id);
+        if (error) throw error;
+      } else {
+        // pending → approved: INSERT
+        const { error } = await supabase.from("overtime_requests").insert({
+          profile_id: emp.profile_id,
+          date: emp.date,
+          minutes,
+          status: "approved",
+        });
+        if (error) throw error;
+      }
+
+      // 직원 알림 발송
+      await supabase.from("notifications").insert({
         profile_id: emp.profile_id,
-        date: emp.date,
-        start_time: startTime + ":00",
-        end_time: endTime + ":00",
-        status: "approved",
+        target_role: "employee",
+        type: "overtime_approved",
+        title: "추가근무가 등록됐어요",
+        content: `${format(new Date(emp.date + "T00:00:00"), "M월 d일", { locale: ko })} 추가근무 ${minsToLabel(minutes)}이 등록됐어요.`,
       });
-      if (error) throw error;
-      toast.success(`${emp.name}님 +${minsToLabel(mins)} 승인했어요`);
-      setPendingMins((prev) => { const n = { ...prev }; delete n[empKey]; return n; });
-      mutateOT();
+
+      toast.success(`${emp.name}님 ${minsToLabel(minutes)} 인정했어요`);
+      mutate();
     } catch {
-      toast.error("저장에 실패했어요", { description: "잠시 후 다시 시도해주세요." });
+      toast.error("저장에 실패했어요", {
+        description: "잠시 후 다시 시도해주세요.",
+      });
     } finally {
       setSubmitting(null);
     }
   };
 
-  const handleCancelOT = async () => {
-    if (!cancelTarget) return;
-    setDeletingId(cancelTarget.id);
-    setCancelTarget(null);
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.from("overtime_requests").delete().eq("id", cancelTarget.id);
-      if (error) throw error;
-      toast.success("추가근무 승인을 취소했어요");
-      mutateOT();
-    } catch {
-      toast.error("취소에 실패했어요", { description: "잠시 후 다시 시도해주세요." });
-    } finally {
-      setDeletingId(null);
-    }
-  };
-
-  const handleAssign = async () => {
-    if (!assignForm.profile_id) { toast.error("직원을 선택해주세요"); return; }
-    if (!assignForm.start_time || !assignForm.end_time) {
-      toast.error("시간을 입력해주세요", { description: "시작 시간과 종료 시간이 필요해요." }); return;
-    }
-    if (assignForm.start_time >= assignForm.end_time) {
-      toast.error("시간을 확인해주세요", { description: "종료 시간이 시작 시간보다 늦어야 해요." }); return;
-    }
-    setAssignSubmitting(true);
+  const handleDismiss = async (emp: EmpDay) => {
+    const key = `${emp.date}_${emp.profile_id}`;
+    if (submitting) return;
+    setSubmitting(key);
     try {
       const supabase = createClient();
       const { error } = await supabase.from("overtime_requests").insert({
-        profile_id: assignForm.profile_id,
-        date: assignForm.date,
-        start_time: assignForm.start_time,
-        end_time: assignForm.end_time,
-        reason: assignForm.reason || null,
-        status: "approved",
+        profile_id: emp.profile_id,
+        date: emp.date,
+        minutes: 0,
+        status: "dismissed",
       });
       if (error) throw error;
-      toast.success("추가근무를 할당했어요");
-      setShowAssignForm(false);
-      setAssignForm({ profile_id: "", date: format(new Date(), "yyyy-MM-dd"), start_time: "", end_time: "", reason: "" });
-      mutateOT();
+      toast.success(`${emp.name}님 넘겼어요`);
+      mutate();
     } catch {
-      toast.error("할당에 실패했어요", { description: "잠시 후 다시 시도해주세요." });
+      toast.error("처리에 실패했어요", {
+        description: "잠시 후 다시 시도해주세요.",
+      });
     } finally {
-      setAssignSubmitting(false);
+      setSubmitting(null);
     }
   };
 
-  // 날짜별 그룹핑
-  const grouped = overtimeEmployees.reduce<Record<string, OvertimeEmployee[]>>((acc, emp) => {
-    if (!acc[emp.date]) acc[emp.date] = [];
-    acc[emp.date].push(emp);
-    return acc;
-  }, {});
-  const sortedDates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
+  const handleCancelApproved = async (emp: EmpDay) => {
+    if (!emp.ot_record_id || submitting) return;
+    const key = `${emp.date}_${emp.profile_id}`;
+    setSubmitting(key);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("overtime_requests")
+        .delete()
+        .eq("id", emp.ot_record_id);
+      if (error) throw error;
 
-  return (
-    <div className="min-h-screen bg-[#F2F4F6] font-pretendard pb-10">
-      {/* 헤더 */}
-      <header className="sticky top-0 z-10 flex items-center gap-3 px-5 py-4 bg-white/80 backdrop-blur-md border-b border-[#E5E8EB]">
-        <button
-          onClick={() => router.back()}
-          className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-[#F2F4F6]"
-        >
-          <ChevronLeft className="w-5 h-5 text-[#191F28]" />
-        </button>
-        <h1 className="text-[17px] font-bold text-[#191F28]">추가근무 관리</h1>
-        <p className="text-[12px] text-[#8B95A1] ml-1">최근 14일</p>
-        <button
-          onClick={() => setShowAssignForm(true)}
-          className="ml-auto flex items-center gap-1.5 bg-[#3182F6] text-white px-3.5 py-2 rounded-full text-[13px] font-bold"
-        >
-          <Plus className="w-4 h-4" />
-          직접 할당
-        </button>
-      </header>
+      // 취소 알림
+      await supabase.from("notifications").insert({
+        profile_id: emp.profile_id,
+        target_role: "employee",
+        type: "overtime_cancelled",
+        title: "추가근무가 취소됐어요",
+        content: `${format(new Date(emp.date + "T00:00:00"), "M월 d일", { locale: ko })} 추가근무가 취소됐어요.`,
+      });
 
-      {/* 목록 */}
-      <div className="px-5 pt-5 space-y-6">
-        {sortedDates.length === 0 ? (
-          <div className="bg-white rounded-[24px] p-10 flex flex-col items-center gap-2 border border-slate-100 mt-2">
+      toast.success("추가근무 인정을 취소했어요");
+      mutate();
+    } catch {
+      toast.error("취소에 실패했어요", {
+        description: "잠시 후 다시 시도해주세요.",
+      });
+    } finally {
+      setSubmitting(null);
+    }
+  };
+
+  const openDirectInput = (emp: EmpDay) => {
+    setDirectInput({ emp, hours: "0", mins: "30" });
+  };
+
+  const handleDirectInputSubmit = async () => {
+    if (!directInput) return;
+    const h = parseInt(directInput.hours) || 0;
+    const m = parseInt(directInput.mins) || 0;
+    const totalMins = h * 60 + m;
+    if (totalMins <= 0) {
+      toast.error("시간을 입력해주세요");
+      return;
+    }
+    setDirectInput(null);
+    await handleApprove(directInput.emp, totalMins);
+  };
+
+  // ── 렌더 ──────────────────────────────────────────────────────────
+
+  const openDetail = (date: string) => {
+    setSelectedDate(date);
+    setView("detail");
+  };
+
+  const closeDetail = () => {
+    setView("list");
+    setSelectedDate(null);
+  };
+
+  const unit = storeSettings?.overtime_unit ?? 30;
+  const buttons = quickButtons(unit);
+
+  // ── 날짜 목록 뷰 ──────────────────────────────────────────────────
+
+  if (view === "list") {
+    return (
+      <>
+        <h1 className="text-[22px] font-bold text-[#191F28] mb-6">
+          추가근무 관리
+        </h1>
+
+        {isLoading ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="h-16 bg-[#F2F4F6] rounded-[16px] animate-pulse"
+              />
+            ))}
+          </div>
+        ) : daySummaries.length === 0 ? (
+          <div className="bg-white rounded-[24px] p-10 flex flex-col items-center gap-2 border border-[#E5E8EB]">
             <CheckCircle2 className="w-10 h-10 text-[#D1D6DB]" />
-            <p className="text-[14px] text-[#8B95A1]">초과 근무 직원이 없어요</p>
+            <p className="text-[14px] text-[#8B95A1]">
+              추가근무 확인 내역이 없어요
+            </p>
             <p className="text-[12px] text-[#B0B8C1] text-center">
-              최근 14일간 스케줄을 초과해 퇴근한 직원만 표시돼요
+              최근 30일간 스케줄을 초과하거나 스케줄 없이 근무한 직원만
+              표시돼요
             </p>
           </div>
         ) : (
-          sortedDates.map((date) => (
-            <div key={date}>
-              <p className="text-[13px] font-bold text-[#8B95A1] px-1 mb-2">
-                {format(new Date(date + "T00:00:00"), "M월 d일 (eeee)", { locale: ko })}
-              </p>
-              <div className="space-y-3">
-                {grouped[date].map((emp) => {
-                  const empKey = `${emp.date}_${emp.profile_id}`;
-                  const pending = pendingMins[empKey];
-                  const startTime = emp.last_approved_end ?? emp.schedule_end ?? "18:00";
-                  const previewEnd = pending ? addMinutesToTime(startTime, pending) : null;
-                  const isSubmitting = submitting === empKey;
-
-                  return (
-                    <div key={empKey} className="bg-white rounded-[20px] p-5 border border-slate-100">
-                      {/* 직원 정보 */}
-                      <div className="flex items-center gap-3">
-                        <div
-                          className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 text-white font-bold text-[15px]"
-                          style={{ backgroundColor: emp.color_hex }}
-                        >
-                          {emp.name?.charAt(0)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[15px] font-bold text-[#191F28]">{emp.name}</p>
-                        </div>
-                        <div className="text-right shrink-0 space-y-0.5">
-                          <p className="text-[13px] font-bold text-[#F59E0B]">
-                            초과 {minsToLabel(emp.overtime_minutes)}
-                          </p>
-                          {emp.approved_minutes > 0 && (
-                            <p className="text-[11px] font-semibold text-[#3182F6]">
-                              승인 {minsToLabel(emp.approved_minutes)}
-                            </p>
+          <div className="space-y-6">
+            {/* 확인 필요 */}
+            {pendingDays.length > 0 && (
+              <section>
+                <p className="text-[12px] font-bold text-[#8B95A1] mb-2 px-1">
+                  확인 필요
+                </p>
+                <div className="space-y-2">
+                  {pendingDays.map((day) => (
+                    <button
+                      key={day.date}
+                      onClick={() => openDetail(day.date)}
+                      className="w-full flex items-center justify-between bg-white rounded-[16px] px-5 py-4 border border-[#E5E8EB] active:bg-[#F8F9FA]"
+                    >
+                      <div className="text-left">
+                        <p className="text-[15px] font-bold text-[#191F28]">
+                          {format(
+                            new Date(day.date + "T00:00:00"),
+                            "M월 d일 (eeee)",
+                            { locale: ko }
                           )}
-                        </div>
+                          {day.date ===
+                            format(new Date(), "yyyy-MM-dd") && (
+                            <span className="ml-2 text-[12px] text-[#3182F6] font-semibold">
+                              오늘
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-[13px] text-[#F59E0B] font-semibold mt-0.5">
+                          {day.pending_count}명 대기
+                        </p>
                       </div>
+                      <ChevronRight className="w-5 h-5 text-[#B0B8C1]" />
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
 
-                      {/* 타임라인 */}
-                      <TimelineBar
-                        actualIn={emp.actual_in}
-                        actualOut={emp.actual_out}
-                        scheduleStart={emp.schedule_start}
-                        scheduleEnd={emp.schedule_end}
-                        approvedRecords={emp.approved_records}
-                      />
-
-                      {/* 승인된 추가근무 레코드 */}
-                      {emp.approved_records.length > 0 && (
-                        <div className="mt-3 flex flex-wrap gap-1.5">
-                          {emp.approved_records.map((rec) => (
-                            <div
-                              key={rec.id}
-                              className="flex items-center gap-1.5 px-2.5 py-1 bg-[#E8F3FF] rounded-full"
-                            >
-                              <Check className="w-3 h-3 text-[#3182F6]" />
-                              <span className="text-[12px] font-semibold text-[#3182F6]">
-                                {rec.start_time}~{rec.end_time}
-                              </span>
-                              <button
-                                onClick={() => setCancelTarget(rec)}
-                                disabled={deletingId === rec.id}
-                                className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-[#3182F6]/10 disabled:opacity-40"
-                              >
-                                <X className="w-2.5 h-2.5 text-[#3182F6]" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* 빠른 추가 버튼 */}
-                      <div className="mt-3 flex gap-1.5 flex-wrap">
-                        {QUICK_MINS.map((mins) => (
-                          <button
-                            key={mins}
-                            onClick={() =>
-                              setPendingMins((prev) => ({
-                                ...prev,
-                                [empKey]: prev[empKey] === mins ? 0 : mins,
-                              }))
-                            }
-                            disabled={isSubmitting}
-                            className={`flex-1 min-w-[48px] py-2 rounded-[10px] text-[13px] font-bold transition-all active:scale-[0.97] disabled:opacity-50 ${
-                              pending === mins
-                                ? "bg-[#3182F6] text-white"
-                                : "bg-[#F2F4F6] text-[#4E5968]"
-                            }`}
-                          >
-                            {mins === 60 ? "+1시간" : `+${mins}분`}
-                          </button>
-                        ))}
+            {/* 확인 완료 */}
+            {confirmedDays.length > 0 && (
+              <section>
+                <p className="text-[12px] font-bold text-[#8B95A1] mb-2 px-1">
+                  확인 완료
+                </p>
+                <div className="space-y-2">
+                  {confirmedDays.map((day) => (
+                    <button
+                      key={day.date}
+                      onClick={() => openDetail(day.date)}
+                      className="w-full flex items-center justify-between bg-white rounded-[16px] px-5 py-4 border border-[#E5E8EB] active:bg-[#F8F9FA]"
+                    >
+                      <div className="text-left">
+                        <p className="text-[15px] font-bold text-[#191F28]">
+                          {format(
+                            new Date(day.date + "T00:00:00"),
+                            "M월 d일 (eeee)",
+                            { locale: ko }
+                          )}
+                        </p>
+                        <p className="text-[13px] text-[#8B95A1] mt-0.5">
+                          {day.approved_count > 0 && day.dismissed_count > 0
+                            ? `추가근무 ${day.approved_count}건 · 넘김 ${day.dismissed_count}건`
+                            : day.approved_count > 0
+                              ? `추가근무 ${day.approved_count}건`
+                              : `전원 넘김`}
+                        </p>
                       </div>
+                      <ChevronRight className="w-5 h-5 text-[#B0B8C1]" />
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+          </div>
+        )}
+      </>
+    );
+  }
 
-                      {/* 스테이징 미리보기 */}
-                      {pending ? (
-                        <div className="mt-2 flex items-center justify-between bg-[#F8FAFF] border border-[#DBEAFE] rounded-[12px] px-3.5 py-2.5">
-                          <div>
-                            <p className="text-[12px] font-semibold text-[#3182F6]">
-                              {startTime} → {previewEnd}
-                            </p>
-                            <p className="text-[11px] text-[#8B95A1] mt-0.5">
-                              +{minsToLabel(pending)} 추가 예정이에요
-                            </p>
-                          </div>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() =>
-                                setPendingMins((prev) => { const n = { ...prev }; delete n[empKey]; return n; })
-                              }
-                              className="px-3 py-1.5 rounded-[8px] text-[12px] text-[#4E5968] bg-white border border-[#E5E8EB] font-semibold"
-                            >
-                              취소
-                            </button>
-                            <button
-                              onClick={() => handleAddMinutes(emp, pending)}
-                              disabled={isSubmitting}
-                              className="px-3 py-1.5 rounded-[8px] text-[12px] text-white bg-[#3182F6] font-bold disabled:opacity-60"
-                            >
-                              {isSubmitting ? "승인 중..." : "승인하기"}
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
+  // ── 날짜 상세 뷰 ──────────────────────────────────────────────────
+
+  const pendingEmps = selectedDayEmps.filter((e) => e.ot_status === "pending");
+  const approvedEmps = selectedDayEmps.filter(
+    (e) => e.ot_status === "approved"
+  );
+  const dismissedEmps = selectedDayEmps.filter(
+    (e) => e.ot_status === "dismissed"
+  );
+
+  return (
+    <>
+      {/* 뒤로가기 */}
+      <div className="flex items-center gap-3 mb-6">
+        <button
+          onClick={closeDetail}
+          className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-[#F2F4F6] -ml-1"
+        >
+          <ChevronLeft className="w-5 h-5 text-[#191F28]" />
+        </button>
+        <h1 className="text-[20px] font-bold text-[#191F28]">
+          {selectedDate &&
+            format(new Date(selectedDate + "T00:00:00"), "M월 d일 (eeee)", {
+              locale: ko,
+            })}
+        </h1>
+      </div>
+
+      <div className="space-y-6">
+        {/* 확인 필요 */}
+        {pendingEmps.length > 0 && (
+          <section>
+            <p className="text-[12px] font-bold text-[#8B95A1] mb-2 px-1">
+              확인 필요
+            </p>
+            <div className="space-y-3">
+              {pendingEmps.map((emp) => {
+                const key = `${emp.date}_${emp.profile_id}`;
+                const isSubmitting = submitting === key;
+
+                return (
+                  <div
+                    key={key}
+                    className="bg-white rounded-[20px] p-5 border border-[#E5E8EB]"
+                  >
+                    {/* 직원 정보 */}
+                    <div className="flex items-center gap-3 mb-3">
+                      <div
+                        className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 text-white font-bold text-[15px]"
+                        style={{ backgroundColor: emp.color_hex }}
+                      >
+                        {emp.name.charAt(0)}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-[15px] font-bold text-[#191F28]">
+                          {emp.name}
+                        </p>
+                        <p className="text-[12px] text-[#8B95A1]">
+                          {emp.case_type === "A"
+                            ? "스케줄 초과"
+                            : "스케줄 없음"}
+                        </p>
+                      </div>
                     </div>
-                  );
-                })}
-              </div>
+
+                    {/* 근무 정보 */}
+                    <div className="bg-[#F8F9FA] rounded-[12px] px-4 py-3 mb-3 space-y-1">
+                      {emp.case_type === "A" && emp.schedule_start && emp.schedule_end ? (
+                        <>
+                          <div className="flex justify-between text-[13px]">
+                            <span className="text-[#8B95A1]">스케줄</span>
+                            <span className="font-semibold text-[#4E5968]">
+                              {emp.schedule_start} ~ {emp.schedule_end}
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-[13px]">
+                            <span className="text-[#8B95A1]">실제</span>
+                            <span className="font-semibold text-[#4E5968]">
+                              {emp.actual_in} ~ {emp.actual_out}
+                            </span>
+                          </div>
+                          {emp.late_out_minutes > 0 && (
+                            <div className="flex justify-between text-[13px]">
+                              <span className="text-[#8B95A1]">늦게 퇴근</span>
+                              <span className="font-bold text-[#F59E0B]">
+                                +{minsToLabel(emp.late_out_minutes)}
+                              </span>
+                            </div>
+                          )}
+                          {emp.early_in_minutes > 0 && (
+                            <div className="flex justify-between text-[13px]">
+                              <span className="text-[#8B95A1]">일찍 출근</span>
+                              <span className="font-bold text-[#F59E0B]">
+                                +{minsToLabel(emp.early_in_minutes)}
+                              </span>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <div className="flex justify-between text-[13px]">
+                            <span className="text-[#8B95A1]">실제 근무</span>
+                            <span className="font-semibold text-[#4E5968]">
+                              {emp.actual_in} ~ {emp.actual_out} (
+                              {minsToLabel(emp.actual_minutes)})
+                            </span>
+                          </div>
+                          <p className="text-[12px] text-[#B0B8C1]">
+                            이 날 스케줄이 없어요.
+                          </p>
+                        </>
+                      )}
+                    </div>
+
+                    {/* 액션 버튼 */}
+                    <div className="flex gap-2 flex-wrap">
+                      <button
+                        onClick={() => handleDismiss(emp)}
+                        disabled={isSubmitting}
+                        className="flex-none px-4 py-2.5 rounded-[12px] bg-[#F2F4F6] text-[13px] font-bold text-[#4E5968] disabled:opacity-50 active:scale-[0.97]"
+                      >
+                        넘기기
+                      </button>
+                      {buttons.map((mins) => (
+                        <button
+                          key={mins}
+                          onClick={() => handleApprove(emp, mins)}
+                          disabled={isSubmitting}
+                          className="flex-1 min-w-[56px] py-2.5 rounded-[12px] bg-[#E8F3FF] text-[13px] font-bold text-[#3182F6] disabled:opacity-50 active:scale-[0.97]"
+                        >
+                          {minsToLabel(mins)}
+                        </button>
+                      ))}
+                      <button
+                        onClick={() => openDirectInput(emp)}
+                        disabled={isSubmitting}
+                        className="flex-none px-4 py-2.5 rounded-[12px] bg-[#F2F4F6] text-[13px] font-bold text-[#4E5968] disabled:opacity-50 active:scale-[0.97]"
+                      >
+                        직접입력
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          ))
+          </section>
+        )}
+
+        {/* 추가근무 인정 */}
+        {approvedEmps.length > 0 && (
+          <section>
+            <p className="text-[12px] font-bold text-[#8B95A1] mb-2 px-1">
+              추가근무 인정
+            </p>
+            <div className="space-y-2">
+              {approvedEmps.map((emp) => {
+                const key = `${emp.date}_${emp.profile_id}`;
+                const isSubmitting = submitting === key;
+                return (
+                  <div
+                    key={key}
+                    className="bg-white rounded-[16px] px-5 py-4 border border-[#E5E8EB] flex items-center gap-3"
+                  >
+                    <div
+                      className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-white font-bold text-[13px]"
+                      style={{ backgroundColor: emp.color_hex }}
+                    >
+                      {emp.name.charAt(0)}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-[14px] font-bold text-[#191F28]">
+                        {emp.name}
+                      </p>
+                      <p className="text-[12px] text-[#3182F6] font-semibold">
+                        {minsToLabel(emp.ot_minutes!)} 인정됨
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleCancelApproved(emp)}
+                      disabled={isSubmitting}
+                      className="px-3.5 py-2 rounded-[10px] bg-[#F2F4F6] text-[12px] font-bold text-[#4E5968] disabled:opacity-50 active:scale-[0.97]"
+                    >
+                      취소
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* 넘김 */}
+        {dismissedEmps.length > 0 && (
+          <section>
+            <p className="text-[12px] font-bold text-[#8B95A1] mb-2 px-1">
+              넘김
+            </p>
+            <div className="space-y-2">
+              {dismissedEmps.map((emp) => {
+                const key = `${emp.date}_${emp.profile_id}`;
+                const isSubmitting = submitting === key;
+                const detail =
+                  emp.case_type === "A" && emp.late_out_minutes > 0
+                    ? `늦게 퇴근 +${minsToLabel(emp.late_out_minutes)}`
+                    : emp.case_type === "B"
+                      ? `${minsToLabel(emp.actual_minutes)} 근무`
+                      : "";
+
+                return (
+                  <div
+                    key={key}
+                    className="bg-white rounded-[16px] px-5 py-4 border border-[#E5E8EB] flex items-center gap-3"
+                  >
+                    <div
+                      className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-white font-bold text-[13px]"
+                      style={{ backgroundColor: emp.color_hex }}
+                    >
+                      {emp.name.charAt(0)}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-[14px] font-bold text-[#191F28]">
+                        {emp.name}
+                      </p>
+                      {detail && (
+                        <p className="text-[12px] text-[#B0B8C1]">{detail}</p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => openDirectInput(emp)}
+                      disabled={isSubmitting}
+                      className="px-3.5 py-2 rounded-[10px] bg-[#E8F3FF] text-[12px] font-bold text-[#3182F6] disabled:opacity-50 active:scale-[0.97]"
+                    >
+                      추가근무로
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {selectedDayEmps.length === 0 && (
+          <div className="bg-white rounded-[24px] p-10 flex flex-col items-center gap-2 border border-[#E5E8EB]">
+            <CheckCircle2 className="w-10 h-10 text-[#D1D6DB]" />
+            <p className="text-[14px] text-[#8B95A1]">
+              이 날은 확인할 내용이 없어요
+            </p>
+          </div>
         )}
       </div>
 
-      {/* 승인 취소 확인 모달 */}
-      {cancelTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setCancelTarget(null)} />
-          <div className="relative bg-white rounded-[24px] px-6 py-6 w-full max-w-sm animate-in fade-in zoom-in-95 duration-200">
-            <p className="text-[17px] font-bold text-[#191F28] mb-1">승인을 취소할까요?</p>
-            <p className="text-[14px] text-[#4E5968]">
-              {cancelTarget.start_time}~{cancelTarget.end_time} 추가근무 승인이 삭제돼요.
-            </p>
-            <div className="flex gap-2 mt-5">
-              <button
-                onClick={() => setCancelTarget(null)}
-                className="flex-1 py-3 rounded-[14px] bg-[#F2F4F6] text-[15px] font-bold text-[#4E5968]"
-              >
-                돌아가기
-              </button>
-              <button
-                onClick={handleCancelOT}
-                className="flex-1 py-3 rounded-[14px] bg-red-500 text-[15px] font-bold text-white"
-              >
-                취소하기
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 직접 할당 바텀시트 */}
-      {showAssignForm && (
+      {/* 직접 입력 바텀시트 */}
+      {directInput && (
         <div className="fixed inset-0 z-50 flex flex-col justify-end">
           <div
             className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-            onClick={() => setShowAssignForm(false)}
+            onClick={() => setDirectInput(null)}
           />
-          <div className="relative bg-white rounded-t-[28px] px-5 pt-5 pb-8 space-y-4 animate-in slide-in-from-bottom duration-300">
-            <div className="flex items-center justify-between mb-1">
-              <h2 className="text-[18px] font-bold text-[#191F28]">추가근무 할당하기</h2>
+          <div className="relative bg-white rounded-t-[28px] px-5 pt-5 pb-8 animate-in slide-in-from-bottom duration-300">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-[18px] font-bold text-[#191F28]">
+                추가근무 시간 입력
+              </h2>
               <button
-                onClick={() => setShowAssignForm(false)}
+                onClick={() => setDirectInput(null)}
                 className="w-8 h-8 rounded-full bg-[#F2F4F6] flex items-center justify-center"
               >
                 <X className="w-4 h-4 text-[#4E5968]" />
               </button>
             </div>
 
-            <div>
-              <label className="text-[13px] font-semibold text-[#4E5968] mb-1.5 block">직원</label>
-              <select
-                value={assignForm.profile_id}
-                onChange={(e) => setAssignForm((f) => ({ ...f, profile_id: e.target.value }))}
-                className="w-full bg-[#F2F4F6] rounded-[14px] px-4 py-3 text-[15px] font-semibold text-[#191F28] outline-none"
-              >
-                <option value="">직원을 선택해주세요</option>
-                {employees.map((emp) => (
-                  <option key={emp.id} value={emp.id}>{emp.name}</option>
-                ))}
-              </select>
-            </div>
+            <p className="text-[13px] text-[#8B95A1] mb-4">
+              {directInput.emp.name}님 —{" "}
+              {selectedDate &&
+                format(new Date(selectedDate + "T00:00:00"), "M월 d일", {
+                  locale: ko,
+                })}
+            </p>
 
-            <div>
-              <label className="text-[13px] font-semibold text-[#4E5968] mb-1.5 block">날짜</label>
-              <input
-                type="date"
-                value={assignForm.date}
-                onChange={(e) => setAssignForm((f) => ({ ...f, date: e.target.value }))}
-                className="w-full bg-[#F2F4F6] rounded-[14px] px-4 py-3 text-[15px] font-semibold text-[#191F28] outline-none"
-              />
-            </div>
-
-            <div className="flex gap-3">
+            <div className="flex gap-4 mb-6">
               <div className="flex-1">
-                <label className="text-[13px] font-semibold text-[#4E5968] mb-1.5 block">시작 시간</label>
-                <input
-                  type="time"
-                  value={assignForm.start_time}
-                  onChange={(e) => setAssignForm((f) => ({ ...f, start_time: e.target.value }))}
-                  className="w-full bg-[#F2F4F6] rounded-[14px] px-4 py-3 text-[15px] font-semibold text-[#191F28] outline-none"
-                />
+                <label className="text-[13px] font-semibold text-[#4E5968] mb-1.5 block">
+                  시간
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    max="23"
+                    value={directInput.hours}
+                    onChange={(e) =>
+                      setDirectInput((d) =>
+                        d ? { ...d, hours: e.target.value } : d
+                      )
+                    }
+                    className="w-full bg-[#F2F4F6] rounded-[14px] px-4 py-3.5 text-[18px] font-bold text-[#191F28] outline-none text-center"
+                  />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[13px] text-[#8B95A1] font-semibold">
+                    시간
+                  </span>
+                </div>
               </div>
               <div className="flex-1">
-                <label className="text-[13px] font-semibold text-[#4E5968] mb-1.5 block">종료 시간</label>
-                <input
-                  type="time"
-                  value={assignForm.end_time}
-                  onChange={(e) => setAssignForm((f) => ({ ...f, end_time: e.target.value }))}
-                  className="w-full bg-[#F2F4F6] rounded-[14px] px-4 py-3 text-[15px] font-semibold text-[#191F28] outline-none"
-                />
+                <label className="text-[13px] font-semibold text-[#4E5968] mb-1.5 block">
+                  분
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    max="59"
+                    value={directInput.mins}
+                    onChange={(e) =>
+                      setDirectInput((d) =>
+                        d ? { ...d, mins: e.target.value } : d
+                      )
+                    }
+                    className="w-full bg-[#F2F4F6] rounded-[14px] px-4 py-3.5 text-[18px] font-bold text-[#191F28] outline-none text-center"
+                  />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[13px] text-[#8B95A1] font-semibold">
+                    분
+                  </span>
+                </div>
               </div>
-            </div>
-
-            <div>
-              <label className="text-[13px] font-semibold text-[#4E5968] mb-1.5 block">사유 (선택)</label>
-              <textarea
-                value={assignForm.reason}
-                onChange={(e) => setAssignForm((f) => ({ ...f, reason: e.target.value }))}
-                placeholder="추가근무 내용을 간단히 적어주세요"
-                rows={2}
-                className="w-full bg-[#F2F4F6] rounded-[14px] px-4 py-3 text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] outline-none resize-none"
-              />
             </div>
 
             <button
-              onClick={handleAssign}
-              disabled={assignSubmitting}
-              className="w-full bg-[#3182F6] text-white rounded-[16px] py-4 text-[16px] font-bold active:scale-[0.99] transition-all disabled:opacity-50"
+              onClick={handleDirectInputSubmit}
+              className="w-full bg-[#3182F6] text-white rounded-[16px] py-4 text-[16px] font-bold active:scale-[0.99] transition-all"
             >
-              {assignSubmitting ? "할당 중..." : "추가근무 승인 처리하기"}
+              등록하기
             </button>
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

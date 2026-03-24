@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
-import { format, addDays, differenceInDays } from "date-fns";
+import { format, addDays, differenceInDays, subDays } from "date-fns";
 import { useWorkplaces } from "@/lib/hooks/useWorkplaces";
 import { ko } from "date-fns/locale";
 
@@ -162,6 +162,99 @@ export default function AdminDashboardPage() {
       }));
     },
     { dedupingInterval: 300_000, revalidateOnFocus: false },
+  );
+
+  // 추가근무 미처리 건수 (date-profile_id 별로 approved/dismissed 없는 것)
+  const { data: pendingOvertimeCount = 0 } = useSWR(
+    "admin-pending-overtime-count",
+    async () => {
+      const supabase = createClient();
+      const today = new Date();
+      const startDate = format(subDays(today, 29), "yyyy-MM-dd");
+      const endDate = format(today, "yyyy-MM-dd");
+      const startStr = new Date(`${startDate}T00:00:00+09:00`).toISOString();
+      const endStr = new Date(`${endDate}T23:59:59.999+09:00`).toISOString();
+
+      const [{ data: logs }, { data: slots }, { data: otRecords }, { data: storeData }] =
+        await Promise.all([
+          supabase
+            .from("attendance_logs")
+            .select("profile_id, type, created_at")
+            .gte("created_at", startStr)
+            .lte("created_at", endStr),
+          supabase
+            .from("schedule_slots")
+            .select("profile_id, slot_date, start_time, end_time")
+            .gte("slot_date", startDate)
+            .lte("slot_date", endDate)
+            .eq("status", "active"),
+          supabase
+            .from("overtime_requests")
+            .select("profile_id, date")
+            .gte("date", startDate)
+            .lte("date", endDate)
+            .in("status", ["approved", "dismissed"]),
+          supabase
+            .from("stores")
+            .select("overtime_min_minutes, overtime_include_early")
+            .order("display_order")
+            .limit(1)
+            .single(),
+        ]);
+
+      const minMinutes = storeData?.overtime_min_minutes ?? 10;
+      const includeEarly = storeData?.overtime_include_early ?? false;
+
+      // processed 키 세트
+      const processedKeys = new Set(
+        (otRecords ?? []).map((r: any) => `${r.date}_${r.profile_id}`)
+      );
+
+      // 출퇴근 쌍
+      const pairMap = new Map<string, { date: string; in: Date; out: Date | null }>();
+      (logs ?? []).forEach((log: any) => {
+        const d = format(new Date(log.created_at), "yyyy-MM-dd");
+        const key = `${d}_${log.profile_id}`;
+        if (log.type === "IN") {
+          if (!pairMap.has(key))
+            pairMap.set(key, { date: d, in: new Date(log.created_at), out: null });
+        } else if (log.type === "OUT") {
+          const p = pairMap.get(key);
+          if (p) p.out = new Date(log.created_at);
+        }
+      });
+
+      // 슬롯 맵
+      const slotMap = new Map<string, { start: string; end: string }>();
+      (slots ?? []).forEach((slot: any) => {
+        const key = `${slot.slot_date}_${slot.profile_id}`;
+        const s = slot.start_time.slice(0, 5);
+        const e = slot.end_time.slice(0, 5);
+        const ex = slotMap.get(key);
+        if (!ex) slotMap.set(key, { start: s, end: e });
+        else slotMap.set(key, { start: s < ex.start ? s : ex.start, end: e > ex.end ? e : ex.end });
+      });
+
+      let count = 0;
+      pairMap.forEach((pair, key) => {
+        if (!pair.out) return;
+        if (processedKeys.has(key)) return;
+        const slot = slotMap.get(key);
+        if (slot) {
+          const toM = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+          const lateOut = Math.max(0, toM(format(pair.out, "HH:mm")) - toM(slot.end));
+          const earlyIn = includeEarly
+            ? Math.max(0, toM(slot.start) - toM(format(pair.in, "HH:mm")))
+            : 0;
+          if (lateOut + earlyIn >= minMinutes) count++;
+        } else {
+          count++; // 스케줄 없음 케이스
+        }
+      });
+
+      return count;
+    },
+    { dedupingInterval: 120_000, revalidateOnFocus: true }
   );
 
   const statusConfig = (item: TodayAttendanceItem) =>
@@ -379,12 +472,21 @@ export default function AdminDashboardPage() {
           className="group flex items-center justify-between p-6 bg-white rounded-[24px] border border-slate-100 shadow-sm hover:shadow-md transition-all"
         >
           <div className="flex items-center gap-4 text-left">
-            <div className="w-11 h-11 rounded-2xl bg-[#F2F4F6] flex items-center justify-center group-hover:bg-[#E8F3FF]">
+            <div className="relative w-11 h-11 rounded-2xl bg-[#F2F4F6] flex items-center justify-center group-hover:bg-[#E8F3FF]">
               <TimerIcon className="w-5 h-5 text-[#4E5968] group-hover:text-[#3182F6]" />
+              {pendingOvertimeCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-[#F59E0B] text-white text-[11px] font-bold rounded-full flex items-center justify-center">
+                  {pendingOvertimeCount}
+                </span>
+              )}
             </div>
             <div>
               <p className="text-[16px] font-bold text-[#191F28]">추가근무 관리</p>
-              <p className="text-[12px] text-[#8B95A1]">요청 승인 및 직접 할당</p>
+              <p className="text-[12px] text-[#8B95A1]">
+                {pendingOvertimeCount > 0
+                  ? `확인 필요 ${pendingOvertimeCount}건`
+                  : "모두 확인 완료"}
+              </p>
             </div>
           </div>
           <ArrowRight className="w-4 h-4 text-[#D1D6DB] group-hover:text-[#3182F6]" />

@@ -121,7 +121,7 @@ export default function HomeClient({
       // 승인된 추가근무
       const { data: overtimes } = await supabase
         .from("overtime_requests")
-        .select("start_time, end_time")
+        .select("minutes")
         .eq("profile_id", profileId)
         .eq("status", "approved")
         .gte("date", monthStartStr)
@@ -129,9 +129,7 @@ export default function HomeClient({
 
       let overtimeMinutes = 0;
       (overtimes ?? []).forEach((ot: any) => {
-        const [sh, sm] = ot.start_time.split(":").map(Number);
-        const [eh, em] = ot.end_time.split(":").map(Number);
-        overtimeMinutes += (eh * 60 + em) - (sh * 60 + sm);
+        overtimeMinutes += ot.minutes;
       });
 
       const totalMinutes = scheduleMinutes + overtimeMinutes;

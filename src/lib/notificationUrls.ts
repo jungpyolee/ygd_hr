@@ -34,6 +34,9 @@ export function getNotificationUrl(
   }
 
   switch (type) {
+    case "overtime_approved":
+    case "overtime_cancelled":
+      return "/";
     case "substitute_approved":
       return "/calendar";
     case "substitute_rejected":

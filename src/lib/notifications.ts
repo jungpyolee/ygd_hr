@@ -27,7 +27,9 @@ export type NotificationType =
   | "profile_update"
   | "onboarding"
   | "attendance_fallback_in"
-  | "attendance_fallback_out";
+  | "attendance_fallback_out"
+  | "overtime_approved"
+  | "overtime_cancelled";
 
 const adminSupabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,

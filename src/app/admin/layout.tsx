@@ -251,6 +251,11 @@ export default function AdminLayout({
       icon: <ClipboardList className="w-5 h-5" />,
     },
     {
+      name: "매장 설정",
+      path: "/admin/settings",
+      icon: <Settings className="w-5 h-5" />,
+    },
+    {
       name: "직원 모드로 변경",
       path: "/",
       icon: <User className="w-5 h-5" />,

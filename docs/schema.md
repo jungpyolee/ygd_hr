@@ -118,6 +118,9 @@
 | `bg_color` | text | NO | `'#F2F4F6'` | UI 배경색 |
 | `display_order` | integer | NO | `0` | 정렬 순서 |
 | `is_gps_required` | boolean | NO | `true` | GPS 위치 체크 필요 여부 (케이터링 등 이동형 근무지는 false) |
+| `overtime_unit` | integer | NO | `30` | 추가근무 인정 단위(분): 15/30/60/0(자유입력) |
+| `overtime_include_early` | boolean | NO | `false` | 일찍 출근한 시간도 추가근무에 포함할지 여부 |
+| `overtime_min_minutes` | integer | NO | `10` | 이 값(분) 이상일 때만 확인 필요로 표시 |
 
 **비고**
 - `lat`/`lng`는 nullable — `is_gps_required=false`인 근무지는 null 허용
@@ -163,6 +166,31 @@
 **제약조건**
 - UNIQUE: `(profile_id, store_id)`
 - RLS: admin ALL, 본인 SELECT
+
+---
+
+## overtime_requests
+
+추가근무 인정/넘김 기록. 사장이 직접 관리 (직원 요청 기능 없음).
+
+| 컬럼 | 타입 | NULL | 기본값 | 설명 |
+|------|------|------|--------|------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `profile_id` | uuid | NO | - | FK → profiles.id CASCADE |
+| `date` | date | NO | - | 해당 날짜 |
+| `minutes` | integer | NO | - | 인정된 추가근무 분 (dismissed는 0) |
+| `reason` | text | YES | - | 메모 (선택) |
+| `status` | overtime_status | NO | `'pending'` | `approved` / `dismissed` (pending/rejected는 미사용) |
+| `approved_by` | uuid | YES | - | FK → profiles.id (처리한 관리자) |
+| `note` | text | YES | - | 내부 메모 |
+| `created_at` | timestamptz | NO | `now()` | |
+| `updated_at` | timestamptz | NO | `now()` | 자동 갱신 트리거 있음 |
+
+**비고**
+- `overtime_status` ENUM: `pending` / `approved` / `rejected` / `dismissed`
+  - 실제 사용: `approved` (추가근무 인정) / `dismissed` (확인하고 넘김)
+- dismissed 레코드의 `minutes`는 0으로 저장
+- RLS: admin ALL, 직원 SELECT(본인)
 
 ---
 

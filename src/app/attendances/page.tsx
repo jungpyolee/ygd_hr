@@ -147,7 +147,7 @@ export default function AttendancesPage() {
       // 4. 승인된 추가근무
       const { data: overtimes } = await supabase
         .from("overtime_requests")
-        .select("date, start_time, end_time")
+        .select("date, minutes")
         .eq("profile_id", userId)
         .eq("status", "approved")
         .gte("date", startStr)
@@ -155,10 +155,7 @@ export default function AttendancesPage() {
 
       const overtimeByDate = new Map<string, number>();
       (overtimes ?? []).forEach((ot: any) => {
-        const [sh, sm] = ot.start_time.split(":").map(Number);
-        const [eh, em] = ot.end_time.split(":").map(Number);
-        const mins = (eh * 60 + em) - (sh * 60 + sm);
-        overtimeByDate.set(ot.date, (overtimeByDate.get(ot.date) ?? 0) + mins);
+        overtimeByDate.set(ot.date, (overtimeByDate.get(ot.date) ?? 0) + ot.minutes);
       });
 
       // 5. 날짜별 레코드 생성 (출근한 날만)
