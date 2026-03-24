@@ -65,13 +65,17 @@ export default function AttendancesPage() {
         ? format(periodEnd, "yyyy-MM-dd")
         : format(now, "yyyy-MM-dd"); // 퀵 설정은 오늘까지만
 
+      const logStartTs = new Date(`${startStr}T00:00:00+09:00`).toISOString();
+      const logEndTs = new Date(`${endStr}T23:59:59.999+09:00`).toISOString();
+
       // 1. 출근 기록 (IN) — 날짜별 첫 출근 시간
       const { data: inLogs } = await supabase
         .from("attendance_logs")
         .select("id, created_at")
         .eq("profile_id", userId)
         .eq("type", "IN")
-        .gte("created_at", periodStart.toISOString())
+        .gte("created_at", logStartTs)
+        .lte("created_at", logEndTs)
         .order("created_at", { ascending: true });
 
       // 2. 퇴근 기록 (OUT) — 날짜별 마지막 퇴근 시간
@@ -80,7 +84,8 @@ export default function AttendancesPage() {
         .select("created_at")
         .eq("profile_id", userId)
         .eq("type", "OUT")
-        .gte("created_at", periodStart.toISOString())
+        .gte("created_at", logStartTs)
+        .lte("created_at", logEndTs)
         .order("created_at", { ascending: true });
 
       // 날짜별 첫 IN / 마지막 OUT 매핑

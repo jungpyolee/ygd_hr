@@ -306,11 +306,14 @@ export default function EmployeeCalendarPage() {
   const { byId } = useWorkplaces();
 
   const [baseDate, setBaseDate] = useState(new Date());
-  const [layers, setLayers] = useState<LayerState>({
-    mySchedule: true,
-    myAttendance: true,
-    team: true,
-    events: true,
+  const [layers, setLayers] = useState<LayerState>(() => {
+    if (typeof window === "undefined") return { mySchedule: true, myAttendance: true, team: true, events: true };
+    try {
+      const stored = localStorage.getItem("calendar-layers");
+      return stored ? { mySchedule: true, myAttendance: true, team: true, events: true, ...JSON.parse(stored) } : { mySchedule: true, myAttendance: true, team: true, events: true };
+    } catch {
+      return { mySchedule: true, myAttendance: true, team: true, events: true };
+    }
   });
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
@@ -418,11 +421,16 @@ export default function EmployeeCalendarPage() {
         }
       });
 
+      // 회사 일정: store_id null(전체) 또는 내 매장만 필터
+      const filteredEvents = ((eventsData || []) as CompanyEvent[]).filter(
+        (e) => e.store_id === null || myStoreIds.includes(e.store_id)
+      );
+
       return {
         mySlots,
         teamSlots,
         attendance: attMap,
-        events: (eventsData || []) as CompanyEvent[],
+        events: filteredEvents,
         myStoreIds,
       };
     },
@@ -445,7 +453,11 @@ export default function EmployeeCalendarPage() {
   });
 
   const toggleLayer = (key: keyof LayerState) => {
-    setLayers((p) => ({ ...p, [key]: !p[key] }));
+    setLayers((p) => {
+      const next = { ...p, [key]: !p[key] };
+      try { localStorage.setItem("calendar-layers", JSON.stringify(next)); } catch {}
+      return next;
+    });
   };
 
   const calDays = useMemo(() => {
@@ -466,7 +478,7 @@ export default function EmployeeCalendarPage() {
       <div className="px-4 pt-4 pb-3 flex items-center gap-2 overflow-x-auto scrollbar-hide">
         {[
           { key: "mySchedule" as const, label: "내 스케줄", color: "#3182F6" },
-          { key: "myAttendance" as const, label: "내 근태", color: "#00B761" },
+          { key: "myAttendance" as const, label: "내 근무", color: "#00B761" },
           { key: "team" as const, label: "팀 스케줄", color: "#8B95A1" },
           { key: "events" as const, label: "회사일정", color: "#F97316" },
         ].map(({ key, label, color }) => (
@@ -548,12 +560,12 @@ export default function EmployeeCalendarPage() {
                   <button
                     key={dateStr}
                     onClick={() => setSelectedDay(dateStr)}
-                    className={`min-h-[72px] px-1 pt-1.5 pb-1 border-b border-r border-slate-100 text-left transition-colors hover:bg-[#F9FAFB] active:bg-[#F2F4F6] ${
+                    className={`min-h-[72px] px-1 pt-1.5 pb-1 border-b border-r border-slate-100 flex flex-col transition-colors hover:bg-[#F9FAFB] active:bg-[#F2F4F6] ${
                       idx % 7 === 6 ? "border-r-0" : ""
                     } ${!isCurrentMonth ? "bg-[#FAFAFA]" : ""}`}
                   >
-                    {/* 날짜 숫자 */}
-                    <div className="flex justify-center mb-0.5">
+                    {/* 날짜 숫자 — 항상 최상단 중앙 */}
+                    <div className="flex justify-center mb-0.5 shrink-0">
                       <span
                         className={`text-[11px] font-bold w-5 h-5 flex items-center justify-center rounded-full ${
                           isTodayDate
@@ -645,23 +657,25 @@ export default function EmployeeCalendarPage() {
                       )
                     )}
 
-                    {/* 팀 멤버 컬러 점 */}
-                    {layers.team && hasTeam && (
-                      <div className="flex items-center gap-0.5 mt-0.5 px-0.5">
-                        {dayInfo.teamSlots.slice(0, 3).map((ts) => (
-                          <span
-                            key={ts.id}
-                            className="w-1.5 h-1.5 rounded-full shrink-0"
-                            style={{ backgroundColor: ts.profile_color || "#8B95A1" }}
-                          />
-                        ))}
-                        {dayInfo.teamSlots.length > 3 && (
-                          <span className="text-[7px] text-[#8B95A1] font-medium">
-                            +{dayInfo.teamSlots.length - 3}
-                          </span>
-                        )}
-                      </div>
-                    )}
+                    {/* 팀 멤버 컬러 점 — 고정 높이로 정렬 일관성 유지 */}
+                    <div className="h-3 flex items-center gap-0.5 mt-0.5 px-0.5">
+                      {layers.team && hasTeam && (
+                        <>
+                          {dayInfo.teamSlots.slice(0, 3).map((ts) => (
+                            <span
+                              key={ts.id}
+                              className="w-1.5 h-1.5 rounded-full shrink-0"
+                              style={{ backgroundColor: ts.profile_color || "#8B95A1" }}
+                            />
+                          ))}
+                          {dayInfo.teamSlots.length > 3 && (
+                            <span className="text-[7px] text-[#8B95A1] font-medium leading-none">
+                              +{dayInfo.teamSlots.length - 3}
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </button>
                 );
               })}
@@ -698,37 +712,46 @@ export default function EmployeeCalendarPage() {
         )}
       </div>
 
-      {/* 이번 달 근무 요약 */}
-      {!isLoading && (
-        <div className="px-4 mt-4">
-          <div className="bg-white rounded-[20px] border border-slate-100 p-4">
-            <h3 className="text-[13px] font-bold text-[#8B95A1] mb-3">이번 달 요약</h3>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="text-center">
-                <div className="text-[22px] font-bold text-[#191F28]">
-                  {mySlots.filter((s) => s.slot_date.slice(0, 7) === format(baseDate, "yyyy-MM")).length}
+      {/* 월별 요약 */}
+      {!isLoading && (() => {
+        const monthKey = format(baseDate, "yyyy-MM");
+        const isThisMonth = monthKey === format(new Date(), "yyyy-MM");
+        const monthSlots = mySlots.filter((s) => s.slot_date.slice(0, 7) === monthKey);
+        const scheduledMins = monthSlots.reduce((sum, s) => {
+          const [sh, sm] = s.start_time.split(":").map(Number);
+          const [eh, em] = s.end_time.split(":").map(Number);
+          return sum + (eh * 60 + em) - (sh * 60 + sm);
+        }, 0);
+        const workH = Math.floor(scheduledMins / 60);
+        const workM = scheduledMins % 60;
+        return (
+          <div className="px-4 mt-4">
+            <div className="bg-white rounded-[20px] border border-slate-100 p-4">
+              <h3 className="text-[13px] font-bold text-[#8B95A1] mb-3">
+                {isThisMonth ? "이번달 요약" : `${format(baseDate, "M")}월 요약`}
+              </h3>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="text-center">
+                  <div className="text-[22px] font-bold text-[#191F28]">{monthSlots.length}</div>
+                  <div className="text-[11px] text-[#8B95A1] mt-0.5">예정 근무</div>
                 </div>
-                <div className="text-[11px] text-[#8B95A1] mt-0.5">예정 근무</div>
-              </div>
-              <div className="text-center">
-                <div className="text-[22px] font-bold text-[#00B761]">
-                  {Object.entries(attendance).filter(
-                    ([date, att]) =>
-                      date.slice(0, 7) === format(baseDate, "yyyy-MM") && att?.clock_in
-                  ).length}
+                <div className="text-center">
+                  <div className="text-[22px] font-bold text-[#00B761]">
+                    {Object.entries(attendance).filter(([d, a]) => d.slice(0, 7) === monthKey && a?.clock_in).length}
+                  </div>
+                  <div className="text-[11px] text-[#8B95A1] mt-0.5">출근 완료</div>
                 </div>
-                <div className="text-[11px] text-[#8B95A1] mt-0.5">출근 완료</div>
-              </div>
-              <div className="text-center">
-                <div className="text-[22px] font-bold text-[#8B95A1]">
-                  {events.filter((e) => e.start_date.slice(0, 7) === format(baseDate, "yyyy-MM")).length}
+                <div className="text-center">
+                  <div className="text-[22px] font-bold text-[#3182F6]">{workH}</div>
+                  <div className="text-[11px] text-[#8B95A1] mt-0.5">
+                    {workM > 0 ? `시간 ${workM}분` : "시간"}
+                  </div>
                 </div>
-                <div className="text-[11px] text-[#8B95A1] mt-0.5">회사 일정</div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* 날짜 상세 시트 */}
       {selectedDay && selectedDayInfo && (

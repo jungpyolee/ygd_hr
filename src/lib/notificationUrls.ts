@@ -35,12 +35,12 @@ export function getNotificationUrl(
 
   switch (type) {
     case "substitute_approved":
-      return sourceId ? `/schedule?request_id=${sourceId}` : "/schedule";
+      return "/calendar";
     case "substitute_rejected":
     case "substitute_filled":
     case "schedule_updated":
     case "schedule_published":
-      return "/schedule";
+      return "/calendar";
     case "recipe_comment":
     case "recipe_reply":
     case "recipe_mention":

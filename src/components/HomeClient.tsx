@@ -441,7 +441,7 @@ export default function HomeClient({
         {/* 오늘 스케줄 */}
         {todaySlots.length > 0 && (
           <button
-            onClick={() => router.push("/schedule")}
+            onClick={() => router.push("/calendar")}
             className="w-full text-left bg-white rounded-[28px] p-5 border border-slate-100 shadow-sm active:scale-[0.99] transition-transform"
           >
             <div className="flex items-center justify-between mb-3">
