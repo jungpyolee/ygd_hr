@@ -742,12 +742,14 @@ export default function AdminOvertimePage() {
               {dismissedEmps.map((emp) => {
                 const key = `${emp.date}_${emp.profile_id}`;
                 const isSubmitting = submitting === key;
-                const detail =
-                  emp.case_type === "A" && emp.late_out_minutes > 0
-                    ? `늦게 퇴근 +${minsToLabel(emp.late_out_minutes)}`
-                    : emp.case_type === "B"
-                      ? `${minsToLabel(emp.actual_minutes)} 근무`
-                      : "";
+                const parts: string[] = [];
+                if (emp.late_out_minutes > 0)
+                  parts.push(`늦게 퇴근 +${minsToLabel(emp.late_out_minutes)}`);
+                if (emp.early_in_minutes > 0)
+                  parts.push(`일찍 출근 +${minsToLabel(emp.early_in_minutes)}`);
+                if (emp.case_type === "B")
+                  parts.push(`${minsToLabel(emp.actual_minutes)} 근무`);
+                const detail = parts.join(" · ");
 
                 return (
                   <div

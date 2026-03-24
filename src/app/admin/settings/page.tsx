@@ -22,6 +22,8 @@ const UNIT_OPTIONS = [
 
 export default function AdminSettingsPage() {
   const [saving, setSaving] = useState(false);
+  // controlled state for min_minutes input
+  const [minMinutesInput, setMinMinutesInput] = useState<string | null>(null);
 
   const {
     data: store,
@@ -53,6 +55,7 @@ export default function AdminSettingsPage() {
       mutate({ ...store, overtime_unit: value }, false);
       toast.success("저장됐어요");
     } catch {
+      mutate(); // 오류 시 서버 값으로 복구
       toast.error("저장에 실패했어요", {
         description: "잠시 후 다시 시도해주세요.",
       });
@@ -74,6 +77,7 @@ export default function AdminSettingsPage() {
       mutate({ ...store, overtime_include_early: value }, false);
       toast.success("저장됐어요");
     } catch {
+      mutate(); // 오류 시 서버 값으로 복구
       toast.error("저장에 실패했어요", {
         description: "잠시 후 다시 시도해주세요.",
       });
@@ -82,9 +86,13 @@ export default function AdminSettingsPage() {
     }
   };
 
-  const handleMinMinutesBlur = async (value: number) => {
-    if (!store || saving) return;
-    if (value === store.overtime_min_minutes) return;
+  const handleMinMinutesBlur = async () => {
+    if (!store || saving || minMinutesInput === null) return;
+    const value = Math.max(1, parseInt(minMinutesInput) || 1);
+    if (value === store.overtime_min_minutes) {
+      setMinMinutesInput(null);
+      return;
+    }
     setSaving(true);
     try {
       const supabase = createClient();
@@ -94,8 +102,11 @@ export default function AdminSettingsPage() {
         .eq("id", store.id);
       if (error) throw error;
       mutate({ ...store, overtime_min_minutes: value }, false);
+      setMinMinutesInput(null);
       toast.success("저장됐어요");
     } catch {
+      setMinMinutesInput(null);
+      mutate(); // 오류 시 서버 값으로 복구
       toast.error("저장에 실패했어요", {
         description: "잠시 후 다시 시도해주세요.",
       });
@@ -216,11 +227,15 @@ export default function AdminSettingsPage() {
                     type="number"
                     min={1}
                     max={120}
-                    defaultValue={store.overtime_min_minutes}
-                    onBlur={(e) =>
-                      handleMinMinutesBlur(parseInt(e.target.value) || 1)
+                    value={
+                      minMinutesInput !== null
+                        ? minMinutesInput
+                        : store.overtime_min_minutes
                     }
-                    className="w-24 bg-[#F2F4F6] rounded-[12px] px-4 py-2.5 text-[16px] font-bold text-[#191F28] outline-none text-center"
+                    onChange={(e) => setMinMinutesInput(e.target.value)}
+                    onBlur={handleMinMinutesBlur}
+                    disabled={saving}
+                    className="w-24 bg-[#F2F4F6] rounded-[12px] px-4 py-2.5 text-[16px] font-bold text-[#191F28] outline-none text-center disabled:opacity-60"
                   />
                   <span className="text-[14px] font-semibold text-[#4E5968]">
                     분 이상

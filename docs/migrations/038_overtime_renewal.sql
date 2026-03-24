@@ -32,6 +32,14 @@ ALTER TABLE stores
   ADD COLUMN IF NOT EXISTS overtime_min_minutes   integer NOT NULL DEFAULT 10;
 
 -- ============================================================
+-- 3. (profile_id, date) UNIQUE 제약 추가
+--    점검 중 중복 레코드 가능성 발견 → 데이터 무결성 보장
+-- ============================================================
+
+ALTER TABLE overtime_requests
+  ADD CONSTRAINT overtime_requests_profile_date_unique UNIQUE (profile_id, date);
+
+-- ============================================================
 -- 검증 쿼리
 -- ============================================================
 -- SELECT column_name, data_type, column_default, is_nullable
