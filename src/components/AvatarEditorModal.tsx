@@ -273,15 +273,15 @@ export default function AvatarEditorModal({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center font-pretendard">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center font-pretendard">
       {/* 딤 */}
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
       {/* 모달 */}
-      <div className="relative z-10 bg-white rounded-[28px] w-full max-w-sm mx-4 flex flex-col max-h-[90vh] shadow-2xl">
+      <div className="relative z-10 bg-white rounded-[28px] w-full max-w-sm mx-4 flex flex-col shadow-2xl" style={{ maxHeight: "70vh" }}>
         {/* 헤더 */}
-        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-[#F2F4F6] shrink-0">
-          <h2 className="text-[18px] font-bold text-[#191F28]">아바타 편집하기</h2>
+        <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-[#F2F4F6] shrink-0">
+          <h2 className="text-[17px] font-bold text-[#191F28]">아바타 편집하기</h2>
           <button
             onClick={onClose}
             className="w-8 h-8 rounded-full bg-[#F2F4F6] flex items-center justify-center"
@@ -291,11 +291,11 @@ export default function AvatarEditorModal({
         </div>
 
         {/* 미리보기 */}
-        <div className="flex flex-col items-center py-5 shrink-0">
-          <ReactNiceAvatar style={{ width: 96, height: 96 }} {...config} />
+        <div className="flex items-center gap-3 px-5 py-3 shrink-0">
+          <ReactNiceAvatar style={{ width: 64, height: 64 }} {...config} />
           <button
             onClick={handleRandomize}
-            className="mt-3 flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#F2F4F6] text-[13px] font-semibold text-[#4E5968] active:scale-95 transition-transform"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#F2F4F6] text-[13px] font-semibold text-[#4E5968] active:scale-95 transition-transform"
           >
             <Shuffle className="w-3.5 h-3.5" />
             랜덤으로 바꾸기
@@ -303,7 +303,7 @@ export default function AvatarEditorModal({
         </div>
 
         {/* 옵션 목록 (스크롤) */}
-        <div className="overflow-y-auto px-5 pb-4 flex-1">
+        <div className="overflow-y-auto px-5 pb-3 flex-1">
           {sections.map(({ label, content }) => (
             <div key={label} className="mb-5">
               <p className="text-[12px] font-semibold text-[#8B95A1] mb-2">{label}</p>
@@ -313,7 +313,7 @@ export default function AvatarEditorModal({
         </div>
 
         {/* 저장 버튼 */}
-        <div className="px-5 pb-5 pt-3 shrink-0 border-t border-[#F2F4F6]">
+        <div className="px-5 pb-4 pt-3 shrink-0 border-t border-[#F2F4F6]">
           <button
             onClick={handleSave}
             disabled={saving}
