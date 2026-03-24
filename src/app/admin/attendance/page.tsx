@@ -90,6 +90,7 @@ export default function AdminAttendanceCalendar() {
   const {
     data: logsByDate = {},
     isLoading: loading,
+    error: attendanceError,
     mutate,
   } = useSWR(
     ["admin-attendance", rangeKey],
@@ -152,7 +153,9 @@ export default function AdminAttendanceCalendar() {
         .lte("created_at", endStr)
         .order("created_at", { ascending: true });
 
-      if (!error && data) {
+      if (error) throw error;
+
+      if (data) {
         // [4] 출근 기록으로 base 맵 덮어쓰기 → is_absent=false
         data.forEach((log: any) => {
           const dateKey = format(new Date(log.created_at), "yyyy-MM-dd");
@@ -318,6 +321,19 @@ export default function AdminAttendanceCalendar() {
   const absentCount = selectedLogs.filter(
     (l) => l.is_absent && isBefore(selectedDate, startOfDay(new Date())),
   ).length;
+
+  if (attendanceError)
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-3">
+        <p className="text-[15px] font-semibold text-[#8B95A1]">근태 데이터를 불러오지 못했어요</p>
+        <button
+          onClick={() => mutate()}
+          className="text-[14px] text-[#3182F6] font-medium"
+        >
+          다시 시도하기
+        </button>
+      </div>
+    );
 
   return (
     <div className="max-w-5xl animate-in fade-in duration-500 pb-20">

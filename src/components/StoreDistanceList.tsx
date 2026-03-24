@@ -11,7 +11,7 @@ interface StoreDistanceListProps {
 
 function getStoreDistanceText(store: any, locationState: any, radius: number): string {
   if (!store.is_gps_required) return "위치 무관";
-  if (locationState.status === "loading") return "위치 확인 중...";
+  if (locationState.status === "loading") return "";
   if (locationState.status === "ready")
     return formatDistance(getDistance(locationState.lat, locationState.lng, store.lat, store.lng), radius);
   if (locationState.status === "denied") return "위치 권한 없음";
@@ -43,17 +43,26 @@ export default function StoreDistanceList({
             <Factory className="w-6 h-6 text-blue-400 mb-3" />
           )}
           <p className="text-[15px] font-bold text-[#191F28]">{store.name}</p>
-          <p className="text-xs text-[#8B95A1] mt-1">
-            {getStoreDistanceText(store, locationState, radius)}
-          </p>
+          {locationState.status === "loading" && store.is_gps_required ? (
+            <div className="h-3 w-16 bg-[#F2F4F6] rounded animate-pulse mt-1" />
+          ) : (
+            <p className="text-xs text-[#8B95A1] mt-1">
+              {getStoreDistanceText(store, locationState, radius)}
+            </p>
+          )}
         </div>
       ))}
 
-      {/* 매장 데이터가 아직 없을 때의 스켈레톤/안내 UI */}
       {stores.length === 0 && (
-        <div className="col-span-2 text-center py-8 text-slate-400 text-sm bg-white rounded-[28px] border border-slate-100 border-dashed">
-          매장 위치 정보를 불러오는 중이에요...
-        </div>
+        <>
+          {[0, 1].map((i) => (
+            <div key={i} className="bg-white rounded-[28px] p-5 border border-slate-100 shadow-sm animate-pulse">
+              <div className="w-6 h-6 bg-[#F2F4F6] rounded-lg mb-3" />
+              <div className="h-4 w-24 bg-[#F2F4F6] rounded" />
+              <div className="h-3 w-16 bg-[#F2F4F6] rounded mt-2" />
+            </div>
+          ))}
+        </>
       )}
     </div>
   );

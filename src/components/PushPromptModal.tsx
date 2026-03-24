@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bell } from "lucide-react";
+import { Bell, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 const DISMISSED_KEY = "push_prompt_dismissed_at";
@@ -148,7 +148,14 @@ export default function PushPromptModal() {
             disabled={loading}
             className="w-full py-3.5 bg-[#3182F6] text-white rounded-2xl font-bold text-[15px] active:scale-95 transition-all disabled:opacity-60"
           >
-            {loading ? "설정 중..." : "알림 켜기"}
+            {loading ? (
+              <span className="flex items-center justify-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                설정 중
+              </span>
+            ) : (
+              "알림 켜기"
+            )}
           </button>
           <button
             onClick={handleDismiss}

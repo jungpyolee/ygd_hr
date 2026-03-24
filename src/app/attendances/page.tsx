@@ -104,11 +104,17 @@ export default function AttendancesPage() {
       if (inByDate.size === 0) return { records: [], summary: { days: 0, totalMinutes: 0, overtimeMinutes: 0 } };
 
       // 3. 스케줄 슬롯 조회
+      // week_start는 최대 6일 일찍 시작할 수 있으므로 버퍼 적용
+      const schedStartDate = new Date(periodStart);
+      schedStartDate.setDate(schedStartDate.getDate() - 6);
+      const schedStartStr = format(schedStartDate, "yyyy-MM-dd");
+
       const { data: wsData } = await supabase
         .from("weekly_schedules")
         .select("id")
         .eq("status", "confirmed")
-        .gte("week_start", startStr);
+        .gte("week_start", schedStartStr)
+        .lte("week_start", endStr);
 
       const slotsByDate = new Map<string, { minutes: number; start: string | null; end: string | null }>();
       if (wsData && wsData.length > 0) {

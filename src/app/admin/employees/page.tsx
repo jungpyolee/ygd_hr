@@ -144,6 +144,7 @@ export default function AdminEmployeesPage() {
   const {
     data: employees = [],
     isLoading: loading,
+    error: employeesError,
     mutate: mutateEmployees,
   } = useSWR(
     "admin-employees-list",
@@ -153,7 +154,7 @@ export default function AdminEmployeesPage() {
         .from("profiles")
         .select("*")
         .order("created_at", { ascending: true });
-      if (error) return [];
+      if (error) throw error;
       return (data as Profile[]) ?? [];
     },
     { dedupingInterval: 60_000, revalidateOnFocus: false },
@@ -493,6 +494,19 @@ export default function AdminEmployeesPage() {
     );
     toast.success("서류를 삭제했어요");
   };
+
+  if (employeesError)
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-3">
+        <p className="text-[15px] font-semibold text-[#8B95A1]">직원 목록을 불러오지 못했어요</p>
+        <button
+          onClick={() => mutateEmployees()}
+          className="text-[14px] text-[#3182F6] font-medium"
+        >
+          다시 시도하기
+        </button>
+      </div>
+    );
 
   if (loading)
     return (

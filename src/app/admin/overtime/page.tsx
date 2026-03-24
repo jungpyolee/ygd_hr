@@ -6,7 +6,15 @@ import { createClient } from "@/lib/supabase";
 import { format, subDays } from "date-fns";
 import { ko } from "date-fns/locale";
 import { toast } from "sonner";
-import { ChevronLeft, ChevronRight, CheckCircle2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, CheckCircle2, X, ChevronDown, ChevronUp } from "lucide-react";
+
+// ── 상수 ──────────────────────────────────────────────────────────────
+
+const POSITION_LABELS: Record<string, string> = {
+  hall: "홀",
+  kitchen: "주방",
+  showroom: "쇼룸",
+};
 
 // ── 타입 ──────────────────────────────────────────────────────────────
 
@@ -24,10 +32,26 @@ interface EmpDay {
   actual_in: string; // "HH:mm"
   actual_out: string;
   actual_minutes: number;
+  // 스케줄
   schedule_start: string | null;
   schedule_end: string | null;
-  late_out_minutes: number; // 늦게 퇴근한 분
-  early_in_minutes: number; // 일찍 출근한 분
+  schedule_store_name: string | null;
+  schedule_position_keys: string[];
+  // 시간 차이 계산
+  late_in_minutes: number;       // 지각 (스케줄보다 늦게 출근)
+  early_in_raw_minutes: number;  // 일찍 출근 (항상 계산, 설정 무관)
+  early_in_counted: boolean;     // overtime_include_early 설정으로 집계에 포함됐는지
+  late_out_minutes: number;      // 늦게 퇴근
+  // 출근 위치
+  check_in_type: string;
+  check_in_store_name: string | null;
+  check_in_distance_m: number | null;
+  // 퇴근 위치
+  check_out_type: string;
+  check_out_store_name: string | null;
+  check_out_distance_m: number | null;
+  check_out_reason: string | null;
+  // 추가근무 상태
   case_type: "A" | "B"; // A=스케줄 초과, B=스케줄 없음
   ot_status: "pending" | "approved" | "dismissed";
   ot_record_id: string | null;
@@ -56,11 +80,246 @@ function minsToLabel(mins: number): string {
   return `${m}분`;
 }
 
+function formatDistance(m: number): string {
+  if (m >= 1000) return `${(m / 1000).toFixed(1)}km`;
+  return `${Math.round(m)}m`;
+}
+
 function quickButtons(unit: number): number[] {
   if (unit === 15) return [15, 30, 45, 60];
   if (unit === 30) return [30, 60, 90];
   if (unit === 60) return [60, 120, 180];
-  return []; // unit=0: 자유입력만
+  return [];
+}
+
+function generateSummary(emp: EmpDay): string {
+  let timePart = "";
+
+  if (emp.case_type === "A") {
+    const parts: string[] = [];
+    if (emp.late_in_minutes > 0) parts.push(`${minsToLabel(emp.late_in_minutes)} 지각`);
+    if (emp.early_in_raw_minutes > 0) parts.push(`${minsToLabel(emp.early_in_raw_minutes)} 일찍 출근`);
+    if (emp.late_out_minutes > 0) parts.push(`${minsToLabel(emp.late_out_minutes)} 늦게 퇴근`);
+    if (parts.length > 0) timePart = parts.join(", ") + "했어요";
+  } else {
+    timePart = `스케줄 없이 ${minsToLabel(emp.actual_minutes)} 근무했어요`;
+  }
+
+  const annotations: string[] = [];
+  if (emp.check_out_type === "remote_out") {
+    annotations.push("원격퇴근이라 정확하지 않을 수 있어요");
+  } else if (emp.check_in_type === "business_trip_in") {
+    annotations.push("출장출근이에요");
+  } else if (emp.check_out_type === "business_trip_out") {
+    annotations.push("출장퇴근이에요");
+  }
+  if (emp.check_out_type === "fallback_out") {
+    annotations.push(
+      emp.check_out_reason === "관리자 수동 처리"
+        ? "관리자가 퇴근 처리했어요"
+        : "수동 퇴근이에요"
+    );
+  } else if (emp.check_in_type === "fallback_in") {
+    annotations.push("수동 출근이에요");
+  }
+
+  return [timePart, ...annotations].filter(Boolean).join(" · ");
+}
+
+// ── 서브 컴포넌트: 근태 타입 뱃지 ────────────────────────────────────
+
+function AttendanceBadge({
+  type,
+  reason,
+}: {
+  type: string;
+  reason?: string | null;
+}) {
+  if (type === "remote_out")
+    return (
+      <span className="text-[10px] font-bold bg-[#FFE3E3] text-[#C92A2A] px-1.5 py-0.5 rounded-md">
+        원격퇴근
+      </span>
+    );
+  if (type === "business_trip_in")
+    return (
+      <span className="text-[10px] font-bold bg-[#FFF3BF] text-[#E67700] px-1.5 py-0.5 rounded-md">
+        출장출근
+      </span>
+    );
+  if (type === "business_trip_out")
+    return (
+      <span className="text-[10px] font-bold bg-[#FFF3BF] text-[#E67700] px-1.5 py-0.5 rounded-md">
+        출장퇴근
+      </span>
+    );
+  if (type === "fallback_in")
+    return (
+      <span className="text-[10px] font-bold bg-[#F3F0FF] text-[#7950F2] px-1.5 py-0.5 rounded-md">
+        수동출근
+      </span>
+    );
+  if (type === "fallback_out")
+    return (
+      <span className="text-[10px] font-bold bg-[#F3F0FF] text-[#7950F2] px-1.5 py-0.5 rounded-md">
+        {reason === "관리자 수동 처리" ? "관리자 처리" : "수동퇴근"}
+      </span>
+    );
+  return null;
+}
+
+// ── 서브 컴포넌트: 상세 정보 패널 ────────────────────────────────────
+
+function AttendanceDetailPanel({ emp }: { emp: EmpDay }) {
+  const summary = generateSummary(emp);
+
+  return (
+    <div className="mt-3 pt-3 border-t border-[#F2F4F6] space-y-2">
+      {/* 스케줄 / 실제 근무 */}
+      <div className="bg-[#F8F9FA] rounded-[12px] px-3.5 py-3 space-y-1.5">
+        {emp.case_type === "A" && emp.schedule_start && emp.schedule_end ? (
+          <>
+            {/* 스케줄 행 */}
+            <div className="flex justify-between items-center text-[12px]">
+              <span className="text-[#8B95A1]">스케줄</span>
+              <div className="flex items-center gap-1 flex-wrap justify-end">
+                <span className="font-semibold text-[#4E5968]">
+                  {emp.schedule_start} ~ {emp.schedule_end}
+                </span>
+                {emp.schedule_store_name && (
+                  <span className="bg-[#F2F4F6] text-[#4E5968] text-[10px] px-1.5 py-0.5 rounded">
+                    {emp.schedule_store_name}
+                  </span>
+                )}
+                {emp.schedule_position_keys.map((k) => (
+                  <span
+                    key={k}
+                    className="bg-[#E8F3FF] text-[#3182F6] text-[10px] px-1.5 py-0.5 rounded"
+                  >
+                    {POSITION_LABELS[k] ?? k}
+                  </span>
+                ))}
+              </div>
+            </div>
+            {/* 실제 행 */}
+            <div className="flex justify-between text-[12px]">
+              <span className="text-[#8B95A1]">실제</span>
+              <span className="font-semibold text-[#4E5968]">
+                {emp.actual_in} ~ {emp.actual_out}
+              </span>
+            </div>
+            {/* 지각 */}
+            {emp.late_in_minutes > 0 && (
+              <div className="flex justify-between text-[12px]">
+                <span className="text-[#8B95A1]">지각</span>
+                <span className="font-bold text-[#EF4444]">
+                  +{minsToLabel(emp.late_in_minutes)}
+                </span>
+              </div>
+            )}
+            {/* 일찍 출근 */}
+            {emp.early_in_raw_minutes > 0 && (
+              <div className="flex justify-between items-center text-[12px]">
+                <span className="text-[#8B95A1]">일찍 출근</span>
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className={
+                      emp.early_in_counted
+                        ? "font-bold text-[#F59E0B]"
+                        : "font-semibold text-[#B0B8C1]"
+                    }
+                  >
+                    +{minsToLabel(emp.early_in_raw_minutes)}
+                  </span>
+                  {!emp.early_in_counted && (
+                    <span className="text-[10px] text-[#B0B8C1] bg-[#F2F4F6] px-1.5 py-0.5 rounded">
+                      집계 제외
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+            {/* 늦게 퇴근 */}
+            {emp.late_out_minutes > 0 && (
+              <div className="flex justify-between text-[12px]">
+                <span className="text-[#8B95A1]">늦게 퇴근</span>
+                <span className="font-bold text-[#F59E0B]">
+                  +{minsToLabel(emp.late_out_minutes)}
+                </span>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="flex justify-between text-[12px]">
+              <span className="text-[#8B95A1]">실제 근무</span>
+              <span className="font-semibold text-[#4E5968]">
+                {emp.actual_in} ~ {emp.actual_out} ({minsToLabel(emp.actual_minutes)})
+              </span>
+            </div>
+            <p className="text-[11px] text-[#B0B8C1]">이 날 스케줄이 없어요.</p>
+          </>
+        )}
+      </div>
+
+      {/* 위치 정보 */}
+      <div className="bg-[#F8F9FA] rounded-[12px] px-3.5 py-3 space-y-1.5">
+        {/* 출근 */}
+        <div className="flex justify-between items-center text-[12px]">
+          <span className="text-[#8B95A1] shrink-0">출근</span>
+          <div className="flex items-center gap-1 flex-wrap justify-end">
+            <AttendanceBadge type={emp.check_in_type} />
+            {emp.check_in_store_name && (
+              <span className="font-semibold text-[#4E5968]">
+                {emp.check_in_store_name}
+              </span>
+            )}
+            {emp.check_in_distance_m != null && emp.check_in_distance_m > 0 && (
+              <span className="text-[#8B95A1]">
+                ({formatDistance(emp.check_in_distance_m)})
+              </span>
+            )}
+          </div>
+        </div>
+        {/* 퇴근 */}
+        <div className="flex justify-between items-start text-[12px]">
+          <span className="text-[#8B95A1] shrink-0 mt-0.5">퇴근</span>
+          <div className="flex flex-col items-end gap-0.5">
+            <div className="flex items-center gap-1 flex-wrap justify-end">
+              <AttendanceBadge
+                type={emp.check_out_type}
+                reason={emp.check_out_reason}
+              />
+              {emp.check_out_store_name && (
+                <span className="font-semibold text-[#4E5968]">
+                  {emp.check_out_store_name}
+                </span>
+              )}
+              {emp.check_out_distance_m != null &&
+                emp.check_out_distance_m > 0 && (
+                  <span className="text-[#8B95A1]">
+                    ({formatDistance(emp.check_out_distance_m)})
+                  </span>
+                )}
+            </div>
+            {emp.check_out_reason &&
+              emp.check_out_reason !== "관리자 수동 처리" && (
+                <span className="text-[11px] text-[#8B95A1]">
+                  사유: {emp.check_out_reason}
+                </span>
+              )}
+          </div>
+        </div>
+      </div>
+
+      {/* 한 줄 요약 */}
+      {summary && (
+        <div className="bg-[#E8F3FF] rounded-[10px] px-3.5 py-2.5">
+          <p className="text-[12px] text-[#3182F6] leading-relaxed">{summary}</p>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────────
@@ -74,6 +333,16 @@ export default function AdminOvertimePage() {
     mins: string;
   } | null>(null);
   const [submitting, setSubmitting] = useState<string | null>(null);
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
+
+  const toggleExpand = (key: string) => {
+    setExpandedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   // 매장 설정
   const { data: storeSettings } = useSWR<StoreSettings>(
@@ -103,7 +372,7 @@ export default function AdminOvertimePage() {
     mutate,
     isLoading,
   } = useSWR<EmpDay[]>(
-    storeSettings ? ["admin-overtime-v2", storeSettings] : null,
+    storeSettings ? ["admin-overtime-v3", storeSettings] : null,
     async () => {
       const supabase = createClient();
       const today = new Date();
@@ -112,11 +381,14 @@ export default function AdminOvertimePage() {
       const startStr = new Date(`${startDate}T00:00:00+09:00`).toISOString();
       const endStr = new Date(`${endDate}T23:59:59.999+09:00`).toISOString();
 
-      // 출퇴근 로그
+      // 출퇴근 로그 (위치·타입·사유 포함)
       const { data: logs } = await supabase
         .from("attendance_logs")
         .select(
-          "profile_id, type, created_at, profiles!profile_id(name, color_hex)"
+          `profile_id, type, attendance_type, reason, distance_m, created_at,
+           profiles!profile_id(name, color_hex),
+           check_in_store:check_in_store_id(name, label),
+           check_out_store:check_out_store_id(name, label)`
         )
         .gte("created_at", startStr)
         .lte("created_at", endStr)
@@ -131,9 +403,17 @@ export default function AdminOvertimePage() {
           name: string;
           color: string;
           in_time: Date;
+          in_type: string;
+          in_store_name: string | null;
+          in_distance_m: number | null;
           out_time: Date | null;
+          out_type: string | null;
+          out_store_name: string | null;
+          out_distance_m: number | null;
+          out_reason: string | null;
         }
       >();
+
       (logs ?? []).forEach((log: any) => {
         const d = format(new Date(log.created_at), "yyyy-MM-dd");
         const key = `${d}_${log.profile_id}`;
@@ -145,40 +425,82 @@ export default function AdminOvertimePage() {
               name: log.profiles?.name ?? "알 수 없음",
               color: log.profiles?.color_hex ?? "#8B95A1",
               in_time: new Date(log.created_at),
+              in_type: log.attendance_type ?? "regular",
+              in_store_name:
+                log.check_in_store?.label ||
+                log.check_in_store?.name ||
+                null,
+              in_distance_m: log.distance_m ?? null,
               out_time: null,
+              out_type: null,
+              out_store_name: null,
+              out_distance_m: null,
+              out_reason: null,
             });
           }
         } else if (log.type === "OUT") {
           const pair = pairMap.get(key);
-          if (pair) pair.out_time = new Date(log.created_at);
+          if (pair) {
+            pair.out_time = new Date(log.created_at);
+            pair.out_type = log.attendance_type ?? "regular";
+            pair.out_store_name =
+              log.check_out_store?.label ||
+              log.check_out_store?.name ||
+              null;
+            pair.out_distance_m = log.distance_m ?? null;
+            pair.out_reason = log.reason ?? null;
+          }
         }
       });
 
-      // 스케줄 슬롯
+      // 스케줄 슬롯 (매장·포지션 포함)
       const { data: slots } = await supabase
         .from("schedule_slots")
-        .select("profile_id, slot_date, start_time, end_time")
+        .select(
+          `profile_id, slot_date, start_time, end_time, position_keys,
+           store:store_id(name, label)`
+        )
         .gte("slot_date", startDate)
         .lte("slot_date", endDate)
         .eq("status", "active");
 
-      const slotMap = new Map<string, { start: string; end: string }>();
+      const slotMap = new Map<
+        string,
+        {
+          start: string;
+          end: string;
+          store_name: string | null;
+          position_keys: string[];
+        }
+      >();
       (slots ?? []).forEach((slot: any) => {
         const key = `${slot.slot_date}_${slot.profile_id}`;
         const s = slot.start_time.slice(0, 5);
         const e = slot.end_time.slice(0, 5);
         const ex = slotMap.get(key);
+        const storeName =
+          slot.store?.label || slot.store?.name || null;
+        const posKeys: string[] = slot.position_keys ?? [];
         if (!ex) {
-          slotMap.set(key, { start: s, end: e });
+          slotMap.set(key, {
+            start: s,
+            end: e,
+            store_name: storeName,
+            position_keys: posKeys,
+          });
         } else {
           slotMap.set(key, {
             start: s < ex.start ? s : ex.start,
             end: e > ex.end ? e : ex.end,
+            store_name: ex.store_name ?? storeName,
+            position_keys: [
+              ...new Set([...ex.position_keys, ...posKeys]),
+            ],
           });
         }
       });
 
-      // 추가근무 기록 (approved + dismissed)
+      // 추가근무 기록
       const { data: otRecords } = await supabase
         .from("overtime_requests")
         .select("id, profile_id, date, minutes, status")
@@ -202,7 +524,7 @@ export default function AdminOvertimePage() {
       const settings = storeSettings!;
 
       pairMap.forEach((pair, key) => {
-        if (!pair.out_time) return; // 퇴근 기록 없으면 건너뜀
+        if (!pair.out_time) return;
         const actualMins = Math.floor(
           (pair.out_time.getTime() - pair.in_time.getTime()) / 60000
         );
@@ -210,30 +532,26 @@ export default function AdminOvertimePage() {
         const otRecord = otMap.get(key);
 
         let lateOut = 0;
-        let earlyIn = 0;
+        let earlyInRaw = 0;
+        let earlyInCounted = false;
+        let lateIn = 0;
         let caseType: "A" | "B";
 
         if (slot) {
-          // Case A: 스케줄 있음
           caseType = "A";
           const schedEnd = timeToMins(slot.end);
           const schedStart = timeToMins(slot.start);
-          const actualOut = timeToMins(
-            format(pair.out_time, "HH:mm")
-          );
+          const actualOut = timeToMins(format(pair.out_time, "HH:mm"));
           const actualIn = timeToMins(format(pair.in_time, "HH:mm"));
-          lateOut = Math.max(0, actualOut - schedEnd);
-          earlyIn = settings.overtime_include_early
-            ? Math.max(0, schedStart - actualIn)
-            : 0;
-          const candidateMins = lateOut + earlyIn;
 
-          // 최소 기준 미달 + 기록도 없으면 표시 안 함
-          if (candidateMins < settings.overtime_min_minutes && !otRecord) {
-            return;
-          }
+          lateOut = Math.max(0, actualOut - schedEnd);
+          earlyInRaw = Math.max(0, schedStart - actualIn);
+          lateIn = Math.max(0, actualIn - schedStart);
+          earlyInCounted = settings.overtime_include_early && earlyInRaw > 0;
+
+          const candidateMins = lateOut + (earlyInCounted ? earlyInRaw : 0);
+          if (candidateMins < settings.overtime_min_minutes && !otRecord) return;
         } else {
-          // Case B: 스케줄 없음
           caseType = "B";
         }
 
@@ -249,8 +567,19 @@ export default function AdminOvertimePage() {
           actual_minutes: actualMins,
           schedule_start: slot?.start ?? null,
           schedule_end: slot?.end ?? null,
+          schedule_store_name: slot?.store_name ?? null,
+          schedule_position_keys: slot?.position_keys ?? [],
+          late_in_minutes: lateIn,
+          early_in_raw_minutes: earlyInRaw,
+          early_in_counted: earlyInCounted,
           late_out_minutes: lateOut,
-          early_in_minutes: earlyIn,
+          check_in_type: pair.in_type,
+          check_in_store_name: pair.in_store_name,
+          check_in_distance_m: pair.in_distance_m,
+          check_out_type: pair.out_type ?? "regular",
+          check_out_store_name: pair.out_store_name,
+          check_out_distance_m: pair.out_distance_m,
+          check_out_reason: pair.out_reason,
           case_type: caseType,
           ot_status: otStatus,
           ot_record_id: otRecord?.id ?? null,
@@ -306,14 +635,12 @@ export default function AdminOvertimePage() {
       const supabase = createClient();
 
       if (emp.ot_record_id) {
-        // dismissed → approved: UPDATE
         const { error } = await supabase
           .from("overtime_requests")
           .update({ status: "approved", minutes })
           .eq("id", emp.ot_record_id);
         if (error) throw error;
       } else {
-        // pending → approved: INSERT
         const { error } = await supabase.from("overtime_requests").insert({
           profile_id: emp.profile_id,
           date: emp.date,
@@ -323,7 +650,6 @@ export default function AdminOvertimePage() {
         if (error) throw error;
       }
 
-      // 직원 알림 발송
       await supabase.from("notifications").insert({
         profile_id: emp.profile_id,
         target_role: "employee",
@@ -379,7 +705,6 @@ export default function AdminOvertimePage() {
         .eq("id", emp.ot_record_id);
       if (error) throw error;
 
-      // 취소 알림
       await supabase.from("notifications").insert({
         profile_id: emp.profile_id,
         target_role: "employee",
@@ -462,7 +787,6 @@ export default function AdminOvertimePage() {
           </div>
         ) : (
           <div className="space-y-6">
-            {/* 확인 필요 */}
             {pendingDays.length > 0 && (
               <section>
                 <p className="text-[12px] font-bold text-[#8B95A1] mb-2 px-1">
@@ -482,8 +806,7 @@ export default function AdminOvertimePage() {
                             "M월 d일 (eeee)",
                             { locale: ko }
                           )}
-                          {day.date ===
-                            format(new Date(), "yyyy-MM-dd") && (
+                          {day.date === format(new Date(), "yyyy-MM-dd") && (
                             <span className="ml-2 text-[12px] text-[#3182F6] font-semibold">
                               오늘
                             </span>
@@ -500,7 +823,6 @@ export default function AdminOvertimePage() {
               </section>
             )}
 
-            {/* 확인 완료 */}
             {confirmedDays.length > 0 && (
               <section>
                 <p className="text-[12px] font-bold text-[#8B95A1] mb-2 px-1">
@@ -599,64 +921,16 @@ export default function AdminOvertimePage() {
                           {emp.name}
                         </p>
                         <p className="text-[12px] text-[#8B95A1]">
-                          {emp.case_type === "A"
-                            ? "스케줄 초과"
-                            : "스케줄 없음"}
+                          {emp.case_type === "A" ? "스케줄 초과" : "스케줄 없음"}
                         </p>
                       </div>
                     </div>
 
-                    {/* 근무 정보 */}
-                    <div className="bg-[#F8F9FA] rounded-[12px] px-4 py-3 mb-3 space-y-1">
-                      {emp.case_type === "A" && emp.schedule_start && emp.schedule_end ? (
-                        <>
-                          <div className="flex justify-between text-[13px]">
-                            <span className="text-[#8B95A1]">스케줄</span>
-                            <span className="font-semibold text-[#4E5968]">
-                              {emp.schedule_start} ~ {emp.schedule_end}
-                            </span>
-                          </div>
-                          <div className="flex justify-between text-[13px]">
-                            <span className="text-[#8B95A1]">실제</span>
-                            <span className="font-semibold text-[#4E5968]">
-                              {emp.actual_in} ~ {emp.actual_out}
-                            </span>
-                          </div>
-                          {emp.late_out_minutes > 0 && (
-                            <div className="flex justify-between text-[13px]">
-                              <span className="text-[#8B95A1]">늦게 퇴근</span>
-                              <span className="font-bold text-[#F59E0B]">
-                                +{minsToLabel(emp.late_out_minutes)}
-                              </span>
-                            </div>
-                          )}
-                          {emp.early_in_minutes > 0 && (
-                            <div className="flex justify-between text-[13px]">
-                              <span className="text-[#8B95A1]">일찍 출근</span>
-                              <span className="font-bold text-[#F59E0B]">
-                                +{minsToLabel(emp.early_in_minutes)}
-                              </span>
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          <div className="flex justify-between text-[13px]">
-                            <span className="text-[#8B95A1]">실제 근무</span>
-                            <span className="font-semibold text-[#4E5968]">
-                              {emp.actual_in} ~ {emp.actual_out} (
-                              {minsToLabel(emp.actual_minutes)})
-                            </span>
-                          </div>
-                          <p className="text-[12px] text-[#B0B8C1]">
-                            이 날 스케줄이 없어요.
-                          </p>
-                        </>
-                      )}
-                    </div>
+                    {/* 상세 정보 */}
+                    <AttendanceDetailPanel emp={emp} />
 
                     {/* 액션 버튼 */}
-                    <div className="flex gap-2 flex-wrap">
+                    <div className="flex gap-2 flex-wrap mt-3">
                       <button
                         onClick={() => handleDismiss(emp)}
                         disabled={isSubmitting}
@@ -665,7 +939,6 @@ export default function AdminOvertimePage() {
                         넘기기
                       </button>
                       {emp.case_type === "B" && emp.actual_minutes > 0 ? (
-                        // Case B: 스케줄 없음 → 전체 등록
                         <button
                           onClick={() => handleApprove(emp, emp.actual_minutes)}
                           disabled={isSubmitting}
@@ -675,7 +948,6 @@ export default function AdminOvertimePage() {
                         </button>
                       ) : null}
                       {emp.case_type === "A" &&
-                        // Case A: 스케줄 초과 → 단위별 빠른 버튼
                         buttons.map((mins) => (
                           <button
                             key={mins}
@@ -711,32 +983,46 @@ export default function AdminOvertimePage() {
               {approvedEmps.map((emp) => {
                 const key = `${emp.date}_${emp.profile_id}`;
                 const isSubmitting = submitting === key;
+                const isExpanded = expandedKeys.has(key);
                 return (
                   <div
                     key={key}
-                    className="bg-white rounded-[16px] px-5 py-4 border border-[#E5E8EB] flex items-center gap-3"
+                    className="bg-white rounded-[16px] px-5 py-4 border border-[#E5E8EB]"
                   >
-                    <div
-                      className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-white font-bold text-[13px]"
-                      style={{ backgroundColor: emp.color_hex }}
-                    >
-                      {emp.name.charAt(0)}
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-white font-bold text-[13px]"
+                        style={{ backgroundColor: emp.color_hex }}
+                      >
+                        {emp.name.charAt(0)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[14px] font-bold text-[#191F28]">
+                          {emp.name}
+                        </p>
+                        <p className="text-[12px] text-[#3182F6] font-semibold">
+                          {minsToLabel(emp.ot_minutes!)} 인정됨
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => toggleExpand(key)}
+                        className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-[#F2F4F6] shrink-0"
+                      >
+                        {isExpanded ? (
+                          <ChevronUp className="w-4 h-4 text-[#8B95A1]" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 text-[#8B95A1]" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => handleCancelApproved(emp)}
+                        disabled={isSubmitting}
+                        className="px-3.5 py-2 rounded-[10px] bg-[#F2F4F6] text-[12px] font-bold text-[#4E5968] disabled:opacity-50 active:scale-[0.97] shrink-0"
+                      >
+                        취소
+                      </button>
                     </div>
-                    <div className="flex-1">
-                      <p className="text-[14px] font-bold text-[#191F28]">
-                        {emp.name}
-                      </p>
-                      <p className="text-[12px] text-[#3182F6] font-semibold">
-                        {minsToLabel(emp.ot_minutes!)} 인정됨
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => handleCancelApproved(emp)}
-                      disabled={isSubmitting}
-                      className="px-3.5 py-2 rounded-[10px] bg-[#F2F4F6] text-[12px] font-bold text-[#4E5968] disabled:opacity-50 active:scale-[0.97]"
-                    >
-                      취소
-                    </button>
+                    {isExpanded && <AttendanceDetailPanel emp={emp} />}
                   </div>
                 );
               })}
@@ -754,41 +1040,44 @@ export default function AdminOvertimePage() {
               {dismissedEmps.map((emp) => {
                 const key = `${emp.date}_${emp.profile_id}`;
                 const isSubmitting = submitting === key;
-                const parts: string[] = [];
-                if (emp.late_out_minutes > 0)
-                  parts.push(`늦게 퇴근 +${minsToLabel(emp.late_out_minutes)}`);
-                if (emp.early_in_minutes > 0)
-                  parts.push(`일찍 출근 +${minsToLabel(emp.early_in_minutes)}`);
-                if (emp.case_type === "B")
-                  parts.push(`${minsToLabel(emp.actual_minutes)} 근무`);
-                const detail = parts.join(" · ");
-
+                const isExpanded = expandedKeys.has(key);
                 return (
                   <div
                     key={key}
-                    className="bg-white rounded-[16px] px-5 py-4 border border-[#E5E8EB] flex items-center gap-3"
+                    className="bg-white rounded-[16px] px-5 py-4 border border-[#E5E8EB]"
                   >
-                    <div
-                      className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-white font-bold text-[13px]"
-                      style={{ backgroundColor: emp.color_hex }}
-                    >
-                      {emp.name.charAt(0)}
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-white font-bold text-[13px]"
+                        style={{ backgroundColor: emp.color_hex }}
+                      >
+                        {emp.name.charAt(0)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[14px] font-bold text-[#191F28]">
+                          {emp.name}
+                        </p>
+                        <p className="text-[12px] text-[#8B95A1]">넘김</p>
+                      </div>
+                      <button
+                        onClick={() => toggleExpand(key)}
+                        className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-[#F2F4F6] shrink-0"
+                      >
+                        {isExpanded ? (
+                          <ChevronUp className="w-4 h-4 text-[#8B95A1]" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 text-[#8B95A1]" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => openDirectInput(emp)}
+                        disabled={isSubmitting}
+                        className="px-3.5 py-2 rounded-[10px] bg-[#E8F3FF] text-[12px] font-bold text-[#3182F6] disabled:opacity-50 active:scale-[0.97] shrink-0"
+                      >
+                        추가근무로
+                      </button>
                     </div>
-                    <div className="flex-1">
-                      <p className="text-[14px] font-bold text-[#191F28]">
-                        {emp.name}
-                      </p>
-                      {detail && (
-                        <p className="text-[12px] text-[#B0B8C1]">{detail}</p>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => openDirectInput(emp)}
-                      disabled={isSubmitting}
-                      className="px-3.5 py-2 rounded-[10px] bg-[#E8F3FF] text-[12px] font-bold text-[#3182F6] disabled:opacity-50 active:scale-[0.97]"
-                    >
-                      추가근무로
-                    </button>
+                    {isExpanded && <AttendanceDetailPanel emp={emp} />}
                   </div>
                 );
               })}

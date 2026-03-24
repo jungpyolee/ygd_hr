@@ -89,10 +89,12 @@
 
 | 값 | 설명 |
 |----|------|
-| `regular` | 일반 출퇴근 (반경 내) |
+| `regular` | 일반 출퇴근 (GPS 반경 내) |
 | `remote_out` | 원격퇴근 (반경 밖 퇴근, 사유 필수) |
 | `business_trip_in` | 출장출근 (반경 밖 출근, 사용자 확인) |
 | `business_trip_out` | 출장퇴근 (출장출근 후 반경 밖 퇴근, 사유 자동입력) |
+| `fallback_in` | 수동출근 — GPS 실패 후 직원이 매장 직접 선택 (`distance_m=0`) 또는 관리자 처리 (`distance_m=null`, `reason="관리자 수동 처리"`) |
+| `fallback_out` | 수동퇴근 — GPS 실패 후 직원이 매장 직접 선택 (`distance_m=0`) 또는 관리자 처리 (`distance_m=null`, `reason="관리자 수동 처리"`) |
 
 **제약조건**
 - PK: `id`
