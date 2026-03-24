@@ -18,6 +18,9 @@ import {
   FileCheck,
   Briefcase,
   MapPin,
+  Search,
+  ChevronRight,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
@@ -55,6 +58,31 @@ const EMPLOYMENT_TYPE_OPTIONS = [
   { value: "part_time_daily", label: "일일 알바" },
 ];
 
+function getHealthStatus(date: string | null) {
+  if (!date) return "none";
+  const expiry = new Date(date);
+  const now = new Date();
+  if (expiry < now) return "expired";
+  const daysUntil = (expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+  if (daysUntil <= 30) return "soon";
+  return "ok";
+}
+
+function HealthBadge({ date, verified }: { date: string | null; verified: boolean | null }) {
+  const status = getHealthStatus(date);
+  if (status === "expired")
+    return <span className="text-[11px] font-bold text-[#D9480F] bg-[#FFF4E6] px-2 py-1 rounded-lg">만료</span>;
+  if (status === "soon")
+    return <span className="text-[11px] font-bold text-[#E8590C] bg-[#FFF4E6] px-2 py-1 rounded-lg">임박</span>;
+  if (status === "ok")
+    return (
+      <span className="text-[11px] font-bold text-[#2F9E44] bg-[#EBFBEE] px-2 py-1 rounded-lg">
+        {verified ? "확인" : "유효"}
+      </span>
+    );
+  return <span className="text-[11px] font-bold text-[#8B95A1] bg-[#F2F4F6] px-2 py-1 rounded-lg">미입력</span>;
+}
+
 
 // 파일 업로드용 키 타입
 type DocKey = "employment_contract_url" | "health_cert_url";
@@ -84,6 +112,11 @@ function generateTimeOptions(startH: number, endH: number) {
 export default function AdminEmployeesPage() {
   const { workplaces, byKey, byId, positionsOf, positionsOfStore, hasPositions, hasPositionsStore } = useWorkplaces();
   const [uploading, setUploading] = useState(false);
+
+  // 목록 필터 상태
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterType, setFilterType] = useState<string>("");
+  const [filterHealth, setFilterHealth] = useState<string>("");
 
   const [editingEmployee, setEditingEmployee] = useState<Profile | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{
@@ -125,6 +158,46 @@ export default function AdminEmployeesPage() {
     },
     { dedupingInterval: 60_000, revalidateOnFocus: false },
   );
+
+  // 전체 매장 배정 맵 (profile_id → store_id[])
+  const { data: assignmentsMap = {} } = useSWR(
+    "admin-all-assignments",
+    async () => {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("employee_store_assignments")
+        .select("profile_id, store_id");
+      const map: Record<string, string[]> = {};
+      for (const row of data ?? []) {
+        if (!map[row.profile_id]) map[row.profile_id] = [];
+        map[row.profile_id].push(row.store_id);
+      }
+      return map;
+    },
+    { dedupingInterval: 60_000, revalidateOnFocus: false },
+  );
+
+  // 필터링된 직원 목록
+  const filteredEmployees = employees.filter((emp) => {
+    if (searchQuery && !emp.name?.includes(searchQuery)) return false;
+    if (filterType && emp.employment_type !== filterType) return false;
+    if (filterHealth) {
+      const status = getHealthStatus(emp.health_cert_date);
+      if (filterHealth !== status) return false;
+    }
+    return true;
+  });
+
+  // 통계
+  const stats = {
+    total: employees.length,
+    full_time: employees.filter((e) => e.employment_type === "full_time").length,
+    part_time_fixed: employees.filter((e) => e.employment_type === "part_time_fixed").length,
+    part_time_daily: employees.filter((e) => e.employment_type === "part_time_daily").length,
+    expired: employees.filter((e) => getHealthStatus(e.health_cert_date) === "expired").length,
+    soon: employees.filter((e) => getHealthStatus(e.health_cert_date) === "soon").length,
+    none: employees.filter((e) => getHealthStatus(e.health_cert_date) === "none").length,
+  };
 
   const handleColorChange = async (id: string, newColor: string) => {
     const supabase = createClient();
@@ -430,175 +503,150 @@ export default function AdminEmployeesPage() {
 
   return (
     <div className="max-w-4xl animate-in fade-in duration-500 pb-20 relative">
-      <div className="mb-8">
+      <div className="mb-5">
         <h1 className="text-2xl font-bold text-[#191F28] mb-1">직원 관리</h1>
         <p className="text-[14px] text-[#8B95A1]">
           인사 정보, 근무 조건, 증빙 서류를 통합 관리하세요.
         </p>
       </div>
 
-      <div className="space-y-4">
-        {employees.map((employee) => {
-          const isAdmin = employee.role === "admin";
-          const isHealthCertExpired =
-            employee.health_cert_date &&
-            new Date(employee.health_cert_date) < new Date();
+      {/* 통계 바 */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        <button
+          onClick={() => { setFilterType(""); setFilterHealth(""); }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-bold transition-all ${filterType === "" && filterHealth === "" ? "bg-[#191F28] text-white" : "bg-white border border-[#E5E8EB] text-[#4E5968]"}`}
+        >
+          전체 <span className={`${filterType === "" && filterHealth === "" ? "bg-white/20" : "bg-[#F2F4F6]"} px-1.5 py-0.5 rounded-md`}>{stats.total}</span>
+        </button>
+        <button
+          onClick={() => { setFilterType("full_time"); setFilterHealth(""); }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-bold transition-all ${filterType === "full_time" ? "bg-[#191F28] text-white" : "bg-white border border-[#E5E8EB] text-[#4E5968]"}`}
+        >
+          정규직 <span className={`${filterType === "full_time" ? "bg-white/20" : "bg-[#F2F4F6]"} px-1.5 py-0.5 rounded-md`}>{stats.full_time}</span>
+        </button>
+        <button
+          onClick={() => { setFilterType("part_time_fixed"); setFilterHealth(""); }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-bold transition-all ${filterType === "part_time_fixed" ? "bg-[#191F28] text-white" : "bg-white border border-[#E5E8EB] text-[#4E5968]"}`}
+        >
+          고정알바 <span className={`${filterType === "part_time_fixed" ? "bg-white/20" : "bg-[#F2F4F6]"} px-1.5 py-0.5 rounded-md`}>{stats.part_time_fixed}</span>
+        </button>
+        <button
+          onClick={() => { setFilterType("part_time_daily"); setFilterHealth(""); }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-bold transition-all ${filterType === "part_time_daily" ? "bg-[#191F28] text-white" : "bg-white border border-[#E5E8EB] text-[#4E5968]"}`}
+        >
+          일일알바 <span className={`${filterType === "part_time_daily" ? "bg-white/20" : "bg-[#F2F4F6]"} px-1.5 py-0.5 rounded-md`}>{stats.part_time_daily}</span>
+        </button>
+        {(stats.expired > 0 || stats.soon > 0) && (
+          <button
+            onClick={() => { setFilterType(""); setFilterHealth(filterHealth === "expired" ? "soon" : filterHealth === "soon" ? "" : "expired"); }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-bold transition-all ${filterHealth === "expired" || filterHealth === "soon" ? "bg-[#D9480F] text-white" : "bg-[#FFF4E6] border border-[#FFD8A8] text-[#D9480F]"}`}
+          >
+            <AlertTriangle className="w-3.5 h-3.5" />
+            보건증 주의 <span className={`${filterHealth === "expired" || filterHealth === "soon" ? "bg-white/20" : "bg-[#FFD8A8]"} px-1.5 py-0.5 rounded-md`}>{stats.expired + stats.soon}</span>
+          </button>
+        )}
+        {stats.none > 0 && (
+          <button
+            onClick={() => { setFilterType(""); setFilterHealth(filterHealth === "none" ? "" : "none"); }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-bold transition-all ${filterHealth === "none" ? "bg-[#8B95A1] text-white" : "bg-white border border-[#E5E8EB] text-[#8B95A1]"}`}
+          >
+            미입력 <span className={`${filterHealth === "none" ? "bg-white/20" : "bg-[#F2F4F6]"} px-1.5 py-0.5 rounded-md`}>{stats.none}</span>
+          </button>
+        )}
+      </div>
 
-          return (
-            <div
-              key={employee.id}
-              className="bg-white rounded-[20px] p-5 sm:p-6 border border-slate-100 shadow-[0_2px_10px_rgba(0,0,0,0.02)] flex flex-col sm:flex-row sm:items-center justify-between gap-5 transition-all hover:shadow-[0_4px_20px_rgba(0,0,0,0.06)]"
-            >
-              <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 w-full">
-                <div className="flex items-start sm:items-center gap-4 shrink-0">
-                  <div
-                    className="w-14 h-14 rounded-full flex items-center justify-center text-[18px] font-bold text-white shadow-sm shrink-0"
-                    style={{ backgroundColor: employee.color_hex || "#8B95A1" }}
-                  >
-                    {employee.name?.charAt(0)}
-                  </div>
-                  <div className="sm:w-[130px]">
-                    <div className="flex items-center gap-2 mb-1">
-                      <p className="text-[18px] font-bold text-[#191F28]">
-                        {employee.name}
-                      </p>
-                      {isAdmin && (
-                        <span className="bg-[#E8F3FF] text-[#3182F6] text-[11px] font-bold px-1.5 py-0.5 rounded-md">
-                          관리자
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[12px] font-medium text-[#4E5968] mb-0.5">
-                      {employee.department || "소속 없음"}{" "}
-                      {employee.position ? `· ${employee.position}` : ""}
-                    </p>
-                    <p className="text-[11px] text-[#8B95A1]">
-                      입사:{" "}
-                      {employee.join_date
-                        ? employee.join_date.replace(/-/g, ".")
-                        : "미정"}
-                    </p>
-                  </div>
+      {/* 검색 */}
+      <div className="relative mb-3">
+        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8B95A1]" />
+        <input
+          type="text"
+          placeholder="이름으로 검색"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full pl-10 pr-4 py-2.5 bg-white border border-[#E5E8EB] rounded-xl text-[14px] text-[#191F28] focus:outline-none focus:border-[#3182F6] transition-all"
+        />
+      </div>
+
+      {/* 컴팩트 직원 목록 */}
+      <div className="bg-white rounded-2xl border border-[#E5E8EB] overflow-hidden">
+        {filteredEmployees.length === 0 ? (
+          <div className="py-12 text-center text-[14px] text-[#8B95A1]">
+            조건에 맞는 직원이 없어요.
+          </div>
+        ) : (
+          filteredEmployees.map((employee, idx) => {
+            const isAdmin = employee.role === "admin";
+            const empTypeLabel =
+              employee.employment_type === "full_time"
+                ? "정규직"
+                : employee.employment_type === "part_time_fixed"
+                  ? "고정알바"
+                  : employee.employment_type === "part_time_daily"
+                    ? "일일알바"
+                    : null;
+
+            const storeIds = assignmentsMap[employee.id] ?? [];
+            const storeLabels = storeIds
+              .map((sid) => byId[sid]?.label ?? "")
+              .filter(Boolean)
+              .join(", ");
+
+            const positionLabels = (employee.position_keys ?? [])
+              .map((key) => {
+                for (const sid of storeIds) {
+                  const pos = (byId[sid]?.positions ?? []).find((p) => p.position_key === key);
+                  if (pos) return pos.label;
+                }
+                return null;
+              })
+              .filter(Boolean)
+              .join(", ");
+
+            const subLine = [storeLabels, positionLabels].filter(Boolean).join(" · ");
+
+            return (
+              <div
+                key={employee.id}
+                className={`flex items-center gap-3 px-4 py-3.5 cursor-pointer hover:bg-[#F9FAFB] active:bg-[#F2F4F6] transition-colors ${idx !== 0 ? "border-t border-[#F2F4F6]" : ""}`}
+                onClick={() => openEditModal(employee)}
+              >
+                {/* 아바타 */}
+                <div
+                  className="w-9 h-9 rounded-full flex items-center justify-center text-[14px] font-bold text-white shrink-0"
+                  style={{ backgroundColor: employee.color_hex || "#8B95A1" }}
+                >
+                  {employee.name?.charAt(0)}
                 </div>
 
-                <div className="flex flex-col justify-center gap-3 flex-1 bg-[#F9FAFB] sm:bg-transparent p-4 sm:p-0 rounded-xl">
-                  {/* 주요 정보 요약 */}
-                  <div className="flex flex-wrap gap-4 sm:gap-6">
-                    <div className="flex items-center gap-2">
-                      <Phone className="w-4 h-4 text-[#8B95A1]" />
-                      <p className="text-[13px] font-medium text-[#4E5968]">
-                        {employee.phone || (
-                          <span className="text-[#D1D6DB]">미입력</span>
-                        )}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <CreditCard className="w-4 h-4 text-[#8B95A1]" />
-                      <p className="text-[13px] font-medium text-[#4E5968]">
-                        {employee.bank_name ? `${employee.bank_name} ` : ""}
-                        {employee.account_number || (
-                          <span className="text-[#D1D6DB]">계좌 미입력</span>
-                        )}
-                      </p>
-                      {employee.account_number && (
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(
-                              employee.account_number!,
-                            );
-                            toast.success("계좌번호를 복사했어요");
-                          }}
-                          className="text-[11px] font-bold text-[#3182F6] bg-[#E8F3FF] hover:bg-[#D0E5FF] px-2 py-0.5 rounded-md transition-colors"
-                        >
-                          복사
-                        </button>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <FileText className="w-4 h-4 text-[#8B95A1]" />
-                      {employee.health_cert_date ? (
-                        <p
-                          className={`text-[13px] font-bold ${
-                            isHealthCertExpired
-                              ? "text-[#D9480F]"
-                              : "text-[#3182F6]"
-                          }`}
-                        >
-                          ~{employee.health_cert_date.substring(2)}{" "}
-                          {isHealthCertExpired
-                            ? "(만료)"
-                            : employee.health_cert_verified
-                              ? "(확인완료)"
-                              : ""}
-                        </p>
-                      ) : (
-                        <p className="text-[13px] font-medium text-[#D1D6DB]">
-                          보건증 미입력
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* 서류 뱃지 영역 */}
-                  <div className="flex flex-wrap gap-2 mt-1">
-                    {[
-                      {
-                        label: "계약서",
-                        url: employee.employment_contract_url,
-                      },
-                      { label: "보건증", url: employee.health_cert_url },
-                    ].map((doc) =>
-                      doc.url ? (
-                        <button
-                          key={doc.label}
-                          onClick={() => handleViewDocument(doc.url!)}
-                          className="flex items-center gap-1.5 px-2 py-1 bg-[#E8F3FF] text-[#3182F6] hover:bg-[#D0E5FF] rounded-lg text-[11px] font-bold transition-colors"
-                        >
-                          <FileCheck className="w-3.5 h-3.5" /> {doc.label}
-                        </button>
-                      ) : null,
+                {/* 이름 + 소속 */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[14px] font-bold text-[#191F28]">{employee.name}</span>
+                    {isAdmin && (
+                      <span className="bg-[#E8F3FF] text-[#3182F6] text-[10px] font-bold px-1.5 py-0.5 rounded-md">관리자</span>
+                    )}
+                    {empTypeLabel && (
+                      <span className="bg-[#F2F4F6] text-[#8B95A1] text-[10px] font-bold px-1.5 py-0.5 rounded-md">{empTypeLabel}</span>
                     )}
                   </div>
+                  {subLine ? (
+                    <p className="text-[12px] text-[#8B95A1] truncate mt-0.5">{subLine}</p>
+                  ) : (
+                    <p className="text-[12px] text-[#D1D6DB] mt-0.5">매장 미배정</p>
+                  )}
                 </div>
-              </div>
 
-              <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3 w-full sm:w-auto mt-2 sm:mt-0 pt-4 sm:pt-0 border-t border-slate-100 sm:border-0 shrink-0">
-                <button
-                  onClick={() => openEditModal(employee)}
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2.5 bg-[#F9FAFB] hover:bg-[#F2F4F6] border border-slate-200 text-[#4E5968] rounded-xl text-[13px] font-bold transition-colors"
-                >
-                  <Edit2 className="w-4 h-4 text-[#8B95A1]" />
-                  <span>수정하기</span>
-                </button>
-                <div className="relative flex-1 sm:flex-none">
-                  <button className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2.5 bg-[#F9FAFB] hover:bg-[#F2F4F6] border border-slate-200 text-[#4E5968] rounded-xl text-[13px] font-bold transition-colors">
-                    <Palette className="w-4 h-4 text-[#8B95A1]" />
-                    <span>색상</span>
-                  </button>
-                  <input
-                    type="color"
-                    value={employee.color_hex || "#8B95A1"}
-                    onChange={(e) =>
-                      handleColorChange(employee.id, e.target.value)
-                    }
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  />
+                {/* 보건증 상태 */}
+                <div className="shrink-0">
+                  <HealthBadge date={employee.health_cert_date} verified={employee.health_cert_verified} />
                 </div>
-                {!isAdmin && (
-                  <button
-                    onClick={() =>
-                      handleDeleteEmployee(employee.id, employee.name)
-                    }
-                    className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2.5 bg-[#FFF4E6] hover:bg-[#FFE8CC] text-[#D9480F] rounded-xl text-[13px] font-bold transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    <span>삭제</span>
-                  </button>
-                )}
+
+                {/* 화살표 */}
+                <ChevronRight className="w-4 h-4 text-[#D1D6DB] shrink-0" />
               </div>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </div>
 
       {/* 직원 삭제 확인 다이얼로그 */}
