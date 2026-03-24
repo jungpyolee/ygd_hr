@@ -4,6 +4,7 @@ import { useState } from "react";
 import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
 import { logError } from "@/lib/logError";
+import AvatarDisplay from "@/components/AvatarDisplay";
 import {
   Trash2,
   Palette,
@@ -50,6 +51,7 @@ interface Profile {
   position_keys: string[] | null;
   hourly_wage: number | null;
   insurance_type: string | null;
+  avatar_config?: any;
 }
 
 const EMPLOYMENT_TYPE_OPTIONS = [
@@ -625,12 +627,11 @@ export default function AdminEmployeesPage() {
                 onClick={() => openEditModal(employee)}
               >
                 {/* 아바타 */}
-                <div
-                  className="w-9 h-9 rounded-full flex items-center justify-center text-[14px] font-bold text-white shrink-0"
-                  style={{ backgroundColor: employee.color_hex || "#8B95A1" }}
-                >
-                  {employee.name?.charAt(0)}
-                </div>
+                <AvatarDisplay
+                  userId={employee.id}
+                  avatarConfig={employee.avatar_config}
+                  size={36}
+                />
 
                 {/* 이름 + 소속 */}
                 <div className="flex-1 min-w-0">

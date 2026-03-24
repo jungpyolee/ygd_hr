@@ -10,17 +10,20 @@ import {
   BookOpen,
   ChevronRight,
   LogOut,
-  UserCircle,
   LayoutDashboard,
+  Pencil,
 } from "lucide-react";
 import MyInfoModal from "@/components/MyInfoModal";
 import PushNotificationSettings from "@/components/PushNotificationSettings";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
+import AvatarDisplay from "@/components/AvatarDisplay";
+import AvatarEditorModal from "@/components/AvatarEditorModal";
 
 export default function MyPage() {
   const router = useRouter();
   const { user } = useAuth();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isAvatarEditorOpen, setIsAvatarEditorOpen] = useState(false);
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
 
   const { data: profile, mutate } = useSWR(
@@ -56,11 +59,20 @@ export default function MyPage() {
           onClick={() => profile && setIsEditModalOpen(true)}
           className="w-full bg-white rounded-[24px] p-5 border border-slate-100 flex items-center gap-4 active:scale-[0.99] transition-transform text-left"
         >
-          <div className="w-14 h-14 rounded-full flex items-center justify-center shrink-0"
-            style={{ backgroundColor: profile?.color_hex || "#E5E8EB" }}>
-            {profile?.color_hex
-              ? <span className="text-white font-bold text-xl">{profile.name?.charAt(0)}</span>
-              : <UserCircle className="w-8 h-8 text-[#8B95A1]" />}
+          <div className="relative shrink-0">
+            {profile && (
+              <AvatarDisplay
+                userId={profile.id}
+                avatarConfig={profile.avatar_config}
+                size={56}
+              />
+            )}
+            <button
+              onClick={(e) => { e.stopPropagation(); profile && setIsAvatarEditorOpen(true); }}
+              className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-[#3182F6] flex items-center justify-center shadow"
+            >
+              <Pencil className="w-2.5 h-2.5 text-white" />
+            </button>
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-[17px] font-bold text-[#191F28]">{profile?.name ?? "이름 없음"}</p>
@@ -124,6 +136,16 @@ export default function MyPage() {
       {profile && (
         <MyInfoModal isOpen={isEditModalOpen} profile={profile}
           onClose={() => setIsEditModalOpen(false)} onUpdate={() => mutate()} />
+      )}
+
+      {profile && (
+        <AvatarEditorModal
+          isOpen={isAvatarEditorOpen}
+          onClose={() => setIsAvatarEditorOpen(false)}
+          userId={profile.id}
+          currentConfig={profile.avatar_config}
+          onSave={(config) => mutate({ ...profile, avatar_config: config }, false)}
+        />
       )}
 
       <ConfirmDialog

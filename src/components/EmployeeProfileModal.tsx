@@ -12,6 +12,7 @@ import {
   Briefcase,
   Check,
 } from "lucide-react";
+import AvatarDisplay from "@/components/AvatarDisplay";
 
 interface FullProfile {
   id: string;
@@ -30,6 +31,7 @@ interface FullProfile {
   health_cert_verified: boolean | null;
   color_hex: string;
   insurance_type: string | null;
+  avatar_config?: any;
 }
 
 const EMPLOYMENT_TYPE_LABELS: Record<string, string> = {
@@ -57,7 +59,7 @@ export default function EmployeeProfileModal({ profileId, onClose }: Props) {
       const { data } = await supabase
         .from("profiles")
         .select(
-          "id, name, email, phone, department, position, role, join_date, employment_type, hourly_wage, bank_name, account_number, health_cert_date, health_cert_verified, color_hex, insurance_type",
+          "id, name, email, phone, department, position, role, join_date, employment_type, hourly_wage, bank_name, account_number, health_cert_date, health_cert_verified, color_hex, insurance_type, avatar_config",
         )
         .eq("id", profileId)
         .single();
@@ -190,12 +192,11 @@ function ViewBody({
     <div className="space-y-5 pt-2">
       {/* 아바타 + 이름 */}
       <div className="flex flex-col items-center gap-2 py-2">
-        <div
-          className="w-16 h-16 rounded-full flex items-center justify-center text-[22px] font-bold text-white"
-          style={{ backgroundColor: profile.color_hex || "#8B95A1" }}
-        >
-          {profile.name?.charAt(0)}
-        </div>
+        <AvatarDisplay
+          userId={profile.id}
+          avatarConfig={profile.avatar_config}
+          size={64}
+        />
         <div className="text-center">
           <div className="flex items-center justify-center gap-1.5">
             <p className="text-[18px] font-bold text-[#191F28]">{profile.name}</p>

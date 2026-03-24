@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase";
 import { X, UploadCloud, LogOut, LayoutDashboard } from "lucide-react";
+import AvatarDisplay from "@/components/AvatarDisplay";
 import { toast } from "sonner";
 import { DatePicker } from "@/components/ui/date-picker";
 import { sendNotification } from "@/lib/notifications";
@@ -188,12 +189,11 @@ export default function MyInfoModal({
         <div className="space-y-6">
           {/* 프로필 요약 */}
           <div className="flex items-center gap-4 px-1">
-            <div
-              className="w-16 h-16 rounded-full flex items-center justify-center text-white font-bold text-xl shadow-inner"
-              style={{ backgroundColor: profile?.color_hex }}
-            >
-              {profile?.name?.charAt(0)}
-            </div>
+            <AvatarDisplay
+              userId={profile.id}
+              avatarConfig={profile.avatar_config}
+              size={64}
+            />
             <div>
               <p className="font-bold text-[#191F28] text-lg">
                 {profile?.name}
