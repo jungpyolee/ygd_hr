@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import AvatarDisplay from "@/components/AvatarDisplay";
 import { createClient } from "@/lib/supabase";
 import { sendNotification } from "@/lib/notifications";
 import { formatDistanceToNow } from "date-fns";
@@ -18,7 +19,7 @@ interface CommentRow {
   mentioned_profile_id: string | null;
   is_deleted: boolean;
   created_at: string;
-  profiles: { name: string; color_hex: string | null };
+  profiles: { name: string; color_hex: string | null; avatar_config?: any };
 }
 
 interface RecipeCommentsProps {
@@ -40,7 +41,7 @@ interface CommentCardProps {
   setDeleteTarget: (c: CommentRow | null) => void;
   canDelete: (c: CommentRow) => boolean;
   timeAgo: (ts: string) => string;
-  currentUser: { id: string; name: string; role: string } | null;
+  currentUser: { id: string; name: string; role: string; avatar_config?: any } | null;
   submitting: boolean;
   replyInputRef: React.RefObject<HTMLTextAreaElement | null>;
 }
@@ -69,12 +70,7 @@ function CommentCard({
   return (
     <div className={isReply ? "ml-8" : ""}>
       <div className="flex gap-3">
-        <div
-          className="w-8 h-8 rounded-full flex items-center justify-center text-[12px] font-bold text-white shrink-0"
-          style={{ backgroundColor: color }}
-        >
-          {initial}
-        </div>
+        <AvatarDisplay userId={comment.profile_id} avatarConfig={comment.profiles?.avatar_config} size={32} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-0.5">
             <span className="text-[13px] font-bold text-[#191F28]">
@@ -158,14 +154,7 @@ function CommentCard({
         <div className="mt-3 space-y-3 pl-8 border-l-2 border-[#F2F4F6] ml-4">
           {replies.map((reply) => (
             <div key={reply.id} className="flex gap-3">
-              <div
-                className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
-                style={{
-                  backgroundColor: reply.profiles?.color_hex || "#8B95A1",
-                }}
-              >
-                {(reply.profiles?.name || "?")?.charAt(0)}
-              </div>
+              <AvatarDisplay userId={reply.profile_id} avatarConfig={reply.profiles?.avatar_config} size={28} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-0.5">
                   <span className="text-[12px] font-bold text-[#191F28]">
@@ -217,6 +206,7 @@ export default function RecipeComments({
     id: string;
     name: string;
     role: string;
+    avatar_config?: any;
   } | null>(null);
   const [text, setText] = useState("");
   const [replyingTo, setReplyingTo] = useState<CommentRow | null>(null);
@@ -228,7 +218,7 @@ export default function RecipeComments({
   const fetchComments = async () => {
     const { data } = await supabase
       .from("recipe_comments")
-      .select("*, profiles!recipe_comments_profile_id_fkey(name, color_hex)")
+      .select("*, profiles!recipe_comments_profile_id_fkey(name, color_hex, avatar_config)")
       .eq("recipe_id", recipeId)
       .order("created_at", { ascending: true });
     setComments((data as CommentRow[]) ?? []);
@@ -242,13 +232,14 @@ export default function RecipeComments({
       if (user) {
         const { data: profile } = await supabase
           .from("profiles")
-          .select("name, role")
+          .select("name, role, avatar_config")
           .eq("id", user.id)
           .single();
         setCurrentUser({
           id: user.id,
           name: profile?.name ?? "",
           role: profile?.role ?? "employee",
+          avatar_config: profile?.avatar_config ?? null,
         });
       }
       await fetchComments();
@@ -450,12 +441,7 @@ export default function RecipeComments({
       {currentUser && (
         <div className="pt-3 border-t border-[#F2F4F6] space-y-2">
           <div className="flex gap-2 items-start">
-            <div
-              className="w-8 h-8 rounded-full flex items-center justify-center text-[12px] font-bold text-white shrink-0 mt-0.5"
-              style={{ backgroundColor: "#8B95A1" }}
-            >
-              {currentUser.name?.charAt(0)}
-            </div>
+            <AvatarDisplay userId={currentUser.id} avatarConfig={currentUser.avatar_config} size={32} />
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}

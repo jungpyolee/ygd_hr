@@ -1,6 +1,7 @@
 "use client";
 
 import useSWR from "swr";
+import AvatarDisplay from "@/components/AvatarDisplay";
 import {
   Phone,
   Edit2,
@@ -20,6 +21,7 @@ interface TodayAttendanceItem {
   profile_id: string;
   name: string;
   color_hex: string;
+  avatar_config?: any;
   start_time: string;
   end_time: string;
   store_id: string;
@@ -32,6 +34,7 @@ interface HealthCertItem {
   id: string;
   name: string;
   color_hex: string | null;
+  avatar_config?: any;
   phone: string | null;
   health_cert_date: string;
   days_left: number;
@@ -69,7 +72,7 @@ export default function AdminDashboardPage() {
       const { data: slotsData } = await supabase
         .from("schedule_slots")
         .select(
-          "profile_id, start_time, end_time, store_id, profiles!profile_id(name, color_hex)",
+          "profile_id, start_time, end_time, store_id, profiles!profile_id(name, color_hex, avatar_config)",
         )
         .eq("slot_date", todayStr)
         .eq("status", "active")
@@ -126,6 +129,7 @@ export default function AdminDashboardPage() {
           profile_id: slot.profile_id,
           name: slot.profiles?.name || "알 수 없음",
           color_hex: slot.profiles?.color_hex || "#8B95A1",
+          avatar_config: slot.profiles?.avatar_config ?? null,
           start_time: slot.start_time,
           end_time: slot.end_time,
           store_id: slot.store_id,
@@ -150,7 +154,7 @@ export default function AdminDashboardPage() {
 
       const { data } = await supabase
         .from("profiles")
-        .select("id, name, color_hex, phone, health_cert_date")
+        .select("id, name, color_hex, avatar_config, phone, health_cert_date")
         .not("health_cert_date", "is", null)
         .gte("health_cert_date", today)
         .lte("health_cert_date", thirtyDaysLater)
@@ -319,12 +323,7 @@ export default function AdminDashboardPage() {
                   className="flex items-center justify-between px-4 py-3.5"
                 >
                   <div className="flex items-center gap-3">
-                    <div
-                      className="w-9 h-9 rounded-full flex items-center justify-center text-[14px] font-bold text-white shrink-0"
-                      style={{ backgroundColor: item.color_hex }}
-                    >
-                      {item.name?.charAt(0)}
-                    </div>
+                    <AvatarDisplay userId={item.profile_id} avatarConfig={item.avatar_config} size={36} />
                     <div>
                       <p className="text-[15px] font-bold text-[#191F28]">
                         {item.name}
@@ -384,12 +383,7 @@ export default function AdminDashboardPage() {
                 className="flex items-center justify-between px-4 py-3.5"
               >
                 <div className="flex items-center gap-3">
-                  <div
-                    className="w-9 h-9 rounded-full flex items-center justify-center text-[14px] font-bold text-white shrink-0"
-                    style={{ backgroundColor: emp.color_hex || "#8B95A1" }}
-                  >
-                    {emp.name.charAt(0)}
-                  </div>
+                  <AvatarDisplay userId={emp.id} avatarConfig={emp.avatar_config} size={36} />
                   <div>
                     <p className="text-[15px] font-bold text-[#191F28]">
                       {emp.name}

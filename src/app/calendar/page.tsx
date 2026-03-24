@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import AvatarDisplay from "@/components/AvatarDisplay";
 import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
@@ -57,6 +58,7 @@ interface TeamSlot {
   profile_id: string;
   profile_name: string;
   profile_color: string;
+  avatar_config?: any;
 }
 
 interface AttendanceLog {
@@ -257,12 +259,7 @@ function DayDetailSheet({ dateStr, dayInfo, layers, onClose }: DayDetailSheetPro
                     key={slot.id}
                     className="flex items-center gap-2.5 p-2.5 bg-[#F9FAFB] rounded-xl"
                   >
-                    <div
-                      className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
-                      style={{ backgroundColor: slot.profile_color || "#8B95A1" }}
-                    >
-                      {slot.profile_name?.charAt(0)}
-                    </div>
+                    <AvatarDisplay userId={slot.profile_id} avatarConfig={slot.avatar_config} size={28} />
                     <div className="flex-1 min-w-0">
                       <span className="text-[13px] font-bold text-[#333D4B]">{slot.profile_name}</span>
                       {store && (
@@ -370,7 +367,7 @@ export default function EmployeeCalendarPage() {
       if (confirmedWsIds.length > 0 && myStoreIds.length > 0) {
         const { data: teamData } = await supabase
           .from("schedule_slots")
-          .select("*, profiles!profile_id(name, color_hex)")
+          .select("*, profiles!profile_id(name, color_hex, avatar_config)")
           .in("weekly_schedule_id", confirmedWsIds)
           .in("store_id", myStoreIds)
           .eq("status", "active")
@@ -386,6 +383,7 @@ export default function EmployeeCalendarPage() {
           profile_id: s.profile_id,
           profile_name: s.profiles?.name || "알 수 없음",
           profile_color: s.profiles?.color_hex || "#8B95A1",
+          avatar_config: s.profiles?.avatar_config ?? null,
         }));
       }
 

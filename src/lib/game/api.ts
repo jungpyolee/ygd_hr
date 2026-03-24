@@ -249,11 +249,11 @@ export async function getLeaderboard() {
   const ids = scores.map((s: { id: string }) => s.id);
   const { data: profilesData } = await supabase
     .from("profiles")
-    .select("id, name, color_hex")
+    .select("id, name, color_hex, avatar_config")
     .in("id", ids);
 
   const profileMap = new Map(
-    (profilesData ?? []).map((p: { id: string; name: string; color_hex: string | null }) => [p.id, p])
+    (profilesData ?? []).map((p: { id: string; name: string; color_hex: string | null; avatar_config?: any }) => [p.id, p])
   );
 
   return {
@@ -262,7 +262,7 @@ export async function getLeaderboard() {
       total_score: s.total_score,
       best_run_score: s.best_run_score,
       highest_wave: s.highest_wave,
-      profiles: profileMap.get(s.id) ?? { name: "알 수 없음", color_hex: null },
+      profiles: profileMap.get(s.id) ?? { id: s.id, name: "알 수 없음", color_hex: null, avatar_config: null },
     })),
   };
 }

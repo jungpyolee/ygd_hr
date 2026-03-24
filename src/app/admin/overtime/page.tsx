@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import AvatarDisplay from "@/components/AvatarDisplay";
 import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
 import { format, subDays } from "date-fns";
@@ -28,6 +29,7 @@ interface EmpDay {
   profile_id: string;
   name: string;
   color_hex: string;
+  avatar_config?: any;
   date: string; // "yyyy-MM-dd"
   actual_in: string; // "HH:mm"
   actual_out: string;
@@ -386,7 +388,7 @@ export default function AdminOvertimePage() {
         .from("attendance_logs")
         .select(
           `profile_id, type, attendance_type, reason, distance_m, created_at,
-           profiles!profile_id(name, color_hex),
+           profiles!profile_id(name, color_hex, avatar_config),
            check_in_store:check_in_store_id(name, label),
            check_out_store:check_out_store_id(name, label)`
         )
@@ -402,6 +404,7 @@ export default function AdminOvertimePage() {
           profile_id: string;
           name: string;
           color: string;
+          avatar_config: any | null;
           in_time: Date;
           in_type: string;
           in_store_name: string | null;
@@ -424,6 +427,7 @@ export default function AdminOvertimePage() {
               profile_id: log.profile_id,
               name: log.profiles?.name ?? "알 수 없음",
               color: log.profiles?.color_hex ?? "#8B95A1",
+              avatar_config: log.profiles?.avatar_config ?? null,
               in_time: new Date(log.created_at),
               in_type: log.attendance_type ?? "regular",
               in_store_name:
@@ -561,6 +565,7 @@ export default function AdminOvertimePage() {
           profile_id: pair.profile_id,
           name: pair.name,
           color_hex: pair.color,
+          avatar_config: pair.avatar_config ?? null,
           date: pair.date,
           actual_in: format(pair.in_time, "HH:mm"),
           actual_out: format(pair.out_time, "HH:mm"),
@@ -910,12 +915,7 @@ export default function AdminOvertimePage() {
                   >
                     {/* 직원 정보 */}
                     <div className="flex items-center gap-3 mb-3">
-                      <div
-                        className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 text-white font-bold text-[15px]"
-                        style={{ backgroundColor: emp.color_hex }}
-                      >
-                        {emp.name.charAt(0)}
-                      </div>
+                      <AvatarDisplay userId={emp.profile_id} avatarConfig={emp.avatar_config} size={40} />
                       <div className="flex-1">
                         <p className="text-[15px] font-bold text-[#191F28]">
                           {emp.name}
@@ -990,12 +990,7 @@ export default function AdminOvertimePage() {
                     className="bg-white rounded-[16px] px-5 py-4 border border-[#E5E8EB]"
                   >
                     <div className="flex items-center gap-3">
-                      <div
-                        className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-white font-bold text-[13px]"
-                        style={{ backgroundColor: emp.color_hex }}
-                      >
-                        {emp.name.charAt(0)}
-                      </div>
+                      <AvatarDisplay userId={emp.profile_id} avatarConfig={emp.avatar_config} size={32} />
                       <div className="flex-1 min-w-0">
                         <p className="text-[14px] font-bold text-[#191F28]">
                           {emp.name}
@@ -1047,12 +1042,7 @@ export default function AdminOvertimePage() {
                     className="bg-white rounded-[16px] px-5 py-4 border border-[#E5E8EB]"
                   >
                     <div className="flex items-center gap-3">
-                      <div
-                        className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-white font-bold text-[13px]"
-                        style={{ backgroundColor: emp.color_hex }}
-                      >
-                        {emp.name.charAt(0)}
-                      </div>
+                      <AvatarDisplay userId={emp.profile_id} avatarConfig={emp.avatar_config} size={32} />
                       <div className="flex-1 min-w-0">
                         <p className="text-[14px] font-bold text-[#191F28]">
                           {emp.name}

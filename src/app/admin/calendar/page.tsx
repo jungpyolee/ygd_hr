@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useMemo } from "react";
+import AvatarDisplay from "@/components/AvatarDisplay";
 import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
 import { toast } from "sonner";
@@ -52,6 +53,7 @@ interface Profile {
   id: string;
   name: string;
   color_hex: string;
+  avatar_config?: any;
 }
 
 interface ScheduleSlot {
@@ -78,6 +80,7 @@ interface AttendanceEntry {
   date: string;
   name: string;
   color_hex: string;
+  avatar_config?: any;
   store_name: string;
   clock_in: string | null;
   clock_out: string | null;
@@ -432,9 +435,7 @@ function DaySheet({
       if (!isPast) return null;
       return (
         <div key={profileId} className="bg-[#FFF5F5] rounded-[18px] p-4 flex items-center gap-3 border border-[#FFCDD2]">
-          <div className="w-10 h-10 rounded-full flex items-center justify-center text-[14px] font-bold text-white shrink-0" style={{ backgroundColor: colorHex }}>
-            {name?.charAt(0)}
-          </div>
+          <AvatarDisplay userId={profileId} avatarConfig={att?.avatar_config ?? profileById[slot?.profile_id ?? ""]?.avatar_config} size={40} />
           <div className="flex-1">
             <div className="flex items-center gap-2">
               <button
@@ -472,9 +473,7 @@ function DaySheet({
         {/* 상단: 프로필 + 출퇴근 시간 */}
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center text-[14px] font-bold text-white shrink-0" style={{ backgroundColor: colorHex }}>
-              {name?.charAt(0)}
-            </div>
+            <AvatarDisplay userId={profileId} avatarConfig={att?.avatar_config ?? profileById[slot?.profile_id ?? ""]?.avatar_config} size={40} />
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
                 <button onClick={() => profileId && setViewProfileId(profileId)} className="text-[15px] font-bold text-[#191F28] truncate hover:text-[#3182F6] transition-colors">{name}</button>
@@ -605,9 +604,7 @@ function DaySheet({
                   {renderAttCard(att, slot) ?? (
                     <div className="bg-white p-4 border border-slate-100 rounded-[18px] flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full flex items-center justify-center text-[14px] font-bold text-white shrink-0" style={{ backgroundColor: profile?.color_hex || "#8B95A1" }}>
-                          {profile?.name?.charAt(0)}
-                        </div>
+                        <AvatarDisplay userId={slot.profile_id} avatarConfig={profile?.avatar_config} size={40} />
                         <div>
                           <span className="text-[15px] font-bold text-[#191F28]">{profile?.name}</span>
                           <p className="text-[12px] text-[#8B95A1]">{byId[slot.store_id]?.label}</p>
@@ -624,9 +621,7 @@ function DaySheet({
             return renderAttCard(att, slot) ?? (
               <div key={slot.id} className="bg-white p-4 border border-slate-100 rounded-[18px] flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-[14px] font-bold text-white shrink-0" style={{ backgroundColor: profile?.color_hex || "#8B95A1" }}>
-                    {profile?.name?.charAt(0)}
-                  </div>
+                  <AvatarDisplay userId={slot.profile_id} avatarConfig={profile?.avatar_config} size={40} />
                   <div>
                     <span className="text-[15px] font-bold text-[#191F28]">{profile?.name}</span>
                     <p className="text-[12px] text-[#8B95A1]">{byId[slot.store_id]?.label}</p>
@@ -671,9 +666,7 @@ function DaySheet({
               </button>
             </div>
             <div className="flex items-center gap-3 bg-[#F9FAFB] rounded-[16px] p-3.5">
-              <div className="w-10 h-10 rounded-full flex items-center justify-center text-[14px] font-bold text-white shrink-0" style={{ backgroundColor: manualOutAtt.color_hex }}>
-                {manualOutAtt.name?.charAt(0)}
-              </div>
+              <AvatarDisplay userId={manualOutAtt.profile_id} avatarConfig={manualOutAtt.avatar_config} size={40} />
               <div>
                 <p className="text-[15px] font-bold text-[#191F28]">{manualOutAtt.name}</p>
                 <p className="text-[12px] text-[#8B95A1]">
@@ -766,7 +759,7 @@ export default function AdminCalendarPage() {
       const [start, end] = range.split("_");
 
       // 직원 목록 (adminFlag === "all" 이면 어드민 포함)
-      const profileQuery = supabase.from("profiles").select("id, name, color_hex, role").order("name");
+      const profileQuery = supabase.from("profiles").select("id, name, color_hex, avatar_config, role").order("name");
       const { data: profilesData } = adminFlag === "all"
         ? await profileQuery
         : await profileQuery.eq("role", "employee");
@@ -791,7 +784,7 @@ export default function AdminCalendarPage() {
       const endStr = new Date(`${end}T23:59:59.999+09:00`).toISOString();
       const { data: logsData } = await supabase
         .from("attendance_logs")
-        .select("id, profile_id, type, created_at, distance_m, attendance_type, reason, profiles(name, color_hex), check_in_store:stores!check_in_store_id(name)")
+        .select("id, profile_id, type, created_at, distance_m, attendance_type, reason, profiles(name, color_hex, avatar_config), check_in_store:stores!check_in_store_id(name)")
         .gte("created_at", startStr)
         .lte("created_at", endStr)
         .order("created_at", { ascending: true });
@@ -804,8 +797,8 @@ export default function AdminCalendarPage() {
 
       // attendance 가공: profile × date 맵
       const attMap: Record<string, AttendanceEntry> = {};
-      const profileMap: Record<string, { name: string; color_hex: string }> = {};
-      (profilesData || []).forEach((p: any) => { profileMap[p.id] = { name: p.name, color_hex: p.color_hex }; });
+      const profileMap: Record<string, { name: string; color_hex: string; avatar_config?: any }> = {};
+      (profilesData || []).forEach((p: any) => { profileMap[p.id] = { name: p.name, color_hex: p.color_hex, avatar_config: p.avatar_config }; });
 
       const slots = (slotsData || []) as ScheduleSlot[];
 
@@ -819,6 +812,7 @@ export default function AdminCalendarPage() {
             date: slot.slot_date,
             name: p?.name || "알 수 없음",
             color_hex: p?.color_hex || "#8B95A1",
+            avatar_config: p?.avatar_config ?? null,
             store_name: "",
             clock_in: null,
             clock_out: null,
@@ -856,6 +850,7 @@ export default function AdminCalendarPage() {
             date: dateKey,
             name: p?.name || "알 수 없음",
             color_hex: p?.color_hex || "#8B95A1",
+            avatar_config: p?.avatar_config ?? null,
             store_name: (log.check_in_store as any)?.name || "",
             clock_in: null,
             clock_out: null,
@@ -1373,12 +1368,7 @@ export default function AdminCalendarPage() {
               <tr key={profile.id} className="border-b border-slate-50 last:border-0">
                 <td className="px-4 py-3 sticky left-0 z-10 bg-white border-r border-slate-50">
                   <div className="flex items-center gap-2">
-                    <div
-                      className="w-7 h-7 rounded-full flex items-center justify-center text-[12px] font-bold text-white shrink-0"
-                      style={{ backgroundColor: profile.color_hex || "#8B95A1" }}
-                    >
-                      {profile.name?.charAt(0)}
-                    </div>
+                    <AvatarDisplay userId={profile.id} avatarConfig={profile.avatar_config} size={28} />
                     <span className="text-[13px] font-bold text-[#191F28] truncate max-w-[60px]">
                       {profile.name}
                     </span>

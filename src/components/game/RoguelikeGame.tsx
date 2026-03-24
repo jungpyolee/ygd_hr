@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import AvatarDisplay from "@/components/AvatarDisplay";
 import type { GameRunPayload } from "@/lib/game/api";
 import { saveGameRun, getLeaderboard } from "@/lib/game/api";
 import { createClient } from "@/lib/supabase";
@@ -19,7 +20,7 @@ interface LeaderboardEntry {
   total_score: number;
   best_run_score: number;
   highest_wave: number;
-  profiles: { name: string; color_hex: string | null };
+  profiles: { id?: string; name: string; color_hex: string | null; avatar_config?: any };
 }
 
 function fmtScore(n: number): string {
@@ -544,12 +545,7 @@ export default function RoguelikeGame({ onClose, gameConfig }: Props) {
                           <span className="text-white/40 text-xs tabular-nums w-5 text-center shrink-0">
                             {medal ?? `${i + 1}`}
                           </span>
-                          <div
-                            className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
-                            style={{ backgroundColor: entry.profiles?.color_hex ?? "#8B95A1" }}
-                          >
-                            {entry.profiles?.name?.charAt(0) ?? "?"}
-                          </div>
+                          <AvatarDisplay userId={entry.profiles?.id ?? entry.user_id} avatarConfig={entry.profiles?.avatar_config} size={28} />
                           <span className={`flex-1 text-sm font-medium truncate ${isMe ? "text-[#f59e0b]" : "text-white"}`}>
                             {entry.profiles?.name ?? "알 수 없음"}
                             {isMe && <span className="text-[#f59e0b]/60 text-[10px] ml-1">나</span>}
@@ -649,12 +645,7 @@ export default function RoguelikeGame({ onClose, gameConfig }: Props) {
                           <span className="text-white/40 text-xs tabular-nums w-5 text-center shrink-0">
                             {medal ?? `${i + 1}`}
                           </span>
-                          <div
-                            className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
-                            style={{ backgroundColor: entry.profiles?.color_hex ?? "#8B95A1" }}
-                          >
-                            {entry.profiles?.name?.charAt(0) ?? "?"}
-                          </div>
+                          <AvatarDisplay userId={entry.profiles?.id ?? entry.user_id} avatarConfig={entry.profiles?.avatar_config} size={28} />
                           <span className={`flex-1 text-sm font-medium truncate ${isMe ? "text-[#f59e0b]" : "text-white"}`}>
                             {entry.profiles?.name ?? "알 수 없음"}
                             {isMe && <span className="text-[#f59e0b]/60 text-[10px] ml-1">나</span>}

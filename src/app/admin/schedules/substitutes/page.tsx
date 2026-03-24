@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import AvatarDisplay from "@/components/AvatarDisplay";
 import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
 import { logError } from "@/lib/logError";
@@ -39,6 +40,7 @@ interface SubstituteRequest {
   store_id: string;
   requester_name: string;
   requester_color: string;
+  requester_avatar_config?: any;
   accepted_name?: string;
 }
 
@@ -46,6 +48,7 @@ interface Profile {
   id: string;
   name: string;
   color_hex: string;
+  avatar_config?: any;
   assigned_store_ids: string[];
 }
 
@@ -68,7 +71,7 @@ interface SubstituteRequestRow {
     end_time: string;
     store_id: string;
   } | null;
-  requester?: { name: string; color_hex: string } | null;
+  requester?: { name: string; color_hex: string; avatar_config?: any } | null;
   accepted?: { name: string } | null;
 }
 
@@ -99,12 +102,13 @@ export default function AdminSubstitutesPage() {
       const supabase = createClient();
       const { data } = await supabase
         .from("profiles")
-        .select("id, name, color_hex, employee_store_assignments(store_id)")
+        .select("id, name, color_hex, avatar_config, employee_store_assignments(store_id)")
         .order("name");
       return ((data ?? []) as any[]).map((p) => ({
         id: p.id,
         name: p.name,
         color_hex: p.color_hex,
+        avatar_config: p.avatar_config ?? null,
         assigned_store_ids: (p.employee_store_assignments ?? []).map((a: { store_id: string }) => a.store_id),
       })) as Profile[];
     },
@@ -126,7 +130,7 @@ export default function AdminSubstitutesPage() {
           id, slot_id, requester_id, reason, status, reject_reason, rejected_at, approved_at,
           eligible_profile_ids, accepted_by, accepted_at, created_at,
           schedule_slots!slot_id (slot_date, start_time, end_time, store_id),
-          requester:profiles!requester_id (name, color_hex),
+          requester:profiles!requester_id (name, color_hex, avatar_config),
           accepted:profiles!accepted_by (name)
         `,
         )
@@ -153,6 +157,7 @@ export default function AdminSubstitutesPage() {
         store_id: r.schedule_slots?.store_id || "",
         requester_name: r.requester?.name || "알 수 없음",
         requester_color: r.requester?.color_hex || "#8B95A1",
+        requester_avatar_config: r.requester?.avatar_config ?? null,
         accepted_name: r.accepted?.name,
       })) as SubstituteRequest[];
     },
@@ -352,12 +357,7 @@ export default function AdminSubstitutesPage() {
               {/* Top row: requester + status */}
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <div
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-bold text-white"
-                    style={{ backgroundColor: req.requester_color }}
-                  >
-                    {req.requester_name?.charAt(0)}
-                  </div>
+                  <AvatarDisplay userId={req.requester_id} avatarConfig={req.requester_avatar_config} size={32} />
                   <span className="text-[15px] font-bold text-[#191F28]">
                     {req.requester_name}
                   </span>
@@ -528,12 +528,7 @@ export default function AdminSubstitutesPage() {
                           : "bg-white border-slate-100 text-[#4E5968]"
                       }`}
                     >
-                      <div
-                        className="w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-bold text-white shrink-0"
-                        style={{ backgroundColor: p.color_hex }}
-                      >
-                        {p.name?.charAt(0)}
-                      </div>
+                      <AvatarDisplay userId={p.id} avatarConfig={p.avatar_config} size={32} />
                       <span className="font-bold text-[14px] flex-1 text-left">
                         {p.name}
                       </span>
