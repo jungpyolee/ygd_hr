@@ -664,16 +664,28 @@ export default function AdminOvertimePage() {
                       >
                         넘기기
                       </button>
-                      {buttons.map((mins) => (
+                      {emp.case_type === "B" && emp.actual_minutes > 0 ? (
+                        // Case B: 스케줄 없음 → 전체 등록
                         <button
-                          key={mins}
-                          onClick={() => handleApprove(emp, mins)}
+                          onClick={() => handleApprove(emp, emp.actual_minutes)}
                           disabled={isSubmitting}
-                          className="flex-1 min-w-[56px] py-2.5 rounded-[12px] bg-[#E8F3FF] text-[13px] font-bold text-[#3182F6] disabled:opacity-50 active:scale-[0.97]"
+                          className="flex-1 py-2.5 rounded-[12px] bg-[#E8F3FF] text-[13px] font-bold text-[#3182F6] disabled:opacity-50 active:scale-[0.97]"
                         >
-                          {minsToLabel(mins)}
+                          전체 등록 ({minsToLabel(emp.actual_minutes)})
                         </button>
-                      ))}
+                      ) : null}
+                      {emp.case_type === "A" &&
+                        // Case A: 스케줄 초과 → 단위별 빠른 버튼
+                        buttons.map((mins) => (
+                          <button
+                            key={mins}
+                            onClick={() => handleApprove(emp, mins)}
+                            disabled={isSubmitting}
+                            className="flex-1 min-w-[56px] py-2.5 rounded-[12px] bg-[#E8F3FF] text-[13px] font-bold text-[#3182F6] disabled:opacity-50 active:scale-[0.97]"
+                          >
+                            {minsToLabel(mins)}
+                          </button>
+                        ))}
                       <button
                         onClick={() => openDirectInput(emp)}
                         disabled={isSubmitting}
