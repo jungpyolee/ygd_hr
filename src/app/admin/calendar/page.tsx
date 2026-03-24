@@ -18,6 +18,9 @@ import {
   AlertTriangle,
   Clock,
   MapPin,
+  PenLine,
+  AlertCircle,
+  Users,
 } from "lucide-react";
 import {
   format,
@@ -34,11 +37,14 @@ import {
   isToday,
   parseISO,
   addDays,
+  isBefore,
+  startOfDay,
 } from "date-fns";
 import { ko } from "date-fns/locale";
 import { useWorkplaces } from "@/lib/hooks/useWorkplaces";
 import Link from "next/link";
 import { logError } from "@/lib/logError";
+import { createNotification } from "@/lib/notifications";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface Profile {
@@ -69,10 +75,22 @@ interface WeeklySchedule {
 interface AttendanceEntry {
   profile_id: string;
   date: string;
+  name: string;
+  color_hex: string;
+  store_name: string;
   clock_in: string | null;
   clock_out: string | null;
   is_absent: boolean;
   late_minutes: number | null;
+  early_leave_minutes: number | null;
+  distance_in: number | null;
+  distance_out: number | null;
+  attendance_type_in: string;
+  attendance_type_out: string;
+  reason_out: string | null;
+  scheduled_start: string | null;
+  scheduled_end: string | null;
+  scheduled_location: string | null;
 }
 
 interface CompanyEvent {
@@ -323,6 +341,7 @@ interface DaySheetProps {
   onClose: () => void;
   onEditSlot: (slot: ScheduleSlot) => void;
   onAddSlot: (date: string) => void;
+  onMutate: () => void;
 }
 
 function DaySheet({
@@ -335,25 +354,211 @@ function DaySheet({
   onClose,
   onEditSlot,
   onAddSlot,
+  onMutate,
 }: DaySheetProps) {
   const { byId, positionsOfStore } = useWorkplaces();
+  const supabase = createClient();
+  const [manualOutAtt, setManualOutAtt] = useState<AttendanceEntry | null>(null);
+  const [manualOutTime, setManualOutTime] = useState("");
+  const [manualOutSubmitting, setManualOutSubmitting] = useState(false);
+
   const dateLabel = format(parseISO(dateStr), "M월 d일 (EEEE)", { locale: ko });
+  const isPast = isBefore(parseISO(dateStr), startOfDay(new Date()));
+
   const attByProfile: Record<string, AttendanceEntry> = {};
   attendance.forEach((a) => { attByProfile[a.profile_id] = a; });
   const profileById: Record<string, Profile> = {};
   profiles.forEach((p) => { profileById[p.id] = p; });
 
   const daySlots = slots.filter((s) => s.slot_date === dateStr && s.status === "active");
-  const dayEvents = events.filter(
-    (e) => e.start_date <= dateStr && e.end_date >= dateStr
+  const dayEvents = events.filter((e) => e.start_date <= dateStr && e.end_date >= dateStr);
+  const profilesWithSlots = new Set(daySlots.map((s) => s.profile_id));
+  const unscheduledAtt = attendance.filter(
+    (a) => a.date === dateStr && !a.is_absent && a.clock_in && !profilesWithSlots.has(a.profile_id)
   );
+
+  const presentCount = daySlots.filter((s) => {
+    const att = attByProfile[s.profile_id];
+    return att && !att.is_absent;
+  }).length + unscheduledAtt.length;
+  const absentCount = isPast
+    ? daySlots.filter((s) => attByProfile[s.profile_id]?.is_absent).length
+    : 0;
+
+  const openManualOut = (att: AttendanceEntry) => {
+    setManualOutTime(att.scheduled_end ? att.scheduled_end.slice(0, 5) : "18:00");
+    setManualOutAtt(att);
+  };
+
+  const handleManualOut = async () => {
+    if (!manualOutAtt || !manualOutTime) return;
+    setManualOutSubmitting(true);
+    const clockOutDate = new Date(`${dateStr}T${manualOutTime}:00`);
+    const { error } = await supabase.from("attendance_logs").insert({
+      profile_id: manualOutAtt.profile_id,
+      type: "OUT",
+      attendance_type: "fallback_out",
+      created_at: clockOutDate.toISOString(),
+      reason: "관리자 수동 처리",
+    });
+    if (error) {
+      toast.error("퇴근 처리에 실패했어요", { description: "잠시 후 다시 시도해주세요." });
+    } else {
+      toast.success(`${manualOutAtt.name}님 퇴근 처리가 완료됐어요.`);
+      await createNotification({
+        profile_id: manualOutAtt.profile_id,
+        target_role: "employee",
+        type: "attendance_fallback_out",
+        title: "퇴근 처리 완료",
+        content: "관리자가 퇴근 처리했어요.",
+        source_id: manualOutAtt.profile_id,
+      });
+      setManualOutAtt(null);
+      onMutate();
+    }
+    setManualOutSubmitting(false);
+  };
+
+  const renderAttCard = (att: AttendanceEntry | undefined, slot?: ScheduleSlot) => {
+    if (!att && !slot) return null;
+    const profile = slot ? (profileById[slot.profile_id] ?? { name: att?.name || "?", color_hex: att?.color_hex || "#8B95A1" }) : null;
+    const name = att?.name || profile?.name || "알 수 없음";
+    const colorHex = att?.color_hex || profile?.color_hex || "#8B95A1";
+    const profileId = att?.profile_id || slot?.profile_id || "";
+
+    if (att?.is_absent && slot) {
+      if (!isPast) return null;
+      return (
+        <div key={profileId} className="bg-[#FFF5F5] rounded-[18px] p-4 flex items-center gap-3 border border-[#FFCDD2]">
+          <div className="w-10 h-10 rounded-full flex items-center justify-center text-[14px] font-bold text-white shrink-0" style={{ backgroundColor: colorHex }}>
+            {name?.charAt(0)}
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <span className="text-[15px] font-bold text-[#191F28]">{name}</span>
+              <span className="text-[10px] font-bold bg-[#FFCDD2] text-[#E03131] px-1.5 py-0.5 rounded-md">미출근</span>
+            </div>
+            {slot.start_time && (
+              <p className="text-[12px] text-[#8B95A1] mt-0.5">
+                예정: {slot.start_time.slice(0, 5)} ~ {slot.end_time.slice(0, 5)}
+                {slot.store_id && <span className="ml-1">({byId[slot.store_id]?.label ?? ""})</span>}
+              </p>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    if (!att || (!att.clock_in && !slot)) return null;
+    const isWorking = att.clock_in && !att.clock_out;
+    const isAnomaly = isWorking && !isToday(parseISO(dateStr));
+    let durationText = "";
+    if (att.clock_in && att.clock_out) {
+      const diffMs = new Date(att.clock_out).getTime() - new Date(att.clock_in).getTime();
+      const hours = Math.floor(diffMs / 3600000);
+      const mins = Math.floor((diffMs % 3600000) / 60000);
+      durationText = `${hours}시간 ${mins > 0 ? `${mins}분` : ""}`;
+    }
+
+    return (
+      <div key={`att-${att.profile_id}`} className="bg-white rounded-[18px] p-4 border border-slate-100 shadow-[0_2px_8px_rgba(0,0,0,0.03)] flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center text-[14px] font-bold text-white shrink-0" style={{ backgroundColor: colorHex }}>
+              {name?.charAt(0)}
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[15px] font-bold text-[#191F28]">{name}</span>
+                {isAnomaly && (
+                  <span className="flex items-center gap-1 bg-[#FFF4E6] text-[#D9480F] text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+                    <AlertCircle className="w-3 h-3" /> 미퇴근
+                  </span>
+                )}
+                {isWorking && (
+                  <button
+                    onClick={() => openManualOut(att)}
+                    className="flex items-center gap-1 bg-[#F3F0FF] text-[#7950F2] text-[10px] font-bold px-1.5 py-0.5 rounded-md hover:bg-[#E9DFFF] transition-colors"
+                  >
+                    <PenLine className="w-3 h-3" /> 퇴근 처리
+                  </button>
+                )}
+              </div>
+              <p className="text-[12px] text-[#8B95A1] mt-0.5">{att.store_name || (slot ? byId[slot.store_id]?.label : "")}</p>
+            </div>
+          </div>
+          <div className="flex flex-col items-end gap-1.5">
+            <div className="flex items-center gap-2 text-[13px] font-bold">
+              <span className="bg-[#F2F4F6] text-[#333D4B] px-2.5 py-1.5 rounded-lg">
+                {att.clock_in ? format(new Date(att.clock_in), "a h:mm", { locale: ko }) : "-"}
+              </span>
+              <span className="text-[#D1D6DB] text-[11px]">▶</span>
+              <span className={`px-2.5 py-1.5 rounded-lg ${att.clock_out ? "bg-[#F2F4F6] text-[#333D4B]" : isAnomaly ? "bg-[#FFF4E6] text-[#D9480F]" : "bg-[#E8F3FF] text-[#3182F6]"}`}>
+                {att.clock_out ? format(new Date(att.clock_out), "a h:mm", { locale: ko }) : isAnomaly ? "기록없음" : "근무중"}
+              </span>
+            </div>
+            {durationText && (
+              <span className="text-[11px] text-[#8B95A1] flex items-center gap-1">
+                <Clock className="w-3 h-3" /> 총 {durationText}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* 스케줄 정보 */}
+        {att.scheduled_start && (
+          <div className="flex items-center gap-2 flex-wrap pl-1">
+            <span className="text-[11px] text-[#8B95A1]">스케줄:</span>
+            {att.scheduled_location && (
+              <span className="text-[11px] font-bold" style={{ color: byId[att.scheduled_location]?.color || "#4E5968" }}>
+                {byId[att.scheduled_location]?.label || att.scheduled_location}
+              </span>
+            )}
+            <span className="text-[11px] text-[#4E5968]">{att.scheduled_start.slice(0, 5)}~{att.scheduled_end?.slice(0, 5)}</span>
+            {att.late_minutes != null && att.late_minutes > 0 && (
+              <span className="text-[10px] font-bold bg-[#FFF7E6] text-[#F59E0B] px-1.5 py-0.5 rounded-md">+{att.late_minutes}분 지각</span>
+            )}
+            {att.early_leave_minutes != null && att.early_leave_minutes > 0 && (
+              <span className="text-[10px] font-bold bg-[#FFF4E6] text-[#D9480F] px-1.5 py-0.5 rounded-md">-{att.early_leave_minutes}분 조기퇴근</span>
+            )}
+          </div>
+        )}
+
+        {/* 거리 + 특이사항 뱃지 */}
+        <div className="flex flex-wrap gap-1.5 pl-1">
+          {att.distance_in != null && (
+            <span className="flex items-center gap-1 text-[10px] text-[#8B95A1]"><MapPin className="w-3 h-3" />출근 {Math.round(att.distance_in)}m</span>
+          )}
+          {att.distance_out != null && (
+            <span className="flex items-center gap-1 text-[10px] text-[#8B95A1]"><MapPin className="w-3 h-3" />퇴근 {Math.round(att.distance_out)}m</span>
+          )}
+          {att.attendance_type_in === "business_trip_in" && <span className="text-[10px] font-bold bg-[#FFF3BF] text-[#E67700] px-1.5 py-0.5 rounded-md">출장출근</span>}
+          {att.attendance_type_in === "fallback_in" && <span className="text-[10px] font-bold bg-[#F3F0FF] text-[#7950F2] px-1.5 py-0.5 rounded-md">수동출근</span>}
+          {att.attendance_type_out === "remote_out" && <span className="text-[10px] font-bold bg-[#FFE3E3] text-[#C92A2A] px-1.5 py-0.5 rounded-md">원격퇴근</span>}
+          {att.attendance_type_out === "business_trip_out" && <span className="text-[10px] font-bold bg-[#FFF3BF] text-[#E67700] px-1.5 py-0.5 rounded-md">출장퇴근</span>}
+          {att.attendance_type_out === "fallback_out" && <span className="text-[10px] font-bold bg-[#F3F0FF] text-[#7950F2] px-1.5 py-0.5 rounded-md">수동퇴근</span>}
+          {att.reason_out && <span className="text-[10px] text-[#8B95A1]">사유: {att.reason_out}</span>}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-white rounded-[28px] px-5 pt-6 pb-6 shadow-2xl animate-in zoom-in-95 fade-in-0 duration-200 max-h-[80vh] overflow-y-auto scrollbar-hide">
-        <div className="flex justify-between items-center mb-5">
-          <h3 className="text-[17px] font-bold text-[#191F28]">{dateLabel}</h3>
+      <div className="relative w-full max-w-md bg-white rounded-[28px] px-5 pt-6 pb-6 shadow-2xl animate-in zoom-in-95 fade-in-0 duration-200 max-h-[85vh] overflow-y-auto scrollbar-hide">
+        <div className="flex justify-between items-center mb-4">
+          <div>
+            <h3 className="text-[17px] font-bold text-[#191F28]">{dateLabel}</h3>
+            <div className="flex items-center gap-2 mt-1">
+              {presentCount > 0 && (
+                <span className="text-[12px] font-semibold text-[#3182F6] bg-[#E8F3FF] px-2 py-0.5 rounded-full">출근 {presentCount}명</span>
+              )}
+              {absentCount > 0 && (
+                <span className="text-[12px] font-semibold text-[#E03131] bg-[#FFEBEB] px-2 py-0.5 rounded-full">미출근 {absentCount}명</span>
+              )}
+            </div>
+          </div>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-[#F2F4F6]">
             <X className="w-5 h-5 text-[#8B95A1]" />
           </button>
@@ -363,96 +568,73 @@ function DaySheet({
         {dayEvents.length > 0 && (
           <div className="mb-4 space-y-2">
             {dayEvents.map((ev) => (
-              <div
-                key={ev.id}
-                className="flex items-center gap-2 px-3 py-2 rounded-xl"
-                style={{ backgroundColor: ev.color + "22", borderLeft: `3px solid ${ev.color}` }}
-              >
-                <span className="text-[13px] font-bold" style={{ color: ev.color }}>
-                  {ev.title}
-                </span>
+              <div key={ev.id} className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ backgroundColor: ev.color + "22", borderLeft: `3px solid ${ev.color}` }}>
+                <span className="text-[13px] font-bold" style={{ color: ev.color }}>{ev.title}</span>
               </div>
             ))}
           </div>
         )}
 
-        {/* 근무 슬롯 목록 */}
+        {/* 슬롯 기반 카드 */}
         <div className="space-y-2">
-          {daySlots.length === 0 && (
-            <div className="py-8 text-center text-[#8B95A1] text-[14px]">
-              등록된 근무가 없어요
-            </div>
+          {daySlots.length === 0 && unscheduledAtt.length === 0 && (
+            <div className="py-8 text-center text-[#8B95A1] text-[14px]">등록된 근무가 없어요</div>
           )}
+
           {daySlots.map((slot) => {
-            const profile = profileById[slot.profile_id];
             const att = attByProfile[slot.profile_id];
-            const storeName = byId[slot.store_id]?.label || "";
-            const storeColor = byId[slot.store_id]?.color || "#8B95A1";
-            const positions = slot.position_keys?.length
-              ? slot.position_keys
-                  .map((k) => positionsOfStore(slot.store_id).find((p) => p.position_key === k)?.label || k)
-                  .join("·")
-              : null;
-
-            let attBadge = null;
-            if (att) {
-              if (att.is_absent) {
-                attBadge = <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-500">결근</span>;
-              } else if (att.late_minutes && att.late_minutes > 0) {
-                attBadge = <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-500">{att.late_minutes}분 지각</span>;
-              } else {
-                attBadge = <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-green-100 text-green-600">출근</span>;
-              }
+            const profile = profileById[slot.profile_id];
+            if (mode === "edit") {
+              return (
+                <button
+                  key={slot.id}
+                  onClick={() => onEditSlot(slot)}
+                  className="w-full text-left rounded-[18px] overflow-hidden hover:ring-2 hover:ring-[#3182F6] transition-all active:scale-[0.98]"
+                >
+                  {renderAttCard(att, slot) ?? (
+                    <div className="bg-white p-4 border border-slate-100 rounded-[18px] flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full flex items-center justify-center text-[14px] font-bold text-white shrink-0" style={{ backgroundColor: profile?.color_hex || "#8B95A1" }}>
+                          {profile?.name?.charAt(0)}
+                        </div>
+                        <div>
+                          <span className="text-[15px] font-bold text-[#191F28]">{profile?.name}</span>
+                          <p className="text-[12px] text-[#8B95A1]">{byId[slot.store_id]?.label}</p>
+                        </div>
+                      </div>
+                      <div className="text-right text-[13px] font-bold text-[#4E5968]">
+                        {slot.start_time.slice(0, 5)} ~ {slot.end_time.slice(0, 5)}
+                      </div>
+                    </div>
+                  )}
+                </button>
+              );
             }
-
-            return (
-              <button
-                key={slot.id}
-                onClick={() => mode === "edit" ? onEditSlot(slot) : undefined}
-                className={`w-full text-left p-3 rounded-2xl border border-slate-100 bg-white transition-all ${
-                  mode === "edit" ? "hover:border-[#3182F6] hover:shadow-sm active:scale-[0.98]" : ""
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div
-                      className="w-8 h-8 rounded-full flex items-center justify-center text-[12px] font-bold text-white shrink-0"
-                      style={{ backgroundColor: profile?.color_hex || "#8B95A1" }}
-                    >
-                      {profile?.name?.charAt(0)}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[14px] font-bold text-[#191F28]">{profile?.name}</span>
-                        {attBadge}
-                      </div>
-                      <div className="text-[12px] text-[#8B95A1] mt-0.5">
-                        <span style={{ color: storeColor }} className="font-medium">{storeName}</span>
-                        {positions && <span> · {positions}</span>}
-                      </div>
-                    </div>
+            return renderAttCard(att, slot) ?? (
+              <div key={slot.id} className="bg-white p-4 border border-slate-100 rounded-[18px] flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-[14px] font-bold text-white shrink-0" style={{ backgroundColor: profile?.color_hex || "#8B95A1" }}>
+                    {profile?.name?.charAt(0)}
                   </div>
-                  <div className="text-right">
-                    <div className="text-[13px] font-bold text-[#4E5968]">
-                      {slot.start_time.slice(0, 5)}
-                    </div>
-                    <div className="text-[11px] text-[#8B95A1]">
-                      ~{slot.end_time.slice(0, 5)}
-                    </div>
+                  <div>
+                    <span className="text-[15px] font-bold text-[#191F28]">{profile?.name}</span>
+                    <p className="text-[12px] text-[#8B95A1]">{byId[slot.store_id]?.label}</p>
                   </div>
                 </div>
-                {att && att.clock_in && (
-                  <div className="mt-2 flex items-center gap-3 text-[11px] text-[#8B95A1] pl-10">
-                    <span className="flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {format(new Date(att.clock_in), "HH:mm")}
-                      {att.clock_out && ` — ${format(new Date(att.clock_out), "HH:mm")}`}
-                    </span>
-                  </div>
-                )}
-              </button>
+                <div className="text-right text-[13px] font-bold text-[#4E5968]">
+                  {slot.start_time.slice(0, 5)} ~ {slot.end_time.slice(0, 5)}
+                </div>
+              </div>
             );
           })}
+
+          {/* 스케줄 외 출근 */}
+          {unscheduledAtt.length > 0 && (
+            <>
+              <p className="text-[11px] text-[#8B95A1] font-medium pt-1 pl-1">스케줄 외 출근</p>
+              {unscheduledAtt.map((att) => renderAttCard(att))}
+            </>
+          )}
         </div>
 
         {mode === "edit" && (
@@ -465,6 +647,52 @@ function DaySheet({
           </button>
         )}
       </div>
+
+      {/* 수동 퇴근 처리 모달 */}
+      {manualOutAtt && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center px-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setManualOutAtt(null)} />
+          <div className="relative bg-white rounded-[24px] shadow-xl w-full max-w-sm p-6 flex flex-col gap-5">
+            <div className="flex items-center justify-between">
+              <h2 className="text-[18px] font-bold text-[#191F28]">퇴근 시간 수동 입력</h2>
+              <button onClick={() => setManualOutAtt(null)} className="p-1.5 text-[#8B95A1] hover:bg-[#F2F4F6] rounded-lg">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex items-center gap-3 bg-[#F9FAFB] rounded-[16px] p-3.5">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center text-[14px] font-bold text-white shrink-0" style={{ backgroundColor: manualOutAtt.color_hex }}>
+                {manualOutAtt.name?.charAt(0)}
+              </div>
+              <div>
+                <p className="text-[15px] font-bold text-[#191F28]">{manualOutAtt.name}</p>
+                <p className="text-[12px] text-[#8B95A1]">
+                  {format(parseISO(dateStr), "M월 d일 (EEE)", { locale: ko })}
+                  {manualOutAtt.scheduled_end && <span className="ml-1.5">· 예정 퇴근 {manualOutAtt.scheduled_end.slice(0, 5)}</span>}
+                </p>
+              </div>
+            </div>
+            <div>
+              <label className="block text-[13px] font-bold text-[#191F28] mb-2">퇴근 시간</label>
+              <input
+                type="time"
+                value={manualOutTime}
+                onChange={(e) => setManualOutTime(e.target.value)}
+                className="w-full px-4 py-3 bg-[#F9FAFB] border border-slate-200 rounded-xl text-[15px] font-bold text-[#191F28] focus:outline-none focus:border-[#3182F6]"
+              />
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setManualOutAtt(null)} className="flex-1 py-3 text-[14px] font-bold text-[#4E5968] bg-[#F2F4F6] rounded-xl">취소</button>
+              <button
+                onClick={handleManualOut}
+                disabled={manualOutSubmitting || !manualOutTime}
+                className="flex-1 py-3 text-[14px] font-bold text-white bg-[#3182F6] rounded-xl hover:bg-blue-600 disabled:opacity-50 transition-all"
+              >
+                {manualOutSubmitting ? "처리 중..." : "퇴근 처리하기"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -483,6 +711,7 @@ export default function AdminCalendarPage() {
   } | null>(null);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false);
 
   // 수정 세션 동안 변경된 weekly_schedule IDs 추적
   const editSessionRef = useRef<Set<string>>(new Set());
@@ -512,17 +741,16 @@ export default function AdminCalendarPage() {
 
   // ─── 데이터 Fetch ───
   const { data, mutate, isLoading } = useSWR(
-    ["admin-calendar", rangeKey, storeFilter],
-    async ([, range, sf]) => {
+    ["admin-calendar", rangeKey, storeFilter, showAdmin ? "all" : "emp"],
+    async ([, range, sf, adminFlag]) => {
       const supabase = createClient();
       const [start, end] = range.split("_");
 
-      // 직원 목록
-      const { data: profilesData } = await supabase
-        .from("profiles")
-        .select("id, name, color_hex")
-        .eq("role", "employee")
-        .order("name");
+      // 직원 목록 (adminFlag === "all" 이면 어드민 포함)
+      const profileQuery = supabase.from("profiles").select("id, name, color_hex, role").order("name");
+      const { data: profilesData } = adminFlag === "all"
+        ? await profileQuery
+        : await profileQuery.eq("role", "employee");
 
       // weekly_schedules (상태 파악용)
       const { data: wsData } = await supabase
@@ -544,7 +772,7 @@ export default function AdminCalendarPage() {
       const endStr = new Date(`${end}T23:59:59.999+09:00`).toISOString();
       const { data: logsData } = await supabase
         .from("attendance_logs")
-        .select("id, profile_id, type, created_at, distance_m")
+        .select("id, profile_id, type, created_at, distance_m, attendance_type, reason, profiles(name, color_hex), check_in_store:stores!check_in_store_id(name)")
         .gte("created_at", startStr)
         .lte("created_at", endStr)
         .order("created_at", { ascending: true });
@@ -557,56 +785,108 @@ export default function AdminCalendarPage() {
 
       // attendance 가공: profile × date 맵
       const attMap: Record<string, AttendanceEntry> = {};
-      (logsData || []).forEach((log: any) => {
-        const dateKey = format(new Date(log.created_at), "yyyy-MM-dd");
-        const key = `${log.profile_id}_${dateKey}`;
-        if (!attMap[key]) {
-          attMap[key] = {
-            profile_id: log.profile_id,
-            date: dateKey,
-            clock_in: null,
-            clock_out: null,
-            is_absent: false,
-            late_minutes: null,
-          };
-        }
-        const entry = attMap[key];
-        if (log.type === "IN" && !entry.clock_in) {
-          entry.clock_in = log.created_at;
-          entry.is_absent = false;
-        } else if (log.type === "OUT" && !entry.clock_out) {
-          entry.clock_out = log.created_at;
-        }
-      });
+      const profileMap: Record<string, { name: string; color_hex: string }> = {};
+      (profilesData || []).forEach((p: any) => { profileMap[p.id] = { name: p.name, color_hex: p.color_hex }; });
 
-      // 스케줄 있는데 출근 없으면 is_absent=true
       const slots = (slotsData || []) as ScheduleSlot[];
+
+      // [1] 스케줄 기반 결근 항목 생성
       slots.forEach((slot) => {
         const key = `${slot.profile_id}_${slot.slot_date}`;
         if (!attMap[key]) {
+          const p = profileMap[slot.profile_id];
           attMap[key] = {
             profile_id: slot.profile_id,
             date: slot.slot_date,
+            name: p?.name || "알 수 없음",
+            color_hex: p?.color_hex || "#8B95A1",
+            store_name: "",
             clock_in: null,
             clock_out: null,
             is_absent: true,
             late_minutes: null,
+            early_leave_minutes: null,
+            distance_in: null,
+            distance_out: null,
+            attendance_type_in: "regular",
+            attendance_type_out: "regular",
+            reason_out: null,
+            scheduled_start: slot.start_time,
+            scheduled_end: slot.end_time,
+            scheduled_location: slot.store_id,
           };
+        } else {
+          // 스케줄 정보 보완
+          const entry = attMap[key];
+          if (!entry.scheduled_start) {
+            entry.scheduled_start = slot.start_time;
+            entry.scheduled_end = slot.end_time;
+            entry.scheduled_location = slot.store_id;
+          }
         }
       });
 
-      // 지각 계산
+      // [2] 출퇴근 로그 반영
+      (logsData || []).forEach((log: any) => {
+        const dateKey = format(new Date(log.created_at), "yyyy-MM-dd");
+        const key = `${log.profile_id}_${dateKey}`;
+        if (!attMap[key]) {
+          const p = (log.profiles as any) || profileMap[log.profile_id];
+          attMap[key] = {
+            profile_id: log.profile_id,
+            date: dateKey,
+            name: p?.name || "알 수 없음",
+            color_hex: p?.color_hex || "#8B95A1",
+            store_name: (log.check_in_store as any)?.name || "",
+            clock_in: null,
+            clock_out: null,
+            is_absent: false,
+            late_minutes: null,
+            early_leave_minutes: null,
+            distance_in: null,
+            distance_out: null,
+            attendance_type_in: "regular",
+            attendance_type_out: "regular",
+            reason_out: null,
+            scheduled_start: null,
+            scheduled_end: null,
+            scheduled_location: null,
+          };
+        }
+        const entry = attMap[key];
+        if (log.type === "IN" && !entry.clock_in) {
+          const p = (log.profiles as any) || profileMap[log.profile_id];
+          entry.clock_in = log.created_at;
+          entry.is_absent = false;
+          entry.distance_in = log.distance_m ?? null;
+          entry.attendance_type_in = log.attendance_type || "regular";
+          entry.store_name = (log.check_in_store as any)?.name || entry.store_name;
+          if (!entry.name || entry.name === "알 수 없음") entry.name = p?.name || entry.name;
+          if (!entry.color_hex || entry.color_hex === "#8B95A1") entry.color_hex = p?.color_hex || entry.color_hex;
+        } else if (log.type === "OUT" && !entry.clock_out) {
+          entry.clock_out = log.created_at;
+          entry.distance_out = log.distance_m ?? null;
+          entry.attendance_type_out = log.attendance_type || "regular";
+          entry.reason_out = log.reason ?? null;
+        }
+      });
+
+      // [3] 지각 + 조기퇴근 계산
       Object.values(attMap).forEach((entry) => {
-        if (!entry.clock_in) return;
-        const slot = slots.find(
-          (s) => s.profile_id === entry.profile_id && s.slot_date === entry.date
-        );
-        if (!slot) return;
-        const clockIn = new Date(entry.clock_in);
-        const [sh, sm] = slot.start_time.split(":").map(Number);
-        const schedStart = new Date(`${entry.date}T${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}:00`);
-        const diff = Math.floor((clockIn.getTime() - schedStart.getTime()) / 60000);
-        if (diff > 10) entry.late_minutes = diff;
+        if (!entry.scheduled_start) return;
+        const dateKey = entry.date;
+        if (entry.clock_in) {
+          const [sh, sm] = entry.scheduled_start.split(":").map(Number);
+          const schedStart = new Date(`${dateKey}T${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}:00`);
+          const diff = Math.floor((new Date(entry.clock_in).getTime() - schedStart.getTime()) / 60000);
+          if (diff > 10) entry.late_minutes = diff;
+        }
+        if (entry.clock_out && entry.scheduled_end) {
+          const [eh, em] = entry.scheduled_end.split(":").map(Number);
+          const schedEnd = new Date(`${dateKey}T${String(eh).padStart(2, "0")}:${String(em).padStart(2, "0")}:00`);
+          const diff = Math.floor((schedEnd.getTime() - new Date(entry.clock_out).getTime()) / 60000);
+          if (diff > 10) entry.early_leave_minutes = diff;
+        }
       });
 
       let profiles = (profilesData || []) as Profile[];
@@ -1314,6 +1594,17 @@ export default function AdminCalendarPage() {
           ))}
         </select>
 
+        {/* 어드민 포함 토글 */}
+        <button
+          onClick={() => setShowAdmin((v) => !v)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-bold border transition-all ${
+            showAdmin ? "bg-[#191F28] text-white border-[#191F28]" : "bg-white text-[#8B95A1] border-slate-200"
+          }`}
+        >
+          <Users className="w-3.5 h-3.5" />
+          어드민 포함
+        </button>
+
         {/* 레이어 토글 */}
         <div className="flex items-center gap-2 ml-auto">
           <Layers className="w-4 h-4 text-[#8B95A1]" />
@@ -1397,17 +1688,6 @@ export default function AdminCalendarPage() {
         </div>
       )}
 
-      {/* 기존 페이지 링크 (점진적 제거 전까지) */}
-      <div className="flex items-center gap-3 pt-2 border-t border-slate-100">
-        <span className="text-[12px] text-[#8B95A1]">기존 페이지</span>
-        <Link href="/admin/schedules" className="text-[12px] text-[#3182F6] underline">
-          스케줄 관리 (구버전)
-        </Link>
-        <Link href="/admin/attendance" className="text-[12px] text-[#3182F6] underline">
-          근태 조회 (구버전)
-        </Link>
-      </div>
-
       {/* 슬롯 편집 바텀시트 */}
       {editingSlot !== null && mode === "edit" && (
         <SlotBottomSheet
@@ -1436,6 +1716,7 @@ export default function AdminCalendarPage() {
             setEditingSlot({ slot, defaultDate: slot.slot_date, defaultProfileId: slot.profile_id });
           }}
           onAddSlot={(date) => setEditingSlot({ slot: null, defaultDate: date })}
+          onMutate={mutate}
         />
       )}
     </div>

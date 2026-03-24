@@ -236,16 +236,6 @@ export default function AdminLayout({
       icon: <CalendarDays className="w-5 h-5" />,
     },
     {
-      name: "근태 조회",
-      path: "/admin/attendance",
-      icon: <Clock className="w-5 h-5" />,
-    },
-    {
-      name: "스케줄 관리",
-      path: "/admin/schedules",
-      icon: <CalendarDays className="w-5 h-5" />,
-    },
-    {
       name: "레시피 관리",
       path: "/admin/recipes",
       icon: <BookOpen className="w-5 h-5" />,
@@ -338,7 +328,6 @@ export default function AdminLayout({
               menu.path === "/admin"
                 ? pathname === "/admin"
                 : pathname === menu.path || pathname.startsWith(menu.path + "/");
-            const isSchedule = menu.name === "스케줄 관리";
             return (
               <Link
                 key={menu.name}
@@ -351,11 +340,6 @@ export default function AdminLayout({
               >
                 {menu.icon}
                 {menu.name}
-                {isSchedule && pendingSubCount > 0 && (
-                  <span className="ml-auto min-w-[20px] h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 leading-none">
-                    {pendingSubCount > 9 ? "9+" : pendingSubCount}
-                  </span>
-                )}
               </Link>
             );
           })}
@@ -474,7 +458,6 @@ export default function AdminLayout({
             </div>
             <nav className="space-y-3">
               {menus.map((menu) => {
-                const isSchedule = menu.name === "스케줄 관리";
                 const isMobileActive =
                   menu.path === "/admin"
                     ? pathname === "/admin"
@@ -494,11 +477,6 @@ export default function AdminLayout({
                       {menu.icon}
                     </div>
                     {menu.name}
-                    {isSchedule && pendingSubCount > 0 && (
-                      <span className="ml-auto min-w-[20px] h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 leading-none">
-                        {pendingSubCount > 9 ? "9+" : pendingSubCount}
-                      </span>
-                    )}
                   </Link>
                 );
               })}

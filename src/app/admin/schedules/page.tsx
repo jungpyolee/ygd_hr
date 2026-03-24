@@ -14,6 +14,7 @@ import {
   ArrowRightLeft,
   LayoutTemplate,
 } from "lucide-react";
+import EmployeeProfileModal from "@/components/EmployeeProfileModal";
 import {
   format,
   addWeeks,
@@ -416,6 +417,9 @@ export default function AdminSchedulesPage() {
     defaultDate?: string;
     defaultProfileId?: string;
   } | null>(null);
+
+  // 직원 프로필 모달
+  const [viewProfileId, setViewProfileId] = useState<string | null>(null);
 
   const weekDates = getWeekDates(weekStart);
   const weekStartStr = format(weekStart, "yyyy-MM-dd");
@@ -1097,7 +1101,10 @@ export default function AdminSchedulesPage() {
                 className="border-b border-slate-50 last:border-0"
               >
                 <td className="px-4 py-3 sticky left-0 z-10 bg-white border-r border-slate-50">
-                  <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setViewProfileId(profile.id)}
+                    className="flex items-center gap-2 hover:opacity-70 transition-opacity active:scale-95"
+                  >
                     <div
                       className="w-7 h-7 rounded-full flex items-center justify-center text-[12px] font-bold text-white shrink-0"
                       style={{
@@ -1109,7 +1116,7 @@ export default function AdminSchedulesPage() {
                     <span className="text-[13px] font-bold text-[#191F28] truncate max-w-[60px]">
                       {profile.name}
                     </span>
-                  </div>
+                  </button>
                 </td>
                 {weekDates.map((d) => {
                   const daySlots = slots.filter(
@@ -1231,18 +1238,23 @@ export default function AdminSchedulesPage() {
                   style={{ height: "72px" }}
                 >
                   {/* 직원명 — sticky */}
-                  <div className="w-[80px] shrink-0 px-2 flex items-center gap-2 sticky left-0 z-10 bg-white border-r border-slate-50">
-                    <div
-                      className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
-                      style={{
-                        backgroundColor: profile.color_hex || "#8B95A1",
-                      }}
+                  <div className="w-[80px] shrink-0 px-2 flex items-center sticky left-0 z-10 bg-white border-r border-slate-50">
+                    <button
+                      onClick={() => setViewProfileId(profile.id)}
+                      className="flex items-center gap-2 hover:opacity-70 transition-opacity active:scale-95 w-full"
                     >
-                      {profile.name?.charAt(0)}
-                    </div>
-                    <span className="text-[12px] font-bold text-[#191F28] truncate">
-                      {profile.name}
-                    </span>
+                      <div
+                        className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0"
+                        style={{
+                          backgroundColor: profile.color_hex || "#8B95A1",
+                        }}
+                      >
+                        {profile.name?.charAt(0)}
+                      </div>
+                      <span className="text-[12px] font-bold text-[#191F28] truncate">
+                        {profile.name}
+                      </span>
+                    </button>
                   </div>
                   <div className="flex-1 relative h-[72px]">
                     <div className="absolute inset-0 flex">
@@ -1618,6 +1630,14 @@ export default function AdminSchedulesPage() {
           onClose={() => setEditSlot(null)}
           onSave={handleSaveSlot}
           onDelete={editSlot.slot?.id ? handleDeleteSlot : undefined}
+        />
+      )}
+
+      {/* 직원 프로필 모달 */}
+      {viewProfileId && (
+        <EmployeeProfileModal
+          profileId={viewProfileId}
+          onClose={() => setViewProfileId(null)}
         />
       )}
     </div>
