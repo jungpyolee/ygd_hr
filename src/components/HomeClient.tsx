@@ -500,14 +500,8 @@ export default function HomeClient({
 
         {/* 이번 주 근무 카드 */}
         <div className="bg-white rounded-[28px] p-5 border border-slate-100 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
+          <div className="mb-4">
             <h3 className="text-[15px] font-bold text-[#191F28]">이번 주 근무</h3>
-            <button
-              onClick={() => router.push("/attendances")}
-              className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-[#F2F4F6] transition-colors"
-            >
-              <ChevronRight className="w-4 h-4 text-[#D1D6DB]" />
-            </button>
           </div>
 
           {weekData ? (
