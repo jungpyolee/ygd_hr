@@ -43,6 +43,7 @@ import {
 import { ko } from "date-fns/locale";
 import { useWorkplaces } from "@/lib/hooks/useWorkplaces";
 import Link from "next/link";
+import EmployeeProfileModal from "@/components/EmployeeProfileModal";
 import { logError } from "@/lib/logError";
 import { createNotification } from "@/lib/notifications";
 
@@ -361,6 +362,7 @@ function DaySheet({
   const [manualOutAtt, setManualOutAtt] = useState<AttendanceEntry | null>(null);
   const [manualOutTime, setManualOutTime] = useState("");
   const [manualOutSubmitting, setManualOutSubmitting] = useState(false);
+  const [viewProfileId, setViewProfileId] = useState<string | null>(null);
 
   const dateLabel = format(parseISO(dateStr), "M월 d일 (EEEE)", { locale: ko });
   const isPast = isBefore(parseISO(dateStr), startOfDay(new Date()));
@@ -435,7 +437,12 @@ function DaySheet({
           </div>
           <div className="flex-1">
             <div className="flex items-center gap-2">
-              <span className="text-[15px] font-bold text-[#191F28]">{name}</span>
+              <button
+                onClick={() => profileId && setViewProfileId(profileId)}
+                className="text-[15px] font-bold text-[#191F28] hover:text-[#3182F6] transition-colors"
+              >
+                {name}
+              </button>
               <span className="text-[10px] font-bold bg-[#FFCDD2] text-[#E03131] px-1.5 py-0.5 rounded-md">미출근</span>
             </div>
             {slot.start_time && (
@@ -462,48 +469,52 @@ function DaySheet({
 
     return (
       <div key={`att-${att.profile_id}`} className="bg-white rounded-[18px] p-4 border border-slate-100 shadow-[0_2px_8px_rgba(0,0,0,0.03)] flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        {/* 상단: 프로필 + 출퇴근 시간 */}
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-3 min-w-0">
             <div className="w-10 h-10 rounded-full flex items-center justify-center text-[14px] font-bold text-white shrink-0" style={{ backgroundColor: colorHex }}>
               {name?.charAt(0)}
             </div>
-            <div>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[15px] font-bold text-[#191F28]">{name}</span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <button onClick={() => profileId && setViewProfileId(profileId)} className="text-[15px] font-bold text-[#191F28] truncate hover:text-[#3182F6] transition-colors">{name}</button>
                 {isAnomaly && (
-                  <span className="flex items-center gap-1 bg-[#FFF4E6] text-[#D9480F] text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+                  <span className="flex items-center gap-1 bg-[#FFF4E6] text-[#D9480F] text-[10px] font-bold px-1.5 py-0.5 rounded-md shrink-0">
                     <AlertCircle className="w-3 h-3" /> 미퇴근
                   </span>
                 )}
-                {isWorking && (
-                  <button
-                    onClick={() => openManualOut(att)}
-                    className="flex items-center gap-1 bg-[#F3F0FF] text-[#7950F2] text-[10px] font-bold px-1.5 py-0.5 rounded-md hover:bg-[#E9DFFF] transition-colors"
-                  >
-                    <PenLine className="w-3 h-3" /> 퇴근 처리
-                  </button>
-                )}
               </div>
-              <p className="text-[12px] text-[#8B95A1] mt-0.5">{att.store_name || (slot ? byId[slot.store_id]?.label : "")}</p>
+              <p className="text-[12px] text-[#8B95A1] mt-0.5 truncate">{att.store_name || (slot ? byId[slot.store_id]?.label : "")}</p>
             </div>
           </div>
-          <div className="flex flex-col items-end gap-1.5">
-            <div className="flex items-center gap-2 text-[13px] font-bold">
-              <span className="bg-[#F2F4F6] text-[#333D4B] px-2.5 py-1.5 rounded-lg">
-                {att.clock_in ? format(new Date(att.clock_in), "a h:mm", { locale: ko }) : "-"}
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            <div className="flex items-center gap-1.5 text-[12px] font-bold">
+              <span className="bg-[#F2F4F6] text-[#333D4B] px-2 py-1 rounded-lg">
+                {att.clock_in ? format(new Date(att.clock_in), "HH:mm") : "-"}
               </span>
-              <span className="text-[#D1D6DB] text-[11px]">▶</span>
-              <span className={`px-2.5 py-1.5 rounded-lg ${att.clock_out ? "bg-[#F2F4F6] text-[#333D4B]" : isAnomaly ? "bg-[#FFF4E6] text-[#D9480F]" : "bg-[#E8F3FF] text-[#3182F6]"}`}>
-                {att.clock_out ? format(new Date(att.clock_out), "a h:mm", { locale: ko }) : isAnomaly ? "기록없음" : "근무중"}
+              <span className="text-[#D1D6DB]">▶</span>
+              <span className={`px-2 py-1 rounded-lg ${att.clock_out ? "bg-[#F2F4F6] text-[#333D4B]" : isAnomaly ? "bg-[#FFF4E6] text-[#D9480F]" : "bg-[#E8F3FF] text-[#3182F6]"}`}>
+                {att.clock_out ? format(new Date(att.clock_out), "HH:mm") : isAnomaly ? "기록없음" : "근무중"}
               </span>
             </div>
             {durationText && (
-              <span className="text-[11px] text-[#8B95A1] flex items-center gap-1">
-                <Clock className="w-3 h-3" /> 총 {durationText}
+              <span className="text-[10px] text-[#8B95A1] flex items-center gap-1">
+                <Clock className="w-3 h-3" /> {durationText}
               </span>
             )}
           </div>
         </div>
+
+        {/* 퇴근 처리 버튼 (별도 행) */}
+        {isWorking && (
+          <button
+            onClick={() => openManualOut(att)}
+            className="w-full flex items-center justify-center gap-1.5 py-2 bg-[#F3F0FF] text-[#7950F2] text-[12px] font-bold rounded-xl hover:bg-[#E9DFFF] transition-colors"
+          >
+            <PenLine className="w-3.5 h-3.5" /> 퇴근 처리하기
+          </button>
+        )}
+
 
         {/* 스케줄 정보 */}
         {att.scheduled_start && (
@@ -692,6 +703,14 @@ function DaySheet({
             </div>
           </div>
         </div>
+      )}
+
+      {/* 직원 프로필 모달 */}
+      {viewProfileId && (
+        <EmployeeProfileModal
+          profileId={viewProfileId}
+          onClose={() => setViewProfileId(null)}
+        />
       )}
     </div>
   );
@@ -1199,6 +1218,7 @@ export default function AdminCalendarPage() {
             const dateStr = format(day, "yyyy-MM-dd");
             const isCurrentMonth = isSameMonth(day, baseDate);
             const isTodayDate = isToday(day);
+            const isDayPast = isBefore(day, startOfDay(new Date()));
             const daySlots = layers.schedule
               ? slots.filter((s) => s.slot_date === dateStr && s.status === "active")
               : [];
@@ -1208,18 +1228,23 @@ export default function AdminCalendarPage() {
             const dayAtt = layers.attendance
               ? attendance.filter((a) => a.date === dateStr)
               : [];
-            const absentCount = dayAtt.filter((a) => a.is_absent).length;
-            const lateCount = dayAtt.filter((a) => !a.is_absent && a.late_minutes && a.late_minutes > 0).length;
 
-            // profile별 색상 (slot)
-            const profileColors: Record<string, string> = {};
-            profiles.forEach((p) => { profileColors[p.id] = p.color_hex; });
+            // 과거/오늘: 실제 근태 집계 (슬롯+스케줄외 출근 모두 포함)
+            const slotProfileIds = new Set(daySlots.map((s) => s.profile_id));
+            const unscheduledPresent = dayAtt.filter((a) => !a.is_absent && a.clock_in && !slotProfileIds.has(a.profile_id));
+            const presentCount = dayAtt.filter((a) => !a.is_absent && slotProfileIds.has(a.profile_id)).length + unscheduledPresent.length;
+            const lateCount = dayAtt.filter((a) => !a.is_absent && (a.late_minutes ?? 0) > 0).length;
+            const absentCount = isDayPast
+              ? dayAtt.filter((a) => a.is_absent).length
+              : 0;
+            // 미래: 예정 인원 수
+            const scheduledCount = daySlots.length;
 
             return (
               <button
                 key={dateStr}
                 onClick={() => setSelectedDay(dateStr)}
-                className={`min-h-[90px] p-1.5 border-b border-r border-slate-100 text-left transition-colors hover:bg-[#F9FAFB] ${
+                className={`min-h-[80px] p-1.5 border-b border-r border-slate-100 text-left transition-colors hover:bg-[#F9FAFB] ${
                   idx % 7 === 6 ? "border-r-0" : ""
                 } ${!isCurrentMonth ? "bg-[#FAFAFA]" : ""}`}
               >
@@ -1253,46 +1278,22 @@ export default function AdminCalendarPage() {
                   </div>
                 ))}
 
-                {/* 직원 슬롯 dots */}
-                {daySlots.length > 0 && (
-                  <div className="flex flex-wrap gap-0.5 mt-0.5">
-                    {daySlots.slice(0, 4).map((slot) => {
-                      const att = attendance.find(
-                        (a) => a.profile_id === slot.profile_id && a.date === dateStr
-                      );
-                      const isAbsent = att?.is_absent;
-                      const isLate = att && !att.is_absent && att.late_minutes && att.late_minutes > 0;
-                      return (
-                        <div
-                          key={slot.id}
-                          className="w-2 h-2 rounded-full"
-                          style={{
-                            backgroundColor: isAbsent
-                              ? "#EF4444"
-                              : isLate
-                              ? "#F97316"
-                              : (profileColors[slot.profile_id] || "#8B95A1"),
-                          }}
-                          title={profiles.find((p) => p.id === slot.profile_id)?.name}
-                        />
-                      );
-                    })}
-                    {daySlots.length > 4 && (
-                      <span className="text-[9px] text-[#8B95A1] font-bold leading-none mt-0.5">
-                        +{daySlots.length - 4}
-                      </span>
-                    )}
-                  </div>
-                )}
-
-                {/* 결근/지각 지표 */}
-                {layers.attendance && (absentCount > 0 || lateCount > 0) && (
-                  <div className="flex gap-1 mt-0.5">
-                    {absentCount > 0 && (
-                      <span className="text-[9px] font-bold text-red-500">결근{absentCount}</span>
-                    )}
-                    {lateCount > 0 && (
-                      <span className="text-[9px] font-bold text-orange-500">지각{lateCount}</span>
+                {/* 근태 요약 */}
+                {layers.attendance && (
+                  <div className="flex flex-col gap-0.5 mt-0.5">
+                    {(isDayPast || isTodayDate) ? (
+                      <>
+                        {presentCount > 0 && <span className="text-[9px] font-bold text-[#00B761]">정상 {presentCount}</span>}
+                        {lateCount > 0 && <span className="text-[9px] font-bold text-orange-500">지각 {lateCount}</span>}
+                        {absentCount > 0 && <span className="text-[9px] font-bold text-red-500">결근 {absentCount}</span>}
+                        {presentCount === 0 && absentCount === 0 && scheduledCount > 0 && (
+                          <span className="text-[9px] text-[#8B95A1]">예정 {scheduledCount}</span>
+                        )}
+                      </>
+                    ) : (
+                      scheduledCount > 0 && (
+                        <span className="text-[9px] text-[#8B95A1]">예정 {scheduledCount}</span>
+                      )
                     )}
                   </div>
                 )}
