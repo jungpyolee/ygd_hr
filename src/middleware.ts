@@ -32,7 +32,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // 로그인이 안 된 상태에서 메인 페이지 접근 시 로그인 페이지로 리다이렉트
-  if (!user && !pathname.startsWith("/login") && !pathname.startsWith("/demo")) {
+  if (!user && !pathname.startsWith("/login")) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
