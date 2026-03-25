@@ -3,6 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronDown, Search, X } from "lucide-react";
+import dynamic from "next/dynamic";
+
+const CatDodgeGame = dynamic(() => import("@/components/CatDodgeGame"), {
+  ssr: false,
+});
 
 /* ─────────────────────────────────────────────
    고양이 감정 단계 (클릭 0~9 → 10번째 😻 피날레)
@@ -610,6 +615,7 @@ export default function GuidePage() {
   const [query, setQuery] = useState("");
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
+  const [showDodge, setShowDodge] = useState(false);
 
   // 진입 시 레드닷 해제
   useEffect(() => {
@@ -695,7 +701,8 @@ export default function GuidePage() {
           100% { opacity: 0; transform: translateX(-50%) translateY(-6px); }
         }
       `}</style>
-      <WalkingCat onGameStart={() => router.push("/game")} />
+      <WalkingCat onGameStart={() => setShowDodge(true)} />
+      {showDodge && <CatDodgeGame onClose={() => setShowDodge(false)} />}
       {/* 헤더 */}
       <header className="sticky top-0 z-10 flex items-center gap-3 px-5 py-4 bg-white/90 backdrop-blur-md border-b border-[#E5E8EB]">
         <button
