@@ -673,9 +673,7 @@ export default function AdminEmployeesPage() {
                   {(() => {
                     const missing = [];
                     if (!employee.health_cert_date) missing.push("보건증");
-                    if (!employee.employment_contract_url) missing.push("근로계약서");
-                    if (!employee.bank_account_copy_url) missing.push("통장사본");
-                    if (!employee.resident_register_url) missing.push("주민등록");
+                    if (!employee.bank_account_copy_url) missing.push("계좌");
                     if (missing.length === 0) return null;
                     return (
                       <div className="flex flex-wrap gap-1 mt-1">
