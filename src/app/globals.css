@@ -195,3 +195,12 @@ body::-webkit-scrollbar,
     display: none;
   }
 }
+
+/* 스케줄 슬롯 glow 애니메이션 (알림 클릭 시 하이라이트) */
+@keyframes slot-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(49, 130, 246, 0); }
+  50% { box-shadow: 0 0 10px 3px rgba(49, 130, 246, 0.35); }
+}
+.animate-slot-glow {
+  animation: slot-glow 1.2s ease-in-out 3;
+}

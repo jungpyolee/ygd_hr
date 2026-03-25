@@ -12,6 +12,7 @@ import {
   LogOut,
   LayoutDashboard,
   Pencil,
+  Trophy,
 } from "lucide-react";
 import MyInfoModal from "@/components/MyInfoModal";
 import PushNotificationSettings from "@/components/PushNotificationSettings";
@@ -42,9 +43,15 @@ export default function MyPage() {
     router.replace("/login");
   };
 
+  const creditScore = profile?.credit_score ?? null;
+  const tierEmoji = creditScore != null ? (
+    creditScore >= 900 ? "💎" : creditScore >= 750 ? "❇️" : creditScore >= 600 ? "🥇" : creditScore >= 450 ? "🥈" : creditScore >= 300 ? "🥉" : "⚙️"
+  ) : null;
+
   const menuItems = [
-    { icon: Clock, label: "근무 기록", description: "출퇴근 내역 확인하기", onClick: () => router.push("/attendances") },
-    { icon: BookOpen, label: "이용 가이드", description: "앱 사용 방법 안내", onClick: () => router.push("/guide") },
+    { icon: Trophy, label: "내 크레딧", description: "등급과 크레딧 이력 확인하기", onClick: () => router.push("/credit-history"), trailing: creditScore != null ? `${tierEmoji} ${creditScore}점` : null },
+    { icon: Clock, label: "근무 기록", description: "출퇴근 내역 확인하기", onClick: () => router.push("/attendances"), trailing: null },
+    { icon: BookOpen, label: "이용 가이드", description: "앱 사용 방법 안내", onClick: () => router.push("/guide"), trailing: null },
   ];
 
   return (
@@ -90,7 +97,7 @@ export default function MyPage() {
       {/* 메뉴 */}
       <div className="px-5 mb-4">
         <div className="bg-white rounded-[24px] border border-slate-100 overflow-hidden">
-          {menuItems.map(({ icon: Icon, label, description, onClick }, i) => (
+          {menuItems.map(({ icon: Icon, label, description, onClick, trailing }, i) => (
             <button key={label} onClick={onClick}
               className={`w-full flex items-center gap-4 px-5 py-4 text-left active:bg-[#F9FAFB] transition-colors ${i < menuItems.length - 1 ? "border-b border-[#F2F4F6]" : ""}`}>
               <div className="w-10 h-10 rounded-full bg-[#F2F4F6] flex items-center justify-center shrink-0">
@@ -100,6 +107,9 @@ export default function MyPage() {
                 <p className="text-[15px] font-bold text-[#191F28]">{label}</p>
                 <p className="text-[12px] text-[#8B95A1] mt-0.5">{description}</p>
               </div>
+              {trailing && (
+                <span className="text-[13px] font-semibold text-[#4E5968] shrink-0">{trailing}</span>
+              )}
               <ChevronRight className="w-4 h-4 text-[#D1D6DB] shrink-0" />
             </button>
           ))}

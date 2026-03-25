@@ -32,7 +32,7 @@ const getStores = unstable_cache(
     return data ?? [];
   },
   ["stores"],
-  { revalidate: false },
+  { revalidate: 3600 },
 );
 
 export default async function HomePage() {

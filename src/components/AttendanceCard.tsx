@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import { sendNotification, type NotificationType } from "@/lib/notifications";
+import { processCheckinCredit } from "@/lib/credit-engine";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
 import LocationPermissionGuide from "@/components/LocationPermissionGuide";
 import ChecklistSheet from "@/components/ChecklistSheet";
@@ -258,7 +259,7 @@ export default function AttendanceCard({
     const { data: logData, error } = await supabase
       .from("attendance_logs")
       .insert(insertData)
-      .select(`id, profile_id, profiles (name)`)
+      .select(`id, profile_id, created_at, profiles (name)`)
       .single();
 
     if (error) {
@@ -348,6 +349,26 @@ export default function AttendanceCard({
       toast.success("출장출근 처리됐어요");
     } else {
       toast.success("출장퇴근 처리됐어요");
+    }
+
+    // ── 출근 크레딧 처리 + 피드백 토스트 ──────────────────
+    if (type === "IN" && userId && todaySlots.length > 0) {
+      const slot = todaySlots[0]; // 가장 이른 슬롯 기준
+      const creditResult = await processCheckinCredit(
+        userId,
+        logData.created_at ?? new Date().toISOString(),
+        slot.slot_date,
+        slot.start_time,
+      ).catch(() => null);
+      if (creditResult) {
+        if (creditResult.event_type === "normal_attendance") {
+          toast.success("정상 출근! +3점 적립됐어요");
+        } else if (creditResult.event_type === "late_minor") {
+          toast("5~10분 지각이에요 (-3점)", { description: "다음엔 정시에 출근해봐요" });
+        } else if (creditResult.event_type === "late_major") {
+          toast("10분 이상 지각이에요 (-10점)", { description: "정시 출근을 목표로 해봐요" });
+        }
+      }
     }
 
     // ── 출근 후 check_in 체크리스트 ──────────────────────────

@@ -1,7 +1,7 @@
 # DB 스키마 (최신 상태)
 
 > **프로젝트**: ymvdjxzkjodasctktunh
-> **최종 갱신**: 2026-03-23 (DB-035: company_events 테이블 추가 + schedule_slots 팀뷰 RLS)
+> **최종 갱신**: 2026-03-25 (DB-041: attendance_credits 테이블 + profiles 크레딧 컬럼 추가)
 > **DB 시간대**: `Asia/Seoul` (KST, UTC+9) — 모든 롤에 적용됨
 > **timestamptz 저장**: UTC로 저장, 날짜 함수(`DATE_TRUNC`, `CURRENT_DATE` 등)는 KST 기준 동작
 > **연결 방식**: Supabase Management API
@@ -27,6 +27,7 @@
 | `substitute_requests` | 대타 요청 (pending→approved/rejected→filled) |
 | `substitute_responses` | 대타 수락/거절 응답 |
 | `company_events` | 회사 공지 일정 (어드민 등록, 직원 캘린더 표시) |
+| `attendance_credits` | 근태 크레딧 이벤트 로그 (이벤트 소싱, 티어 시스템) |
 
 ---
 
@@ -57,6 +58,10 @@
 | `position_keys` | text[] | YES | `'{}'` | `'hall'` / `'kitchen'` / `'showroom'` 복수 선택 |
 | `hourly_wage` | integer | YES | - | 시급 (원, 알바만) |
 | `insurance_type` | text | YES | - | `'national'` (2대보험) / `'3.3'` (원천징수) |
+| `credit_score` | integer | NO | `500` | 근태 크레딧 점수 (비정규화) |
+| `current_streak` | integer | NO | `0` | 현재 연속 정상 출근 |
+| `longest_streak` | integer | NO | `0` | 최장 연속 정상 출근 |
+| `streak_milestones_claimed` | integer[] | NO | `'{}'` | 달성한 스트릭 마일스톤 목록 |
 | `created_at` | timestamptz | YES | `now()` | 생성일 |
 | `updated_at` | timestamptz | YES | `now()` | 수정일 |
 
@@ -588,6 +593,31 @@ DELETE FROM auth.users WHERE id = target_user_id
 |------|------|------|
 | `hr-documents` | Private (서명 URL 60초) | 근로계약서, 보건증 |
 | `recipe-media` | Public | 레시피 썸네일, 영상, 단계 이미지 (최대 100MB) |
+
+---
+
+## attendance_credits
+
+근태 크레딧 이벤트 로그. 이벤트 소싱 방식으로 모든 점수 변동을 기록.
+INSERT/DELETE 시 트리거(`sync_credit_score`)가 `profiles.credit_score`를 자동 동기화.
+
+| 컬럼 | 타입 | NULL | 기본값 | 설명 |
+|------|------|------|--------|------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `profile_id` | uuid | NO | - | FK → profiles.id (CASCADE) |
+| `event_type` | text | NO | - | 이벤트 유형 (아래 참고) |
+| `points` | integer | NO | - | 양수(가점) 또는 음수(감점) |
+| `description` | text | YES | - | 이벤트 설명 |
+| `reference_id` | uuid | YES | - | 관련 schedule_slot.id 등 |
+| `reference_date` | date | YES | - | 해당 근무일 |
+| `invalidated_by` | uuid | YES | - | 이 이벤트를 무효화한 reversal 크레딧 ID (FK → attendance_credits.id) |
+| `created_at` | timestamptz | NO | `now()` | 생성일 |
+
+**event_type 값**: `normal_attendance` (+3), `late_minor` (-3), `late_major` (-10), `no_show` (-50), `early_leave` (-8), `missing_checkout` (-5), `same_day_cancel` (-20), `advance_cancel` (-5), `substitute_bonus` (+10), `substitute_regular` (+3), `streak_bonus_10` (+15), `streak_bonus_30` (+50), `streak_bonus_60` (+80), `streak_bonus_100` (+150), `admin_cancel_compensation` (+5), `exception_reversal` (감점 무효화, 양수)
+
+**RLS**: 직원=본인 SELECT, 관리자=ALL
+**인덱스**: `(profile_id)`, `(profile_id, reference_date DESC)`, `(event_type)`
+**Realtime**: 활성화
 
 ---
 
