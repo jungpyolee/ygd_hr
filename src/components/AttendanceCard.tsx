@@ -593,7 +593,14 @@ export default function AttendanceCard({
         return;
       }
 
-      // 권한 안내 후에도 여전히 실패 → 매장 수동 선택 fallback
+      // 권한 안내 후에도 여전히 denied → 출근 차단
+      if (result.status === "denied") {
+        setPendingType(null);
+        toast.error("위치 권한을 허용해야 출근할 수 있어요. 설정에서 위치 권한을 켜주세요.");
+        return;
+      }
+
+      // timeout / unavailable → GPS 오류이므로 수동 선택 허용
       openStoreFallback(type);
     } finally {
       setIsRetrying(false);

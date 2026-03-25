@@ -5,25 +5,61 @@ import { MapPin } from "lucide-react";
 interface Props {
   isOpen: boolean;
   onConfirm: () => void; // "권한 설정했어요" → 닫고 retry
-  onCancel: () => void;  // "나중에 할게요"
+  onCancel: () => void; // "나중에 할게요"
 }
 
-export default function LocationPermissionGuide({ isOpen, onConfirm, onCancel }: Props) {
+export default function LocationPermissionGuide({
+  isOpen,
+  onConfirm,
+  onCancel,
+}: Props) {
   if (!isOpen) return null;
 
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const ua = navigator.userAgent;
+  const isIOS = /iPad|iPhone|iPod/.test(ua);
+  const isIOSChrome = isIOS && /CriOS/.test(ua);
+  const isIOSStandalone =
+    isIOS &&
+    (navigator as Navigator & { standalone?: boolean }).standalone === true;
 
-  const steps = isIOS
-    ? [
+  let label: string;
+  let steps: string[];
+
+  if (isIOS) {
+    if (isIOSStandalone) {
+      // 홈 화면에 추가된 PWA
+      label = "iOS 설정 방법";
+      steps = [
         "설정 앱을 열어요",
-        "Chrome → 위치를 탭해요",
-        '"앱 사용 중 허용"을 선택해요',
-      ]
-    : [
-        "안드로이드 설정 앱을 열어요",
-        "앱 → Chrome → 권한 → 위치를 탭해요",
+        '"연경당" → 위치를 탭해요',
         '"앱 사용 중 허용"을 선택해요',
       ];
+    } else if (isIOSChrome) {
+      // iOS Chrome 브라우저
+      label = "iOS Chrome 설정 방법";
+      steps = [
+        "설정 앱을 열어요",
+        '"Chrome" → 위치를 탭해요',
+        '"앱 사용 중 허용"을 선택해요',
+      ];
+    } else {
+      // iOS Safari (기본)
+      label = "iOS Safari 설정 방법";
+      steps = [
+        "주소창 왼쪽 aA 버튼을 탭해요",
+        '"웹사이트 설정"을 탭해요',
+        '"위치" → "허용"을 선택해요',
+      ];
+    }
+  } else {
+    // Android Chrome
+    label = "Android 설정 방법";
+    steps = [
+      "주소창 왼쪽 자물쇠 아이콘을 탭해요",
+      '"권한" → "위치"를 탭해요',
+      '"허용"을 선택해요',
+    ];
+  }
 
   return (
     <div className="fixed inset-0 z-[300] flex items-end justify-center">
@@ -50,12 +86,14 @@ export default function LocationPermissionGuide({ isOpen, onConfirm, onCancel }:
 
         <div className="bg-[#F8F9FA] rounded-2xl p-4 mb-5 space-y-3">
           <p className="text-[12px] font-bold text-[#8B95A1] uppercase tracking-wide">
-            {isIOS ? "iOS" : "Android"} 설정 방법
+            {label}
           </p>
           {steps.map((step, i) => (
             <div key={i} className="flex items-start gap-3">
               <div className="w-5 h-5 rounded-full bg-[#3182F6] flex items-center justify-center shrink-0 mt-0.5">
-                <span className="text-[11px] font-bold text-white">{i + 1}</span>
+                <span className="text-[11px] font-bold text-white">
+                  {i + 1}
+                </span>
               </div>
               <p className="text-[14px] text-[#333D4B]">{step}</p>
             </div>
