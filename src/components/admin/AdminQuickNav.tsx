@@ -2,7 +2,6 @@
 
 import { useRouter } from "next/navigation";
 import {
-  Clock,
   Users,
   TimerIcon,
   CalendarDays,
@@ -22,14 +21,6 @@ export default function AdminQuickNav({
   const router = useRouter();
 
   const tiles = [
-    {
-      label: "근태 기록",
-      icon: <Clock className="w-5 h-5" />,
-      iconBg: "#E8F3FF",
-      iconColor: "#3182F6",
-      badge: 0,
-      href: "/admin/attendance",
-    },
     {
       label: "직원 관리",
       icon: <Users className="w-5 h-5" />,

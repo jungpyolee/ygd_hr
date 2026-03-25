@@ -337,7 +337,7 @@ function SlotBottomSheet({
   );
 }
 
-// ─── SlotInfoSheet (슬롯 정보 + 수정/삭제) ─────────────────────────────────
+// ─── SlotInfoSheet (슬롯 정보 + 근태 상세 + 수정/삭제) ──────────────────────
 interface SlotInfoSheetProps {
   slot: ScheduleSlot;
   profile: Profile | undefined;
@@ -345,12 +345,18 @@ interface SlotInfoSheetProps {
   onClose: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onMutate: () => void;
 }
 
-function SlotInfoSheet({ slot, profile, attendance, onClose, onEdit, onDelete }: SlotInfoSheetProps) {
+function SlotInfoSheet({ slot, profile, attendance, onClose, onEdit, onDelete, onMutate }: SlotInfoSheetProps) {
   const { byId, positionsOfStore } = useWorkplaces();
+  const supabase = createClient();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [manualOutTime, setManualOutTime] = useState("");
+  const [showManualOut, setShowManualOut] = useState(false);
+  const [manualOutSubmitting, setManualOutSubmitting] = useState(false);
+
   const store = byId[slot.store_id];
   const positions = slot.position_keys?.length
     ? slot.position_keys
@@ -358,11 +364,53 @@ function SlotInfoSheet({ slot, profile, attendance, onClose, onEdit, onDelete }:
         .join(" · ")
     : null;
   const dateLabel = format(parseISO(slot.slot_date), "M월 d일 (EEEE)", { locale: ko });
+  const isPast = isBefore(parseISO(slot.slot_date), startOfDay(new Date()));
+  const isTodaySlot = isToday(parseISO(slot.slot_date));
+
+  // 근태 파생 값
+  const isWorking = attendance?.clock_in && !attendance?.clock_out;
+  const isAnomaly = isWorking && !isTodaySlot;
+  let durationText = "";
+  if (attendance?.clock_in && attendance?.clock_out) {
+    const diffMs = new Date(attendance.clock_out).getTime() - new Date(attendance.clock_in).getTime();
+    const hours = Math.floor(diffMs / 3600000);
+    const mins = Math.floor((diffMs % 3600000) / 60000);
+    durationText = `${hours}시간${mins > 0 ? ` ${mins}분` : ""}`;
+  }
+
+  const handleManualOut = async () => {
+    if (!attendance || !manualOutTime) return;
+    setManualOutSubmitting(true);
+    const clockOutDate = new Date(`${slot.slot_date}T${manualOutTime}:00`);
+    const { error } = await supabase.from("attendance_logs").insert({
+      profile_id: attendance.profile_id,
+      type: "OUT",
+      attendance_type: "fallback_out",
+      created_at: clockOutDate.toISOString(),
+      reason: "관리자 수동 처리",
+    });
+    if (error) {
+      toast.error("퇴근 처리에 실패했어요", { description: "잠시 후 다시 시도해주세요." });
+    } else {
+      toast.success(`${attendance.name}님 퇴근 처리가 완료됐어요.`);
+      await createNotification({
+        profile_id: attendance.profile_id,
+        target_role: "employee",
+        type: "attendance_fallback_out",
+        title: "퇴근 처리 완료",
+        content: "관리자가 퇴근 처리했어요.",
+        source_id: attendance.profile_id,
+      });
+      setShowManualOut(false);
+      onMutate();
+    }
+    setManualOutSubmitting(false);
+  };
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-white rounded-[28px] px-5 pt-6 pb-6 shadow-2xl animate-in zoom-in-95 fade-in-0 duration-200">
+      <div className="relative w-full max-w-md bg-white rounded-[28px] px-5 pt-6 pb-6 shadow-2xl animate-in zoom-in-95 fade-in-0 duration-200 max-h-[85vh] overflow-y-auto scrollbar-hide">
         <div className="flex justify-between items-center mb-5">
           <h3 className="text-[18px] font-bold text-[#191F28]">근무 정보</h3>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-[#F2F4F6]">
@@ -380,6 +428,7 @@ function SlotInfoSheet({ slot, profile, attendance, onClose, onEdit, onDelete }:
 
           <div className="text-[14px] text-[#4E5968] font-medium">{dateLabel}</div>
 
+          {/* 스케줄 정보 */}
           <div
             className="p-3 rounded-2xl"
             style={{ backgroundColor: (store?.color || "#3182F6") + "15", borderLeft: `3px solid ${store?.color || "#3182F6"}` }}
@@ -403,23 +452,98 @@ function SlotInfoSheet({ slot, profile, attendance, onClose, onEdit, onDelete }:
             </div>
           )}
 
-          {attendance && attendance.clock_in && (
-            <div className="p-3 bg-green-50 rounded-xl border-l-[3px] border-green-400">
-              <div className="flex items-center gap-2 text-[12px]">
-                <span className="text-[#8B95A1]">출근</span>
-                <span className="font-bold text-[#4E5968]">{format(new Date(attendance.clock_in), "HH:mm")}</span>
-                {attendance.clock_out && (
-                  <>
-                    <span className="text-[#D1D6DB]">→</span>
-                    <span className="text-[#8B95A1]">퇴근</span>
-                    <span className="font-bold text-[#4E5968]">{format(new Date(attendance.clock_out), "HH:mm")}</span>
-                  </>
-                )}
-              </div>
+          {/* ── 근태 상세 정보 ── */}
+          {attendance && (
+            <div className="space-y-2">
+              {/* 미출근 (과거 날짜) */}
+              {attendance.is_absent && isPast && (
+                <div className="flex items-center gap-2 p-3 bg-[#FFF5F5] rounded-xl border border-[#FFCDD2]">
+                  <span className="text-[11px] font-bold bg-[#FFCDD2] text-[#E03131] px-2 py-0.5 rounded-md">미출근</span>
+                </div>
+              )}
+
+              {/* 출퇴근 타임라인 */}
+              {attendance.clock_in && (
+                <div className="p-3 bg-[#F9FAFB] rounded-xl space-y-2.5">
+                  <div className="flex items-center gap-2 text-[13px] font-bold">
+                    <span className="bg-[#F2F4F6] text-[#333D4B] px-2.5 py-1 rounded-lg">
+                      {format(new Date(attendance.clock_in), "HH:mm")}
+                    </span>
+                    <span className="text-[#D1D6DB]">▶</span>
+                    <span className={`px-2.5 py-1 rounded-lg ${
+                      attendance.clock_out ? "bg-[#F2F4F6] text-[#333D4B]"
+                        : isAnomaly ? "bg-[#FFF4E6] text-[#D9480F]"
+                        : "bg-[#E8F3FF] text-[#3182F6]"
+                    }`}>
+                      {attendance.clock_out ? format(new Date(attendance.clock_out), "HH:mm")
+                        : isAnomaly ? "기록없음" : "근무 중"}
+                    </span>
+                  </div>
+
+                  {/* 근무 시간 */}
+                  {durationText && (
+                    <div className="flex items-center gap-1 text-[11px] text-[#8B95A1]">
+                      <Clock className="w-3 h-3" /> 총 <span className="text-[#4E5968] font-medium">{durationText}</span> 근무했어요
+                    </div>
+                  )}
+
+                  {/* 지각 / 조기퇴근 뱃지 */}
+                  {((attendance.late_minutes != null && attendance.late_minutes > 0) || (attendance.early_leave_minutes != null && attendance.early_leave_minutes > 0)) && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {attendance.late_minutes != null && attendance.late_minutes > 0 && (
+                        <span className="text-[10px] font-bold bg-[#FFF7E6] text-[#F59E0B] px-1.5 py-0.5 rounded-md">+{attendance.late_minutes}분 지각</span>
+                      )}
+                      {attendance.early_leave_minutes != null && attendance.early_leave_minutes > 0 && (
+                        <span className="text-[10px] font-bold bg-[#FFF4E6] text-[#D9480F] px-1.5 py-0.5 rounded-md">-{attendance.early_leave_minutes}분 조기퇴근</span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 거리 정보 */}
+                  {(attendance.distance_in != null || attendance.distance_out != null) && (
+                    <div className="flex items-center gap-3 flex-wrap">
+                      {attendance.distance_in != null && (
+                        <span className="flex items-center gap-1 text-[10px] text-[#8B95A1]"><MapPin className="w-3 h-3" />출근 {Math.round(attendance.distance_in)}m</span>
+                      )}
+                      {attendance.distance_out != null && (
+                        <span className="flex items-center gap-1 text-[10px] text-[#8B95A1]"><MapPin className="w-3 h-3" />퇴근 {Math.round(attendance.distance_out)}m</span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 근무 유형 뱃지 */}
+                  <div className="flex gap-1.5 flex-wrap">
+                    {attendance.attendance_type_in === "business_trip_in" && <span className="text-[10px] font-bold bg-[#FFF3BF] text-[#E67700] px-1.5 py-0.5 rounded-md">출장출근</span>}
+                    {attendance.attendance_type_in === "fallback_in" && <span className="text-[10px] font-bold bg-[#F3F0FF] text-[#7950F2] px-1.5 py-0.5 rounded-md">수동출근</span>}
+                    {attendance.attendance_type_out === "remote_out" && <span className="text-[10px] font-bold bg-[#FFE3E3] text-[#C92A2A] px-1.5 py-0.5 rounded-md">원격퇴근</span>}
+                    {attendance.attendance_type_out === "business_trip_out" && <span className="text-[10px] font-bold bg-[#FFF3BF] text-[#E67700] px-1.5 py-0.5 rounded-md">출장퇴근</span>}
+                    {attendance.attendance_type_out === "fallback_out" && <span className="text-[10px] font-bold bg-[#F3F0FF] text-[#7950F2] px-1.5 py-0.5 rounded-md">수동퇴근</span>}
+                  </div>
+
+                  {/* 퇴근 사유 */}
+                  {attendance.reason_out && (
+                    <p className="text-[10px] text-[#8B95A1]">사유: {attendance.reason_out}</p>
+                  )}
+                </div>
+              )}
+
+              {/* 퇴근 처리 버튼 */}
+              {isWorking && (
+                <button
+                  onClick={() => {
+                    setManualOutTime(attendance.scheduled_end ? attendance.scheduled_end.slice(0, 5) : "18:00");
+                    setShowManualOut(true);
+                  }}
+                  className="w-full flex items-center justify-center gap-1.5 py-2.5 bg-[#F3F0FF] text-[#7950F2] text-[12px] font-bold rounded-xl hover:bg-[#E9DFFF] transition-colors"
+                >
+                  <PenLine className="w-3.5 h-3.5" /> 퇴근 처리하기
+                </button>
+              )}
             </div>
           )}
         </div>
 
+        {/* 수정/삭제 버튼 */}
         <div className="flex gap-3 mt-6">
           <button
             onClick={onEdit}
@@ -443,6 +567,50 @@ function SlotInfoSheet({ slot, profile, attendance, onClose, onEdit, onDelete }:
           </button>
         </div>
       </div>
+
+      {/* 수동 퇴근 처리 모달 */}
+      {showManualOut && attendance && (
+        <div className="fixed inset-0 z-[250] flex items-center justify-center px-4">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setShowManualOut(false)} />
+          <div className="relative bg-white rounded-[24px] shadow-xl w-full max-w-sm p-6 flex flex-col gap-5">
+            <div className="flex items-center justify-between">
+              <h2 className="text-[18px] font-bold text-[#191F28]">퇴근 시간 수동 입력</h2>
+              <button onClick={() => setShowManualOut(false)} className="p-1.5 text-[#8B95A1] hover:bg-[#F2F4F6] rounded-lg">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex items-center gap-3 bg-[#F9FAFB] rounded-[16px] p-3.5">
+              {profile && <AvatarDisplay userId={profile.id} avatarConfig={profile.avatar_config} size={40} />}
+              <div>
+                <p className="text-[15px] font-bold text-[#191F28]">{attendance.name}</p>
+                <p className="text-[12px] text-[#8B95A1]">
+                  {dateLabel}
+                  {attendance.scheduled_end && <span className="ml-1.5">· 예정 퇴근 {attendance.scheduled_end.slice(0, 5)}</span>}
+                </p>
+              </div>
+            </div>
+            <div>
+              <label className="block text-[13px] font-bold text-[#191F28] mb-2">퇴근 시간</label>
+              <input
+                type="time"
+                value={manualOutTime}
+                onChange={(e) => setManualOutTime(e.target.value)}
+                className="w-full px-4 py-3 bg-[#F9FAFB] border border-slate-200 rounded-xl text-[15px] font-bold text-[#191F28] focus:outline-none focus:border-[#3182F6]"
+              />
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setShowManualOut(false)} className="flex-1 py-3 text-[14px] font-bold text-[#4E5968] bg-[#F2F4F6] rounded-xl">취소</button>
+              <button
+                onClick={handleManualOut}
+                disabled={manualOutSubmitting || !manualOutTime}
+                className="flex-1 py-3 text-[14px] font-bold text-white bg-[#3182F6] rounded-xl hover:bg-blue-600 disabled:opacity-50 transition-all"
+              >
+                {manualOutSubmitting ? "처리 중..." : "퇴근 처리하기"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1936,6 +2104,7 @@ export default function AdminCalendarPage() {
             setEditingSlot({ slot: infoSlot, defaultDate: infoSlot.slot_date, defaultProfileId: infoSlot.profile_id });
           }}
           onDelete={() => handleDeleteSlot(infoSlot.id)}
+          onMutate={mutate}
         />
       )}
 

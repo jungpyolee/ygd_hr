@@ -1,89 +1,87 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-
-interface KPIData {
-  total: number;
-  attended: number;
-  late: number;
-  lateAvgMinutes: number;
-  absent: number;
-  scheduled: number;
-  actionCount: number;
-  overtimeCount: number;
-  subCount: number;
-  healthCertCount: number;
+interface AttendanceItem {
+  status: "attended" | "late" | "absent" | "scheduled";
+  store_id: string;
+  late_minutes: number;
 }
 
-export default function DashboardKPICards({ data }: { data: KPIData }) {
-  const router = useRouter();
-  const rate = data.total > 0 ? Math.round((data.attended / data.total) * 100) : 0;
+interface WorkLocation {
+  id: string;
+  label: string;
+  color: string;
+}
 
-  const cards = [
-    {
-      label: "출근율",
-      value: `${rate}%`,
-      sub: `오늘 ${data.attended}/${data.total}명`,
-      accent: rate >= 90 ? "#00B761" : rate >= 70 ? "#F59E0B" : "#F04438",
-      onClick: () => router.push("/admin/attendance"),
-    },
-    {
-      label: "지각",
-      value: `${data.late}명`,
-      sub: data.late > 0 ? `평균 +${data.lateAvgMinutes}분` : "모두 정시 출근",
-      accent: data.late > 0 ? "#F04438" : "#00B761",
-      onClick: () => router.push("/admin/attendance"),
-    },
-    {
-      label: "미출근",
-      value: `${data.absent}명`,
-      sub: data.scheduled > 0 ? `예정 ${data.scheduled}명` : "모두 출근 완료",
-      accent: data.absent > 0 ? "#F04438" : "#00B761",
-      onClick: () => router.push("/admin/attendance"),
-    },
-    {
-      label: "처리 필요",
-      value: `${data.actionCount}건`,
-      sub:
-        data.actionCount > 0
-          ? [
-              data.overtimeCount > 0 && `추가근무 ${data.overtimeCount}`,
-              data.subCount > 0 && `대타 ${data.subCount}`,
-              data.healthCertCount > 0 && `보건증 ${data.healthCertCount}`,
-            ]
-              .filter(Boolean)
-              .join(" · ") || "확인 필요"
-          : "모두 완료",
-      accent: data.actionCount > 0 ? "#3182F6" : "#00B761",
-      onClick: () =>
-        router.push(
-          data.overtimeCount > 0
-            ? "/admin/overtime"
-            : data.subCount > 0
-              ? "/admin/schedules/substitutes"
-              : "/admin/employees?health=warning"
-        ),
-    },
-  ];
+interface Props {
+  storeGroups: Record<string, AttendanceItem[]>;
+  byId: Record<string, WorkLocation | undefined>;
+}
+
+export default function DashboardKPICards({ storeGroups, byId }: Props) {
+  const storeEntries = Object.entries(storeGroups).sort((a, b) => {
+    const la = byId[a[0]]?.label || "";
+    const lb = byId[b[0]]?.label || "";
+    return la.localeCompare(lb);
+  });
+
+  if (storeEntries.length === 0) return null;
 
   return (
-    <div className="flex gap-2.5 overflow-x-auto scrollbar-hide pb-1 -mx-1 px-1 md:grid md:grid-cols-4 md:overflow-visible">
-      {cards.map((card) => (
-        <button
-          key={card.label}
-          onClick={card.onClick}
-          className="flex-shrink-0 min-w-[140px] flex-1 bg-white rounded-[16px] border border-slate-100 p-3.5 text-left hover:shadow-sm transition-shadow"
-          style={{ borderLeftColor: card.accent, borderLeftWidth: 4 }}
-        >
-          <p className="text-[12px] font-medium text-[#8B95A1] mb-1">
-            {card.label}
-          </p>
-          <p className="text-[22px] font-bold text-[#191F28] leading-tight">
-            {card.value}
-          </p>
-          <p className="text-[11px] text-[#8B95A1] mt-0.5">{card.sub}</p>
-        </button>
-      ))}
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+      {storeEntries.map(([storeId, items]) => {
+        const store = byId[storeId];
+        const total = items.length;
+        const attended = items.filter((i) => i.status === "attended" || i.status === "late").length;
+        const late = items.filter((i) => i.status === "late").length;
+        const lateAvg = late > 0
+          ? Math.round(items.filter((i) => i.status === "late").reduce((s, i) => s + i.late_minutes, 0) / late)
+          : 0;
+        const rate = total > 0 ? Math.round((attended / total) * 100) : 0;
+        const rateColor = rate >= 90 ? "#00B761" : rate >= 70 ? "#F59E0B" : "#F04438";
+
+        return (
+          <div
+            key={storeId}
+            className="bg-white rounded-[28px] border border-slate-100 p-5"
+          >
+            {/* 매장명 */}
+            <div className="flex items-center gap-2 mb-3">
+              <span
+                className="w-2 h-2 rounded-full shrink-0"
+                style={{ backgroundColor: store?.color || "#8B95A1" }}
+              />
+              <span className="text-[14px] font-bold text-[#191F28]">
+                {store?.label || storeId}
+              </span>
+            </div>
+
+            {/* 출근율 + 상세 */}
+            <div className="flex items-end justify-between">
+              <div>
+                <p
+                  className="text-[28px] font-bold leading-tight"
+                  style={{ color: rateColor }}
+                >
+                  {rate}%
+                </p>
+                <p className="text-[12px] text-[#8B95A1] mt-1">
+                  출근 {attended}/{total}명
+                </p>
+              </div>
+              <div className="text-right">
+                {late > 0 ? (
+                  <div>
+                    <p className="text-[14px] font-bold text-[#F59E0B]">{late}명 지각</p>
+                    <p className="text-[11px] text-[#8B95A1]">평균 +{lateAvg}분</p>
+                  </div>
+                ) : (
+                  <p className="text-[12px] text-[#00B761] font-medium">정시 출근</p>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

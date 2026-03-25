@@ -375,36 +375,23 @@ export default function AdminDashboardPage() {
         </p>
       </header>
 
-      {/* 2. KPI 요약 카드 */}
+      {/* 2. 매장별 출근 현황 */}
       <section className="mb-5">
         {loadingAttendance ? (
-          <div className="flex gap-2.5 overflow-x-auto scrollbar-hide pb-1 -mx-1 px-1">
-            {[1, 2, 3, 4].map((i) => (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {[1, 2].map((i) => (
               <div
                 key={i}
-                className="flex-shrink-0 min-w-[140px] flex-1 bg-white rounded-[16px] border border-slate-100 p-3.5 animate-pulse"
+                className="bg-white rounded-[28px] border border-slate-100 p-5 animate-pulse"
               >
-                <div className="h-3 bg-[#F2F4F6] rounded w-12 mb-2" />
-                <div className="h-6 bg-[#F2F4F6] rounded w-14 mb-1" />
-                <div className="h-2.5 bg-[#F2F4F6] rounded w-20" />
+                <div className="h-3 bg-[#F2F4F6] rounded w-16 mb-3" />
+                <div className="h-7 bg-[#F2F4F6] rounded w-12 mb-2" />
+                <div className="h-2.5 bg-[#F2F4F6] rounded w-24" />
               </div>
             ))}
           </div>
         ) : (
-          <DashboardKPICards
-            data={{
-              total: todayAttendance.length,
-              attended: attendedCount,
-              late: lateItems.length,
-              lateAvgMinutes,
-              absent: absentCount,
-              scheduled: scheduledCount,
-              actionCount: overtimeCount + subCount + healthCertCount,
-              overtimeCount,
-              subCount,
-              healthCertCount,
-            }}
-          />
+          <DashboardKPICards storeGroups={storeGroups} byId={byId} />
         )}
       </section>
 
