@@ -28,7 +28,6 @@ import {
   CalendarDays,
   Megaphone,
   ClipboardList,
-  BarChart2,
 } from "lucide-react";
 
 export default function AdminLayout({
@@ -245,11 +244,6 @@ export default function AdminLayout({
       name: "공지사항 관리",
       path: "/admin/announcements",
       icon: <Megaphone className="w-5 h-5" />,
-    },
-    {
-      name: "근태 통계",
-      path: "/admin/stats",
-      icon: <BarChart2 className="w-5 h-5" />,
     },
     {
       name: "체크리스트 설정",
