@@ -1253,7 +1253,7 @@ export default function AdminCalendarPage() {
                 {/* 날짜 숫자 */}
                 <div className="mb-0.5">
                   <span
-                    className={`text-[12px] font-bold w-6 h-6 flex items-center justify-center rounded-full ${
+                    className={`text-[12px] font-bold w-6 h-6 inline-flex items-center justify-center rounded-full ${
                       isTodayDate
                         ? "bg-[#3182F6] text-white"
                         : idx % 7 === 0

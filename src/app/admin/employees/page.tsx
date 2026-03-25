@@ -200,7 +200,11 @@ export default function AdminEmployeesPage() {
     if (filterType && emp.employment_type !== filterType) return false;
     if (filterHealth) {
       const status = getHealthStatus(emp.health_cert_date, warningDays);
-      if (filterHealth !== status) return false;
+      if (filterHealth === "warning") {
+        if (status !== "expired" && status !== "soon") return false;
+      } else {
+        if (filterHealth !== status) return false;
+      }
     }
     return true;
   });
@@ -570,11 +574,11 @@ export default function AdminEmployeesPage() {
         </button>
         {(stats.expired > 0 || stats.soon > 0) && (
           <button
-            onClick={() => { setFilterType(""); setFilterHealth(filterHealth === "expired" ? "soon" : filterHealth === "soon" ? "" : "expired"); }}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-bold transition-all ${filterHealth === "expired" || filterHealth === "soon" ? "bg-[#D9480F] text-white" : "bg-[#FFF4E6] border border-[#FFD8A8] text-[#D9480F]"}`}
+            onClick={() => { setFilterType(""); setFilterHealth(filterHealth === "warning" ? "" : "warning"); }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-bold transition-all ${filterHealth === "warning" ? "bg-[#D9480F] text-white" : "bg-[#FFF4E6] border border-[#FFD8A8] text-[#D9480F]"}`}
           >
             <AlertTriangle className="w-3.5 h-3.5" />
-            보건증 주의 <span className={`${filterHealth === "expired" || filterHealth === "soon" ? "bg-white/20" : "bg-[#FFD8A8]"} px-1.5 py-0.5 rounded-md`}>{stats.expired + stats.soon}</span>
+            보건증 주의 <span className={`${filterHealth === "warning" ? "bg-white/20" : "bg-[#FFD8A8]"} px-1.5 py-0.5 rounded-md`}>{stats.expired + stats.soon}</span>
           </button>
         )}
         {stats.none > 0 && (
@@ -665,6 +669,24 @@ export default function AdminEmployeesPage() {
                   ) : (
                     <p className="text-[12px] text-[#D1D6DB] mt-0.5">매장 미배정</p>
                   )}
+                  {/* 미입력 항목 태그 */}
+                  {(() => {
+                    const missing = [];
+                    if (!employee.health_cert_date) missing.push("보건증");
+                    if (!employee.employment_contract_url) missing.push("근로계약서");
+                    if (!employee.bank_account_copy_url) missing.push("통장사본");
+                    if (!employee.resident_register_url) missing.push("주민등록");
+                    if (missing.length === 0) return null;
+                    return (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {missing.map((label) => (
+                          <span key={label} className="text-[10px] text-[#8B95A1] bg-[#F2F4F6] px-1.5 py-0.5 rounded-md">
+                            {label} 없음
+                          </span>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* 보건증 상태 */}

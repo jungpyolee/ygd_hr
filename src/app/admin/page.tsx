@@ -144,19 +144,17 @@ export default function AdminDashboardPage() {
     { dedupingInterval: 60_000, revalidateOnFocus: false },
   );
 
-  // 보건증 만료 30일 이내
-  const { data: expiringHealthCerts = [] } = useSWR(
+  // 보건증 만료 + 만료 임박 (만료된 것 포함)
+  const { data: warningHealthCerts = [] } = useSWR(
     "admin-health-cert-expiry",
     async () => {
       const supabase = createClient();
-      const today = format(new Date(), "yyyy-MM-dd");
       const thirtyDaysLater = format(addDays(new Date(), 30), "yyyy-MM-dd");
 
       const { data } = await supabase
         .from("profiles")
         .select("id, name, color_hex, avatar_config, phone, health_cert_date")
         .not("health_cert_date", "is", null)
-        .gte("health_cert_date", today)
         .lte("health_cert_date", thirtyDaysLater)
         .order("health_cert_date", { ascending: true });
 
@@ -167,6 +165,8 @@ export default function AdminDashboardPage() {
     },
     { dedupingInterval: 300_000, revalidateOnFocus: false },
   );
+  const expiredHealthCerts = warningHealthCerts.filter((e) => e.days_left < 0);
+  const expiringHealthCerts = warningHealthCerts.filter((e) => e.days_left >= 0);
 
   // 추가근무 미처리 건수 (date-profile_id 별로 approved/dismissed 없는 것)
   const { data: pendingOvertimeCount = 0 } = useSWR(
@@ -364,60 +364,69 @@ export default function AdminDashboardPage() {
         )}
       </section>
 
-      {/* 보건증 만료 임박 */}
-      {expiringHealthCerts.length > 0 && (
+      {/* 보건증 주의 (만료 + 임박) */}
+      {warningHealthCerts.length > 0 && (
         <section className="mb-8">
           <div className="flex items-center gap-2 mb-3">
-            <AlertCircle className="w-4 h-4 text-[#F59E0B]" />
+            <AlertCircle className="w-4 h-4 text-[#F04438]" />
             <h2 className="text-[17px] font-bold text-[#191F28]">
-              보건증 만료 임박
+              보건증 주의
             </h2>
-            <span className="text-[12px] font-bold text-[#F59E0B] bg-[#FFF7E6] px-2 py-0.5 rounded-full">
-              {expiringHealthCerts.length}명
+            <span className="text-[12px] font-bold text-[#F04438] bg-[#FFF0EE] px-2 py-0.5 rounded-full">
+              {warningHealthCerts.length}명
             </span>
           </div>
-          <div className="bg-white rounded-[24px] border border-[#FFE8A3] overflow-hidden divide-y divide-slate-50">
-            {expiringHealthCerts.map((emp) => (
-              <div
-                key={emp.id}
-                className="flex items-center justify-between px-4 py-3.5"
-              >
+          <div className="bg-white rounded-[24px] border border-[#FFD6D3] overflow-hidden divide-y divide-slate-50">
+            {/* 이미 만료된 직원 */}
+            {expiredHealthCerts.map((emp) => (
+              <div key={emp.id} className="flex items-center justify-between px-4 py-3.5 bg-[#FFF8F7]">
                 <div className="flex items-center gap-3">
                   <AvatarDisplay userId={emp.id} avatarConfig={emp.avatar_config} size={36} />
                   <div>
-                    <p className="text-[15px] font-bold text-[#191F28]">
-                      {emp.name}
-                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-[15px] font-bold text-[#191F28]">{emp.name}</p>
+                      <span className="text-[10px] font-bold text-white bg-[#F04438] px-1.5 py-0.5 rounded-md">만료</span>
+                    </div>
                     <p className="text-[12px] text-[#8B95A1]">
-                      {format(new Date(emp.health_cert_date), "M월 d일")} 만료
+                      {format(parseISO(emp.health_cert_date), "yyyy년 M월 d일")} 만료됨
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  {emp.phone && (
+                    <a href={`tel:${emp.phone}`} className="p-2.5 bg-[#F2F4F6] text-[#4E5968] rounded-full hover:bg-[#E5E8EB]">
+                      <Phone className="w-4 h-4" />
+                    </a>
+                  )}
+                  <button onClick={() => router.push("/admin/employees")} className="p-2.5 bg-[#E8F3FF] text-[#3182F6] rounded-full hover:bg-[#D0E5FF]">
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+            {/* 만료 임박 직원 */}
+            {expiringHealthCerts.map((emp) => (
+              <div key={emp.id} className="flex items-center justify-between px-4 py-3.5">
+                <div className="flex items-center gap-3">
+                  <AvatarDisplay userId={emp.id} avatarConfig={emp.avatar_config} size={36} />
+                  <div>
+                    <p className="text-[15px] font-bold text-[#191F28]">{emp.name}</p>
+                    <p className="text-[12px] text-[#8B95A1]">
+                      {format(parseISO(emp.health_cert_date), "M월 d일")} 만료
                       {" · "}
-                      <span
-                        className={
-                          emp.days_left <= 7
-                            ? "text-[#F04438] font-bold"
-                            : "text-[#F59E0B] font-bold"
-                        }
-                      >
-                        {emp.days_left === 0
-                          ? "오늘 만료"
-                          : `${emp.days_left}일 후`}
+                      <span className={emp.days_left <= 7 ? "text-[#F04438] font-bold" : "text-[#F59E0B] font-bold"}>
+                        {emp.days_left === 0 ? "오늘 만료" : `${emp.days_left}일 후`}
                       </span>
                     </p>
                   </div>
                 </div>
                 <div className="flex gap-2">
                   {emp.phone && (
-                    <a
-                      href={`tel:${emp.phone}`}
-                      className="p-2.5 bg-[#F2F4F6] text-[#4E5968] rounded-full hover:bg-[#E5E8EB]"
-                    >
+                    <a href={`tel:${emp.phone}`} className="p-2.5 bg-[#F2F4F6] text-[#4E5968] rounded-full hover:bg-[#E5E8EB]">
                       <Phone className="w-4 h-4" />
                     </a>
                   )}
-                  <button
-                    onClick={() => router.push("/admin/employees")}
-                    className="p-2.5 bg-[#E8F3FF] text-[#3182F6] rounded-full hover:bg-[#D0E5FF]"
-                  >
+                  <button onClick={() => router.push("/admin/employees")} className="p-2.5 bg-[#E8F3FF] text-[#3182F6] rounded-full hover:bg-[#D0E5FF]">
                     <Edit2 className="w-4 h-4" />
                   </button>
                 </div>
