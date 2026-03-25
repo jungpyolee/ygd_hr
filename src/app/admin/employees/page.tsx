@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { parseISO, startOfDay, differenceInCalendarDays, isBefore } from "date-fns";
 import { createClient } from "@/lib/supabase";
@@ -129,10 +130,18 @@ export default function AdminEmployeesPage() {
   }, { dedupingInterval: 60_000, revalidateOnFocus: false });
   const warningDays = storeSettings?.health_cert_warning_days ?? 30;
 
+  // URL 파라미터로 필터 초기화 (대시보드에서 보건증 필터로 진입 등)
+  const searchParams = useSearchParams();
+
   // 목록 필터 상태
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<string>("");
-  const [filterHealth, setFilterHealth] = useState<string>("");
+  const [filterHealth, setFilterHealth] = useState<string>(() => searchParams.get("health") || "");
+
+  useEffect(() => {
+    const healthParam = searchParams.get("health");
+    if (healthParam) setFilterHealth(healthParam);
+  }, [searchParams]);
 
   const [editingEmployee, setEditingEmployee] = useState<Profile | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{
@@ -1208,6 +1217,18 @@ export default function AdminEmployeesPage() {
               className="w-full mt-8 py-4 bg-[#3182F6] text-white rounded-xl text-[16px] font-bold hover:bg-[#1B64DA] active:scale-[0.98] transition-all shadow-md shadow-blue-500/20"
             >
               정보 저장하기
+            </button>
+
+            <button
+              onClick={() => {
+                if (editingEmployee) {
+                  handleDeleteEmployee(editingEmployee.id, editForm.name || editingEmployee.name);
+                  setEditingEmployee(null);
+                }
+              }}
+              className="w-full mt-3 py-3 text-[#D9480F] bg-[#FFF4E6] rounded-xl text-[14px] font-bold hover:bg-[#FFE8CC] active:scale-[0.98] transition-all"
+            >
+              직원 삭제하기
             </button>
           </div>
         </div>

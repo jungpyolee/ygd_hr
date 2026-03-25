@@ -326,10 +326,10 @@ export default function AdminLayout({
   };
 
   return (
-    <div className="flex min-h-screen bg-[#F9FAFB] relative font-pretendard overflow-x-hidden">
+    <div className="flex min-h-screen bg-[#F9FAFB] relative font-pretendard">
       <PushPromptModal />
       {/* 💻 Desktop Sidebar */}
-      <aside className="hidden md:flex w-64 bg-white border-r border-slate-100 p-6 flex-col shrink-0 sticky top-0 h-screen">
+      <aside className="hidden md:flex w-64 bg-white border-r border-slate-100 p-6 flex-col shrink-0 sticky top-0 h-screen overflow-y-auto">
         <h1 className="text-xl font-bold text-[#191F28] mb-10 tracking-tight">
           연경당 HR <span className="text-[#3182F6]">Admin</span>
         </h1>
@@ -357,7 +357,7 @@ export default function AdminLayout({
         </nav>
       </aside>
 
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
         {/* 🚀 상단 헤더 (z-index 및 레이아웃 최적화) */}
         <header className="h-16 flex items-center justify-between md:justify-end px-5 md:px-10 sticky top-0 bg-white/80 backdrop-blur-md z-[100] border-b border-slate-50">
           <div className="md:hidden font-bold text-[#191F28]">연경당 Admin</div>

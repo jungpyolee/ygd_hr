@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import AvatarDisplay from "@/components/AvatarDisplay";
 import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
@@ -57,6 +57,7 @@ interface Profile {
   avatar_config?: any;
 }
 
+
 interface ScheduleSlot {
   id: string;
   weekly_schedule_id: string;
@@ -108,6 +109,14 @@ interface CompanyEvent {
   store_id: string | null;
 }
 
+interface DraftState {
+  inserts: ScheduleSlot[];                    // 추가 예정 슬롯 (tempId 포함)
+  updates: Record<string, Partial<ScheduleSlot>>;  // slotId → 변경 필드
+  deletes: string[];                          // 삭제 예정 slotId 목록
+}
+
+const EMPTY_DRAFT: DraftState = { inserts: [], updates: {}, deletes: [] };
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
 
@@ -128,13 +137,29 @@ function generateTimeOptions(startH: number, endH: number): string[] {
 const START_TIMES = generateTimeOptions(7, 21);
 const END_TIMES = generateTimeOptions(7, 22);
 
+function buildScheduleNotifContent(profileId: string, draft: DraftState, rawSlots: ScheduleSlot[]): string {
+  const insertCount = draft.inserts.filter((s) => s.profile_id === profileId).length;
+  const updateCount = Object.keys(draft.updates).filter((slotId) => {
+    const orig = rawSlots.find((s) => s.id === slotId);
+    return orig?.profile_id === profileId || draft.updates[slotId].profile_id === profileId;
+  }).length;
+  const deleteCount = draft.deletes.filter((slotId) => rawSlots.find((s) => s.id === slotId)?.profile_id === profileId).length;
+  const parts: string[] = [];
+  if (insertCount > 0) parts.push(`${insertCount}개 추가`);
+  if (updateCount > 0) parts.push(`${updateCount}개 변경`);
+  if (deleteCount > 0) parts.push(`${deleteCount}개 삭제`);
+  return parts.length > 0
+    ? `근무 스케줄이 변경됐어요 (${parts.join(", ")}). 캘린더에서 확인해보세요.`
+    : "스케줄이 업데이트됐어요. 캘린더에서 확인해보세요.";
+}
+
 // ─── SlotBottomSheet ─────────────────────────────────────────────────────────
 interface SlotSheetProps {
   slot: Partial<ScheduleSlot> | null;
   profiles: Profile[];
   onClose: () => void;
   onSave: (data: Partial<ScheduleSlot>, isNew: boolean) => Promise<void>;
-  onDelete?: (id: string) => Promise<void>;
+  onDelete?: (id: string) => void | Promise<void>;
   defaultDate?: string;
   defaultProfileId?: string;
 }
@@ -319,7 +344,7 @@ function SlotBottomSheet({
             onClick={() => {
               if (!confirmDelete) { setConfirmDelete(true); return; }
               setDeleting(true);
-              onDelete(slot!.id!).finally(() => setDeleting(false));
+              Promise.resolve(onDelete(slot!.id!)).finally(() => setDeleting(false));
             }}
             disabled={deleting}
             className={`w-full mt-2 py-3 font-bold rounded-2xl transition-all text-[14px] ${
@@ -748,8 +773,8 @@ export default function AdminCalendarPage() {
   });
   const [viewProfileId, setViewProfileId] = useState<string | null>(null);
 
-  // 수정 세션 동안 변경된 weekly_schedule IDs 추적
-  const editSessionRef = useRef<Set<string>>(new Set());
+  // 수정 모드 초안 상태 (저장 전까지 로컬에만 보관)
+  const [draft, setDraft] = useState<DraftState>(EMPTY_DRAFT);
 
   const { workplaces, byId, positionsOfStore } = useWorkplaces();
 
@@ -950,9 +975,21 @@ export default function AdminCalendarPage() {
   );
 
   const profiles = data?.profiles ?? [];
-  const slots = data?.slots ?? [];
+  const rawSlots = data?.slots ?? [];
   const attendance = data?.attendance ?? [];
   const events = data?.events ?? [];
+
+  // 수정 모드: rawSlots + draft → 화면에 보이는 slots
+  const slots = useMemo(() => {
+    if (mode !== "edit" || (draft.inserts.length === 0 && Object.keys(draft.updates).length === 0 && draft.deletes.length === 0)) {
+      return rawSlots;
+    }
+    let result = rawSlots.filter((s) => !draft.deletes.includes(s.id));
+    result = result.map((s) => (draft.updates[s.id] ? { ...s, ...draft.updates[s.id] } : s));
+    return [...result, ...draft.inserts];
+  }, [mode, rawSlots, draft]);
+
+  const hasDraftChanges = draft.inserts.length > 0 || Object.keys(draft.updates).length > 0 || draft.deletes.length > 0;
   const weeklySchedules = data?.weeklySchedules ?? [];
 
   // ─── weekly_schedule 조회/생성 ───
@@ -983,49 +1020,73 @@ export default function AdminCalendarPage() {
 
   // ─── 수정 모드 진입 ───
   const handleEnterEdit = () => {
-    editSessionRef.current = new Set();
+    setDraft(EMPTY_DRAFT);
     setMode("edit");
   };
 
-  // ─── 저장하기 (확정 + 알림) ───
+  // ─── 저장하기 (일괄 DB 반영 + 확정 + 알림) ───
   const handleSave = async () => {
-    const modifiedIds = Array.from(editSessionRef.current);
-    if (modifiedIds.length === 0) {
+    if (!hasDraftChanges) {
       setMode("view");
       toast.success("변경 없이 조회 모드로 돌아왔어요");
       return;
     }
-
     setSaving(true);
     const supabase = createClient();
-
     try {
-      // 1. 수정된 주차 확정
-      await supabase
-        .from("weekly_schedules")
-        .update({ status: "confirmed", published_at: new Date().toISOString() })
-        .in("id", modifiedIds);
-
-      // 2. 영향받는 직원 조회
-      const { data: affectedSlots } = await supabase
-        .from("schedule_slots")
-        .select("profile_id")
-        .in("weekly_schedule_id", modifiedIds)
-        .eq("status", "active");
-
-      const uniqueProfileIds = [...new Set((affectedSlots || []).map((s: any) => s.profile_id))];
-
-      // 3. 각 직원에게 알림
-      if (uniqueProfileIds.length > 0) {
-        const notifications = uniqueProfileIds.map((profileId) => ({
-          profile_id: profileId,
-          target_role: "employee",
-          type: "schedule_updated",
-          title: "스케줄이 업데이트됐어요",
-          content: "새로운 근무 스케줄이 등록됐어요. 캘린더에서 확인해보세요.",
-        }));
-        await supabase.from("notifications").insert(notifications);
-        toast.success(`${uniqueProfileIds.length}명에게 스케줄 알림을 보냈어요`);
+      // 1. 신규 슬롯 일괄 INSERT (tempId 제거)
+      if (draft.inserts.length > 0) {
+        const toInsert = draft.inserts.map(({ id: _t, ...rest }) => rest);
+        const { error } = await supabase.from("schedule_slots").insert(toInsert);
+        if (error) { toast.error("슬롯 추가에 실패했어요", { description: error.message }); setSaving(false); return; }
+      }
+      // 2. 수정된 슬롯 개별 UPDATE
+      for (const [slotId, changes] of Object.entries(draft.updates)) {
+        const { id: _i, weekly_schedule_id: _w, status: _s, ...fields } = changes as any;
+        const { error } = await supabase.from("schedule_slots").update(fields).eq("id", slotId);
+        if (error) { toast.error("슬롯 수정에 실패했어요", { description: error.message }); setSaving(false); return; }
+      }
+      // 3. 삭제된 슬롯 일괄 cancelled
+      if (draft.deletes.length > 0) {
+        const { error } = await supabase.from("schedule_slots").update({ status: "cancelled" }).in("id", draft.deletes);
+        if (error) { toast.error("슬롯 삭제에 실패했어요", { description: error.message }); setSaving(false); return; }
+      }
+      // 4. 수정된 주차 확정
+      const wsIds = new Set<string>();
+      draft.inserts.forEach((s) => wsIds.add(s.weekly_schedule_id));
+      Object.keys(draft.updates).forEach((id) => { const o = rawSlots.find((s) => s.id === id); if (o) wsIds.add(o.weekly_schedule_id); });
+      draft.deletes.forEach((id) => { const o = rawSlots.find((s) => s.id === id); if (o) wsIds.add(o.weekly_schedule_id); });
+      if (wsIds.size > 0) {
+        await supabase.from("weekly_schedules").update({ status: "confirmed", published_at: new Date().toISOString() }).in("id", Array.from(wsIds));
+      }
+      // 5. 영향받는 직원 (실제 변경 대상만)
+      const profileIds = new Set<string>();
+      draft.inserts.forEach((s) => profileIds.add(s.profile_id));
+      Object.entries(draft.updates).forEach(([slotId, ch]) => {
+        const o = rawSlots.find((s) => s.id === slotId); if (o) profileIds.add(o.profile_id);
+        if (ch.profile_id) profileIds.add(ch.profile_id);
+      });
+      draft.deletes.forEach((id) => { const o = rawSlots.find((s) => s.id === id); if (o) profileIds.add(o.profile_id); });
+      // 6. 대표 변경 날짜 (알림 URL용)
+      const allDates = new Set<string>();
+      draft.inserts.forEach((s) => allDates.add(s.slot_date));
+      Object.keys(draft.updates).forEach((id) => { const o = rawSlots.find((s) => s.id === id); if (o) allDates.add(o.slot_date); });
+      draft.deletes.forEach((id) => { const o = rawSlots.find((s) => s.id === id); if (o) allDates.add(o.slot_date); });
+      const highlightDate = Array.from(allDates).sort()[0] || "";
+      // 7. 각 직원에게 알림 (createNotification → Web Push 포함)
+      const modifiedProfileIds = Array.from(profileIds);
+      if (modifiedProfileIds.length > 0) {
+        await Promise.allSettled(
+          modifiedProfileIds.map((pid) =>
+            createNotification({
+              profile_id: pid, target_role: "employee", type: "schedule_updated",
+              title: "스케줄이 업데이트됐어요",
+              content: buildScheduleNotifContent(pid, draft, rawSlots),
+              push_url: highlightDate ? `/calendar?highlight=${highlightDate}` : undefined,
+            })
+          )
+        );
+        toast.success(`${modifiedProfileIds.length}명에게 스케줄 알림을 보냈어요`);
       } else {
         toast.success("스케줄을 저장했어요");
       }
@@ -1033,175 +1094,139 @@ export default function AdminCalendarPage() {
       logError({ message: "스케줄 저장 실패", error: err, source: "admin/calendar/handleSave" });
       toast.error("저장에 실패했어요", { description: "잠시 후 다시 시도해주세요." });
     }
-
+    setDraft(EMPTY_DRAFT);
     setSaving(false);
     setMode("view");
     mutate();
   };
 
-  // ─── 취소 ───
+  // ─── 취소 (초안 폐기) ───
   const handleCancel = () => {
+    setDraft(EMPTY_DRAFT);
     setMode("view");
-    mutate();
   };
 
-  // ─── 슬롯 저장 ───
+  // ─── 슬롯 저장 (초안에 반영) ───
   const handleSaveSlot = async (formData: Partial<ScheduleSlot>, isNew: boolean) => {
-    const supabase = createClient();
-
     if (!formData.slot_date) return;
-
     const startMin = timeToMinutes(formData.start_time!);
     const endMin = timeToMinutes(formData.end_time!);
-    if (startMin >= endMin) {
-      toast.error("시작 시간이 종료 시간보다 늦어요");
-      return;
-    }
+    if (startMin >= endMin) { toast.error("시작 시간이 종료 시간보다 늦어요"); return; }
 
-    // 중복 검사
-    const { data: sameDay } = await supabase
-      .from("schedule_slots")
-      .select("id, start_time, end_time")
-      .eq("profile_id", formData.profile_id!)
-      .eq("slot_date", formData.slot_date)
-      .eq("status", "active")
-      .neq("id", formData.id ?? "00000000-0000-0000-0000-000000000000");
-
-    if (isNew && (sameDay || []).length > 0) {
-      toast.error("이미 해당 날짜에 근무가 있어요");
-      return;
-    }
+    // 클라이언트 중복/겹침 검사 (displaySlots 기반)
+    const sameDaySlots = slots.filter(
+      (s) => s.profile_id === formData.profile_id && s.slot_date === formData.slot_date && s.status === "active" && s.id !== (formData.id ?? "")
+    );
+    const hasOverlap = sameDaySlots.some((s) => {
+      const eStart = timeToMinutes(s.start_time);
+      const eEnd = timeToMinutes(s.end_time);
+      return startMin < eEnd && endMin > eStart;
+    });
+    if (hasOverlap) { toast.error("해당 시간대에 이미 근무가 있어요"); return; }
 
     const wsId = await getOrCreateWeeklySchedule(formData.slot_date);
     if (!wsId) return;
 
     if (isNew) {
-      const { error } = await supabase.from("schedule_slots").insert({
+      const newSlot: ScheduleSlot = {
+        id: crypto.randomUUID(),
         weekly_schedule_id: wsId,
-        profile_id: formData.profile_id,
-        slot_date: formData.slot_date,
-        start_time: formData.start_time,
-        end_time: formData.end_time,
-        store_id: formData.store_id,
+        profile_id: formData.profile_id!,
+        slot_date: formData.slot_date!,
+        start_time: formData.start_time!,
+        end_time: formData.end_time!,
+        store_id: formData.store_id!,
         position_keys: formData.position_keys || [],
-        notes: formData.notes || null,
         status: "active",
-      });
-      if (error) {
-        logError({ message: "슬롯 추가 실패", error, source: "admin/calendar" });
-        toast.error("추가에 실패했어요", { description: error.message });
-        return;
-      }
+        notes: formData.notes || null,
+      };
+      setDraft((prev) => ({ ...prev, inserts: [...prev.inserts, newSlot] }));
       toast.success("근무를 추가했어요");
     } else {
-      const { error } = await supabase
-        .from("schedule_slots")
-        .update({
-          profile_id: formData.profile_id,
-          slot_date: formData.slot_date,
-          start_time: formData.start_time,
-          end_time: formData.end_time,
-          store_id: formData.store_id,
-          position_keys: formData.position_keys || [],
-          notes: formData.notes || null,
-        })
-        .eq("id", formData.id!);
-      if (error) {
-        logError({ message: "슬롯 수정 실패", error, source: "admin/calendar" });
-        toast.error("수정에 실패했어요", { description: error.message });
-        return;
+      const isPendingInsert = draft.inserts.some((s) => s.id === formData.id);
+      if (isPendingInsert) {
+        setDraft((prev) => ({
+          ...prev,
+          inserts: prev.inserts.map((s) =>
+            s.id === formData.id
+              ? { ...s, profile_id: formData.profile_id!, slot_date: formData.slot_date!, start_time: formData.start_time!, end_time: formData.end_time!, store_id: formData.store_id!, position_keys: formData.position_keys || [], notes: formData.notes || null }
+              : s
+          ),
+        }));
+      } else {
+        setDraft((prev) => ({
+          ...prev,
+          updates: { ...prev.updates, [formData.id!]: { profile_id: formData.profile_id, slot_date: formData.slot_date, start_time: formData.start_time, end_time: formData.end_time, store_id: formData.store_id, position_keys: formData.position_keys || [], notes: formData.notes || null } },
+        }));
       }
       toast.success("근무를 수정했어요");
     }
-
-    editSessionRef.current.add(wsId);
     setEditingSlot(null);
-    mutate();
   };
 
-  // ─── 슬롯 삭제 ───
-  const handleDeleteSlot = async (id: string) => {
-    const supabase = createClient();
-    const targetSlot = slots.find((s) => s.id === id);
-    const { error } = await supabase
-      .from("schedule_slots")
-      .update({ status: "cancelled" })
-      .eq("id", id);
-    if (error) {
-      toast.error("삭제에 실패했어요");
-      return;
+  // ─── 슬롯 삭제 (초안에 반영) ───
+  const handleDeleteSlot = (id: string) => {
+    const isPendingInsert = draft.inserts.some((s) => s.id === id);
+    if (isPendingInsert) {
+      setDraft((prev) => ({ ...prev, inserts: prev.inserts.filter((s) => s.id !== id) }));
+    } else {
+      setDraft((prev) => {
+        const newUpdates = { ...prev.updates };
+        delete newUpdates[id];
+        return { ...prev, updates: newUpdates, deletes: [...prev.deletes, id] };
+      });
     }
-    if (targetSlot) editSessionRef.current.add(targetSlot.weekly_schedule_id);
     toast.success("근무를 삭제했어요");
     setEditingSlot(null);
-    mutate();
   };
 
-  // ─── 주간 이전주 복사 ───
+  // ─── 주간 이전주 복사 (초안에 반영) ───
   const handleCopyPrevWeek = async () => {
     if (viewType !== "week") return;
     const supabase = createClient();
     const prevWeekStart = format(subWeeks(startDate, 1), "yyyy-MM-dd");
     const { data: prevWs } = await supabase
-      .from("weekly_schedules")
-      .select("id")
-      .eq("week_start", prevWeekStart)
-      .maybeSingle();
+      .from("weekly_schedules").select("id").eq("week_start", prevWeekStart).maybeSingle();
     if (!prevWs) { toast.error("이전 주 스케줄이 없어요"); return; }
 
     const { data: prevSlots } = await supabase
-      .from("schedule_slots")
-      .select("*")
-      .eq("weekly_schedule_id", prevWs.id)
-      .neq("status", "cancelled");
-
+      .from("schedule_slots").select("*").eq("weekly_schedule_id", prevWs.id).neq("status", "cancelled");
     if (!prevSlots || prevSlots.length === 0) { toast.error("이전 주 슬롯이 없어요"); return; }
 
-    const weekStart = format(startDate, "yyyy-MM-dd");
     const wsId = await getOrCreateWeeklySchedule(weekDates[1] || weekDates[0]);
     if (!wsId) return;
 
     const prevWeekDates = Array.from({ length: 7 }, (_, i) =>
       format(addDays(parseISO(prevWeekStart), i), "yyyy-MM-dd")
     );
-
-    const { data: existingSlots } = await supabase
-      .from("schedule_slots")
-      .select("profile_id, slot_date")
-      .eq("weekly_schedule_id", wsId)
-      .neq("status", "cancelled");
     const existingSet = new Set(
-      (existingSlots || []).map((s: any) => `${s.profile_id}_${s.slot_date}`)
+      slots.filter((s) => s.status === "active").map((s) => `${s.profile_id}_${s.slot_date}`)
     );
-
-    const newSlots = prevSlots
-      .map((s: any) => {
-        const idx = prevWeekDates.indexOf(s.slot_date);
-        if (idx === -1) return null;
-        const targetDate = weekDates[idx];
-        if (existingSet.has(`${s.profile_id}_${targetDate}`)) return null;
-        return {
-          weekly_schedule_id: wsId,
-          profile_id: s.profile_id,
-          slot_date: targetDate,
-          start_time: s.start_time,
-          end_time: s.end_time,
-          store_id: s.store_id,
-          position_keys: s.position_keys,
-          notes: s.notes,
-          status: "active",
-        };
-      })
-      .filter(Boolean);
-
-    if (newSlots.length === 0) { toast.error("복사할 슬롯이 없어요"); return; }
-
-    const { error } = await supabase.from("schedule_slots").insert(newSlots);
-    if (error) { toast.error("복사에 실패했어요"); return; }
-    editSessionRef.current.add(wsId);
-    toast.success(`${newSlots.length}개 근무를 복사했어요`);
-    mutate();
+    const newInserts: ScheduleSlot[] = [];
+    prevSlots.forEach((s: any) => {
+      const idx = prevWeekDates.indexOf(s.slot_date);
+      if (idx === -1) return;
+      const targetDate = weekDates[idx];
+      if (existingSet.has(`${s.profile_id}_${targetDate}`)) return;
+      newInserts.push({
+        id: crypto.randomUUID(), weekly_schedule_id: wsId, profile_id: s.profile_id,
+        slot_date: targetDate, start_time: s.start_time, end_time: s.end_time,
+        store_id: s.store_id, position_keys: s.position_keys || [], status: "active", notes: s.notes || null,
+      });
+      existingSet.add(`${s.profile_id}_${targetDate}`);
+    });
+    if (newInserts.length === 0) { toast.error("복사할 슬롯이 없어요"); return; }
+    setDraft((prev) => ({ ...prev, inserts: [...prev.inserts, ...newInserts] }));
+    toast.success(`${newInserts.length}개 근무를 복사했어요`);
   };
+
+  // ─── 페이지 이탈 가드 ───
+  useEffect(() => {
+    if (!hasDraftChanges || mode !== "edit") return;
+    const handler = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [hasDraftChanges, mode]);
 
   // ─── 레이어 토글 ───
   const toggleLayer = (key: keyof typeof layers) => {
@@ -1572,9 +1597,10 @@ export default function AdminCalendarPage() {
             <div className="flex items-center gap-2">
               <button
                 onClick={handleCancel}
-                className="px-4 py-2 text-[14px] font-bold text-[#4E5968] bg-white border border-slate-200 rounded-xl hover:bg-[#F2F4F6] transition-all"
+                disabled={saving}
+                className="px-4 py-2 text-[14px] font-bold text-[#4E5968] bg-white border border-slate-200 rounded-xl hover:bg-[#F2F4F6] transition-all disabled:opacity-50"
               >
-                취소
+                {saving ? "되돌리는 중..." : "취소"}
               </button>
               <button
                 onClick={handleSave}
@@ -1594,7 +1620,7 @@ export default function AdminCalendarPage() {
         <div className="flex items-center gap-2 px-4 py-3 bg-orange-50 border border-orange-200 rounded-2xl">
           <AlertTriangle className="w-4 h-4 text-orange-500 shrink-0" />
           <p className="text-[13px] text-orange-700 font-medium">
-            수정 모드예요 — 저장하기를 누르면 변경된 스케줄이 확정되고 직원에게 알림이 가요
+            수정 모드예요 — 저장하기를 누르면 변경사항이 반영되고 직원에게 알림이 가요.{hasDraftChanges && ` (${draft.inserts.length + Object.keys(draft.updates).length + draft.deletes.length}건 변경)`}
           </p>
         </div>
       )}
