@@ -57,9 +57,9 @@ export default function LocationPermissionGuide({
     // Android 설치된 PWA (주소창 없음)
     label = "Android 설정 방법";
     steps = [
-      "Android 설정 앱을 열어요",
-      '"앱" → "Chrome"을 탭해요',
-      '"권한" → "위치" → "앱 사용 중 허용"을 선택해요',
+      "홈 화면의 앱 아이콘을 꾹 눌러요",
+      '"사이트 설정"을 탭해요',
+      '"권한 - 위치"를 허용으로 선택해요',
     ];
   } else {
     // Android Chrome 브라우저
