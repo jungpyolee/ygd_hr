@@ -28,10 +28,16 @@ const getStores = unstable_cache(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     );
-    const { data } = await supabase.from("stores").select("*");
-    return data ?? [];
+    const [{ data: stores }, { data: positions }] = await Promise.all([
+      supabase.from("stores").select("*"),
+      supabase.from("store_positions").select("id, store_id, position_key, label, display_order").order("display_order"),
+    ]);
+    return (stores ?? []).map((s: any) => ({
+      ...s,
+      positions: (positions ?? []).filter((p: any) => p.store_id === s.id),
+    }));
   },
-  ["stores"],
+  ["stores-with-positions"],
   { revalidate: 3600 },
 );
 

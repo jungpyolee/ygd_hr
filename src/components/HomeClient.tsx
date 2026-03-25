@@ -46,7 +46,17 @@ export default function HomeClient({
 }: HomeClientProps) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
-  const { byId, positionsOfStore } = useWorkplaces();
+  const { byId: swrById, positionsOfStore: swrPositionsOfStore, isLoading: wpLoading } = useWorkplaces();
+
+  // 서버에서 넘어온 stores로 초기 매핑 (SWR 로딩 전 fallback — 깜빡임 방지)
+  const serverById = useMemo(
+    () => Object.fromEntries(stores.map((s: any) => [s.id, s])),
+    [stores],
+  );
+  const byId = wpLoading ? serverById : swrById;
+  const positionsOfStore = wpLoading
+    ? (storeId: string) => serverById[storeId]?.positions ?? []
+    : swrPositionsOfStore;
 
   const [notis, setNotis] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -486,7 +496,7 @@ export default function HomeClient({
                           className="px-2 py-0.5 bg-[#F2F4F6] text-[#4E5968] rounded-full text-[11px] font-bold"
                         >
                           {positionsOfStore(slot.store_id).find(
-                            (p) => p.position_key === pos,
+                            (p: any) => p.position_key === pos,
                           )?.label || pos}
                         </span>
                       ))}
