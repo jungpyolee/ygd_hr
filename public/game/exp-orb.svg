@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <radialGradient id="eg" cx="40%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#A8EDFF"/>
+      <stop offset="45%" stop-color="#4FC3F7"/>
+      <stop offset="100%" stop-color="#0277BD"/>
+    </radialGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="1.5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <!-- 별 (5각) -->
+  <polygon
+    points="16,3 18.9,11.1 27.5,11.1 20.8,16.3 23.3,24.5 16,19.5 8.7,24.5 11.2,16.3 4.5,11.1 13.1,11.1"
+    fill="url(#eg)" stroke="#0288D1" stroke-width="0.8" filter="url(#glow)"
+  />
+  <!-- 중앙 하이라이트 -->
+  <ellipse cx="13" cy="12" rx="3" ry="2" fill="white" opacity="0.4" transform="rotate(-15 13 12)"/>
+</svg>

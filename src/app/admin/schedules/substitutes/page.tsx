@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import AvatarDisplay from "@/components/AvatarDisplay";
 import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
+import { logError } from "@/lib/logError";
+import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
 import {
   ChevronLeft,
@@ -15,6 +18,7 @@ import {
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import Link from "next/link";
+import { useWorkplaces } from "@/lib/hooks/useWorkplaces";
 
 interface SubstituteRequest {
   id: string;
@@ -33,9 +37,10 @@ interface SubstituteRequest {
   slot_date: string;
   start_time: string;
   end_time: string;
-  work_location: string;
+  store_id: string;
   requester_name: string;
   requester_color: string;
+  requester_avatar_config?: any;
   accepted_name?: string;
 }
 
@@ -43,7 +48,8 @@ interface Profile {
   id: string;
   name: string;
   color_hex: string;
-  work_locations: string[] | null;
+  avatar_config?: any;
+  assigned_store_ids: string[];
 }
 
 interface SubstituteRequestRow {
@@ -63,26 +69,18 @@ interface SubstituteRequestRow {
     slot_date: string;
     start_time: string;
     end_time: string;
-    work_location: string;
+    store_id: string;
   } | null;
-  requester?: { name: string; color_hex: string } | null;
+  requester?: { name: string; color_hex: string; avatar_config?: any } | null;
   accepted?: { name: string } | null;
 }
 
-const LOCATION_LABELS: Record<string, string> = {
-  cafe: "카페",
-  factory: "공장",
-  catering: "케이터링",
-};
-const LOCATION_COLORS: Record<string, string> = {
-  cafe: "#3182F6",
-  factory: "#00B761",
-  catering: "#F59E0B",
-};
 
 export default function AdminSubstitutesPage() {
+  const { byId } = useWorkplaces();
   const [tab, setTab] = useState<"pending" | "done">("pending");
-  const [currentAdminId, setCurrentAdminId] = useState<string | null>(null);
+  const { user } = useAuth();
+  const currentAdminId = user?.id ?? null;
 
   // Reject bottom sheet
   const [rejectTarget, setRejectTarget] = useState<SubstituteRequest | null>(
@@ -98,26 +96,21 @@ export default function AdminSubstitutesPage() {
   const [eligibleIds, setEligibleIds] = useState<string[]>([]);
   const [approving, setApproving] = useState(false);
 
-  useEffect(() => {
-    const init = async () => {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (user) setCurrentAdminId(user.id);
-    };
-    init();
-  }, []);
-
   const { data: profiles = [] } = useSWR(
     "admin-substitutes-profiles",
     async () => {
       const supabase = createClient();
       const { data } = await supabase
         .from("profiles")
-        .select("id, name, color_hex, work_locations")
+        .select("id, name, color_hex, avatar_config, employee_store_assignments(store_id)")
         .order("name");
-      return (data as Profile[]) ?? [];
+      return ((data ?? []) as any[]).map((p) => ({
+        id: p.id,
+        name: p.name,
+        color_hex: p.color_hex,
+        avatar_config: p.avatar_config ?? null,
+        assigned_store_ids: (p.employee_store_assignments ?? []).map((a: { store_id: string }) => a.store_id),
+      })) as Profile[];
     },
     { dedupingInterval: 60_000, revalidateOnFocus: false },
   );
@@ -136,8 +129,8 @@ export default function AdminSubstitutesPage() {
           `
           id, slot_id, requester_id, reason, status, reject_reason, rejected_at, approved_at,
           eligible_profile_ids, accepted_by, accepted_at, created_at,
-          schedule_slots!slot_id (slot_date, start_time, end_time, work_location),
-          requester:profiles!requester_id (name, color_hex),
+          schedule_slots!slot_id (slot_date, start_time, end_time, store_id),
+          requester:profiles!requester_id (name, color_hex, avatar_config),
           accepted:profiles!accepted_by (name)
         `,
         )
@@ -161,9 +154,10 @@ export default function AdminSubstitutesPage() {
         slot_date: r.schedule_slots?.slot_date || "",
         start_time: r.schedule_slots?.start_time || "",
         end_time: r.schedule_slots?.end_time || "",
-        work_location: r.schedule_slots?.work_location || "",
+        store_id: r.schedule_slots?.store_id || "",
         requester_name: r.requester?.name || "알 수 없음",
         requester_color: r.requester?.color_hex || "#8B95A1",
+        requester_avatar_config: r.requester?.avatar_config ?? null,
         accepted_name: r.accepted?.name,
       })) as SubstituteRequest[];
     },
@@ -185,6 +179,7 @@ export default function AdminSubstitutesPage() {
       .eq("id", rejectTarget.id);
 
     if (error) {
+      logError({ message: "대타 반려 실패", error, source: "substitutes/handleReject", context: { requestId: rejectTarget?.id } });
       toast.error("반려에 실패했어요", { description: error.message });
     } else {
       // Notify requester
@@ -206,11 +201,10 @@ export default function AdminSubstitutesPage() {
 
   const openApproveSheet = (req: SubstituteRequest) => {
     setApproveTarget(req);
-    // Auto-populate eligible profiles: work_location matches, not requester
+    // Auto-populate eligible profiles: store_id matches, not requester
     const eligible = profiles.filter((p) => {
       if (p.id === req.requester_id) return false;
-      if (!p.work_locations || !p.work_locations.includes(req.work_location))
-        return false;
+      if (!p.assigned_store_ids.includes(req.store_id)) return false;
       return true;
     });
     setEligibleIds(eligible.map((p) => p.id));
@@ -238,6 +232,7 @@ export default function AdminSubstitutesPage() {
       .eq("id", approveTarget.id);
 
     if (error) {
+      logError({ message: "대타 승인 실패", error, source: "substitutes/handleApprove", context: { requestId: approveTarget?.id } });
       toast.error("승인에 실패했어요", { description: error.message });
     } else {
       // Notify eligible employees (중복 ID 제거)
@@ -247,7 +242,7 @@ export default function AdminSubstitutesPage() {
         target_role: "employee" as const,
         type: "substitute_approved",
         title: "대타 요청이 왔어요",
-        content: `${format(new Date(approveTarget.slot_date + "T00:00:00"), "M월 d일", { locale: ko })} ${LOCATION_LABELS[approveTarget.work_location]} ${approveTarget.start_time.slice(0, 5)}~${approveTarget.end_time.slice(0, 5)} 대타를 설 수 있어요. 확인해보세요.`,
+        content: `${format(new Date(approveTarget.slot_date + "T00:00:00"), "M월 d일", { locale: ko })} ${byId[approveTarget.store_id]?.label || approveTarget.store_id} ${approveTarget.start_time.slice(0, 5)}~${approveTarget.end_time.slice(0, 5)} 대타를 설 수 있어요. 확인해보세요.`,
         source_id: approveTarget.id,
       }));
       await supabase.from("notifications").insert(notifications);
@@ -362,12 +357,7 @@ export default function AdminSubstitutesPage() {
               {/* Top row: requester + status */}
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <div
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-bold text-white"
-                    style={{ backgroundColor: req.requester_color }}
-                  >
-                    {req.requester_name?.charAt(0)}
-                  </div>
+                  <AvatarDisplay userId={req.requester_id} avatarConfig={req.requester_avatar_config} size={32} />
                   <span className="text-[15px] font-bold text-[#191F28]">
                     {req.requester_name}
                   </span>
@@ -393,11 +383,11 @@ export default function AdminSubstitutesPage() {
                 <span
                   className="flex items-center gap-1 font-bold px-2 py-0.5 rounded-md text-white text-[12px]"
                   style={{
-                    backgroundColor: LOCATION_COLORS[req.work_location],
+                    backgroundColor: byId[req.store_id]?.color,
                   }}
                 >
                   <MapPin className="w-3 h-3" />
-                  {LOCATION_LABELS[req.work_location]}
+                  {byId[req.store_id]?.label || req.store_id}
                 </span>
               </div>
 
@@ -446,13 +436,12 @@ export default function AdminSubstitutesPage() {
 
       {/* Reject Bottom Sheet */}
       {rejectTarget && (
-        <div className="fixed inset-0 z-[200] flex items-end justify-center">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
           <div
             className="absolute inset-0 bg-black/40 backdrop-blur-sm"
             onClick={() => setRejectTarget(null)}
           />
-          <div className="relative w-full max-w-md bg-white rounded-t-[28px] px-5 pt-8 pb-10 shadow-2xl animate-in slide-in-from-bottom-4 duration-250">
-            <div className="absolute top-3 left-1/2 -translate-x-1/2 w-9 h-1 bg-[#D1D6DB] rounded-full" />
+          <div className="relative w-full max-w-md bg-white rounded-[28px] px-5 pt-6 pb-6 shadow-2xl animate-in zoom-in-95 fade-in-0 duration-200">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-[18px] font-bold text-[#191F28]">
                 반려 사유 입력
@@ -495,13 +484,12 @@ export default function AdminSubstitutesPage() {
 
       {/* Approve Bottom Sheet */}
       {approveTarget && (
-        <div className="fixed inset-0 z-[200] flex items-end justify-center">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
           <div
             className="absolute inset-0 bg-black/40 backdrop-blur-sm"
             onClick={() => setApproveTarget(null)}
           />
-          <div className="relative w-full max-w-md bg-white rounded-t-[28px] px-5 pt-8 pb-10 shadow-2xl animate-in slide-in-from-bottom-4 duration-250 max-h-[80vh] overflow-y-auto scrollbar-hide">
-            <div className="absolute top-3 left-1/2 -translate-x-1/2 w-9 h-1 bg-[#D1D6DB] rounded-full" />
+          <div className="relative w-full max-w-md bg-white rounded-[28px] px-5 pt-6 pb-6 shadow-2xl animate-in zoom-in-95 fade-in-0 duration-200 max-h-[80vh] overflow-y-auto scrollbar-hide">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-[18px] font-bold text-[#191F28]">
                 대타 승인 및 알림
@@ -540,12 +528,7 @@ export default function AdminSubstitutesPage() {
                           : "bg-white border-slate-100 text-[#4E5968]"
                       }`}
                     >
-                      <div
-                        className="w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-bold text-white shrink-0"
-                        style={{ backgroundColor: p.color_hex }}
-                      >
-                        {p.name?.charAt(0)}
-                      </div>
+                      <AvatarDisplay userId={p.id} avatarConfig={p.avatar_config} size={32} />
                       <span className="font-bold text-[14px] flex-1 text-left">
                         {p.name}
                       </span>

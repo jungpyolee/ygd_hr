@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import AvatarDisplay from "@/components/AvatarDisplay";
 import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
 import {
@@ -34,11 +35,14 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useWorkplaces } from "@/lib/hooks/useWorkplaces";
+import { createNotification } from "@/lib/notifications";
 
 interface ProcessedLog {
   profile_id: string;
   name: string;
   color_hex: string;
+  avatar_config?: any;
   store_name: string;
   clock_in: string | null;
   clock_out: string | null;
@@ -55,13 +59,9 @@ interface ProcessedLog {
   early_leave_minutes: number | null;
 }
 
-const LOCATION_LABELS: Record<string, string> = {
-  cafe: "카페",
-  factory: "공장",
-  catering: "케이터링",
-};
 
 export default function AdminAttendanceCalendar() {
+  const { byId } = useWorkplaces();
   const [viewType, setViewType] = useState<"week" | "month">("week");
   const [baseDate, setBaseDate] = useState<Date>(new Date());
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -92,6 +92,7 @@ export default function AdminAttendanceCalendar() {
   const {
     data: logsByDate = {},
     isLoading: loading,
+    error: attendanceError,
     mutate,
   } = useSWR(
     ["admin-attendance", rangeKey],
@@ -103,7 +104,7 @@ export default function AdminAttendanceCalendar() {
       const { data: slotsData } = await supabase
         .from("schedule_slots")
         .select(
-          "profile_id, slot_date, start_time, end_time, work_location, profiles!profile_id(name, color_hex)",
+          "profile_id, slot_date, start_time, end_time, store_id, profiles!profile_id(name, color_hex, avatar_config)",
         )
         .eq("status", "active")
         .gte("slot_date", start)
@@ -121,6 +122,7 @@ export default function AdminAttendanceCalendar() {
             profile_id: pId,
             name: slot.profiles?.name || "알 수 없음",
             color_hex: slot.profiles?.color_hex || "#8B95A1",
+            avatar_config: slot.profiles?.avatar_config ?? null,
             store_name: "—",
             clock_in: null,
             clock_out: null,
@@ -131,7 +133,7 @@ export default function AdminAttendanceCalendar() {
             reason_out: null,
             scheduled_start: slot.start_time,
             scheduled_end: slot.end_time,
-            scheduled_location: slot.work_location,
+            scheduled_location: slot.store_id,
             late_minutes: null,
             is_absent: true,
             early_leave_minutes: null,
@@ -140,23 +142,23 @@ export default function AdminAttendanceCalendar() {
       });
 
       // [3] attendance_logs 조회
-      const startDateObj = new Date(start);
-      const endDateObj = new Date(end);
-      const startStr = startDateObj.toISOString();
-      const endStr = new Date(
-        endDateObj.setHours(23, 59, 59, 999),
-      ).toISOString();
+      // KST(UTC+9) 자정 기준으로 변환 — new Date("yyyy-MM-dd")는 UTC 자정이므로
+      // 오전 9시 이전 KST 출근 로그가 누락되는 버그 방지
+      const startStr = new Date(`${start}T00:00:00+09:00`).toISOString();
+      const endStr = new Date(`${end}T23:59:59.999+09:00`).toISOString();
 
       const { data, error } = await supabase
         .from("attendance_logs")
         .select(
-          `id, profile_id, type, created_at, distance_m, attendance_type, reason, profiles(name, color_hex), stores!store_id(name)`,
+          `id, profile_id, type, created_at, distance_m, attendance_type, reason, profiles(name, color_hex, avatar_config), check_in_store:stores!check_in_store_id(name)`,
         )
         .gte("created_at", startStr)
         .lte("created_at", endStr)
         .order("created_at", { ascending: true });
 
-      if (!error && data) {
+      if (error) throw error;
+
+      if (data) {
         // [4] 출근 기록으로 base 맵 덮어쓰기 → is_absent=false
         data.forEach((log: any) => {
           const dateKey = format(new Date(log.created_at), "yyyy-MM-dd");
@@ -168,7 +170,8 @@ export default function AdminAttendanceCalendar() {
               profile_id: pId,
               name: log.profiles?.name || "알 수 없음",
               color_hex: log.profiles?.color_hex || "#8B95A1",
-              store_name: log.stores?.name || "알 수 없음",
+              avatar_config: log.profiles?.avatar_config ?? null,
+              store_name: log.check_in_store?.name || "알 수 없음",
               clock_in: null,
               clock_out: null,
               distance_in: null,
@@ -191,7 +194,7 @@ export default function AdminAttendanceCalendar() {
             userLog.clock_in = log.created_at;
             userLog.distance_in = log.distance_m ?? null;
             userLog.attendance_type_in = log.attendance_type || "regular";
-            userLog.store_name = log.stores?.name || "알 수 없음";
+            userLog.store_name = log.check_in_store?.name || "알 수 없음";
             userLog.is_absent = false;
 
             if (userLog.scheduled_start) {
@@ -302,6 +305,14 @@ export default function AdminAttendanceCalendar() {
       toast.error("퇴근 처리에 실패했어요. 잠시 후 다시 시도해 주세요.");
     } else {
       toast.success(`${log.name}님 퇴근 처리가 완료됐어요.`);
+      await createNotification({
+        profile_id: log.profile_id,
+        target_role: "employee",
+        type: "attendance_fallback_out",
+        title: "퇴근 처리 완료",
+        content: "관리자가 퇴근 처리했어요.",
+        source_id: log.profile_id,
+      });
       setManualOutTarget(null);
       mutate();
     }
@@ -314,6 +325,19 @@ export default function AdminAttendanceCalendar() {
   const absentCount = selectedLogs.filter(
     (l) => l.is_absent && isBefore(selectedDate, startOfDay(new Date())),
   ).length;
+
+  if (attendanceError)
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-3">
+        <p className="text-[15px] font-semibold text-[#8B95A1]">근태 데이터를 불러오지 못했어요</p>
+        <button
+          onClick={() => mutate()}
+          className="text-[14px] text-[#3182F6] font-medium"
+        >
+          다시 시도하기
+        </button>
+      </div>
+    );
 
   return (
     <div className="max-w-5xl animate-in fade-in duration-500 pb-20">
@@ -388,7 +412,7 @@ export default function AdminAttendanceCalendar() {
         <div className="grid grid-cols-7 relative">
           {loading && (
             <div className="absolute inset-0 bg-white/50 backdrop-blur-sm z-20 flex items-center justify-center">
-              <div className="w-8 h-8 border-4 border-[#3182F6] border-t-transparent rounded-full animate-spin" />
+              <div className="cat-spinner-lg" />
             </div>
           )}
           {calendarDays.map((day, idx) => {
@@ -499,12 +523,7 @@ export default function AdminAttendanceCalendar() {
                     key={log.profile_id}
                     className="bg-[#FFF5F5] rounded-[20px] p-5 flex items-center gap-4 border-2 border-[#FFCDD2]"
                   >
-                    <div
-                      className="w-12 h-12 rounded-full flex items-center justify-center text-[16px] font-bold text-white shadow-sm shrink-0"
-                      style={{ backgroundColor: log.color_hex }}
-                    >
-                      {log.name?.charAt(0)}
-                    </div>
+                    <AvatarDisplay userId={log.profile_id} avatarConfig={log.avatar_config} size={48} />
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         <p className="text-[16px] font-bold text-[#191F28]">
@@ -521,7 +540,7 @@ export default function AdminAttendanceCalendar() {
                           {log.scheduled_location && (
                             <span className="ml-1">
                               (
-                              {LOCATION_LABELS[log.scheduled_location] ??
+                              {byId[log.scheduled_location]?.label ??
                                 log.scheduled_location}
                               )
                             </span>
@@ -557,12 +576,7 @@ export default function AdminAttendanceCalendar() {
                 >
                   {/* 프로필 */}
                   <div className="flex items-center gap-4">
-                    <div
-                      className="w-12 h-12 rounded-full flex items-center justify-center text-[16px] font-bold text-white shadow-sm shrink-0"
-                      style={{ backgroundColor: log.color_hex }}
-                    >
-                      {log.name?.charAt(0)}
-                    </div>
+                    <AvatarDisplay userId={log.profile_id} avatarConfig={log.avatar_config} size={48} />
                     <div>
                       <div className="flex items-center gap-2 mb-0.5">
                         <p className="text-[16px] font-bold text-[#191F28]">
@@ -598,19 +612,12 @@ export default function AdminAttendanceCalendar() {
                         className="text-[12px] font-bold"
                         style={{
                           color: log.scheduled_location
-                            ? (
-                                {
-                                  cafe: "#3182F6",
-                                  factory: "#00B761",
-                                  catering: "#F59E0B",
-                                } as Record<string, string>
-                              )[log.scheduled_location] || "#4E5968"
+                            ? byId[log.scheduled_location]?.color || "#4E5968"
                             : "#4E5968",
                         }}
                       >
                         {log.scheduled_location
-                          ? LOCATION_LABELS[log.scheduled_location] ||
-                            log.scheduled_location
+                          ? byId[log.scheduled_location]?.label || log.scheduled_location
                           : ""}
                       </span>
                       <span className="text-[12px] text-[#4E5968] font-medium">
@@ -750,12 +757,7 @@ export default function AdminAttendanceCalendar() {
 
             {/* 직원 정보 */}
             <div className="flex items-center gap-3 bg-[#F9FAFB] rounded-[16px] p-3.5">
-              <div
-                className="w-10 h-10 rounded-full flex items-center justify-center text-[14px] font-bold text-white shrink-0"
-                style={{ backgroundColor: manualOutTarget.log.color_hex }}
-              >
-                {manualOutTarget.log.name?.charAt(0)}
-              </div>
+              <AvatarDisplay userId={manualOutTarget.log.profile_id} avatarConfig={manualOutTarget.log.avatar_config} size={40} />
               <div>
                 <p className="text-[15px] font-bold text-[#191F28]">
                   {manualOutTarget.log.name}

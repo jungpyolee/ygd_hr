@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, BookOpen, Search, X, Plus } from "lucide-react";
 import Image from "next/image";
@@ -13,22 +14,20 @@ export default function RecipesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [recentIds, setRecentIds] = useState<string[]>([]);
   const router = useRouter();
+  const { user } = useAuth();
 
   const { data, isLoading: loading } = useSWR(
-    "recipes-list",
-    async () => {
+    user ? ["recipes-list", user.id] : null,
+    async ([, userId]) => {
       const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
 
       let canCreate = false;
-      if (user) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("role, employment_type")
-          .eq("id", user.id)
-          .single();
-        canCreate = profile?.role === "admin" || profile?.employment_type === "full_time";
-      }
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role, employment_type")
+        .eq("id", userId)
+        .single();
+      canCreate = profile?.role === "admin" || profile?.employment_type === "full_time";
 
       const [{ data: cats }, { data: items }] = await Promise.all([
         supabase
@@ -238,7 +237,7 @@ export default function RecipesPage() {
       {canCreate && (
         <button
           onClick={() => router.push("/recipes/new")}
-          className="fixed bottom-6 right-6 w-14 h-14 bg-[#3182F6] text-white rounded-full shadow-lg shadow-blue-500/30 flex items-center justify-center active:scale-95 transition-all z-50"
+          className="fixed bottom-24 right-6 w-14 h-14 bg-[#3182F6] text-white rounded-full shadow-lg shadow-blue-500/30 flex items-center justify-center active:scale-95 transition-all z-[55]"
           aria-label="레시피 추가하기"
         >
           <Plus className="w-6 h-6" />

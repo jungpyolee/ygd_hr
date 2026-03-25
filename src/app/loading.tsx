@@ -1,19 +1,42 @@
 export default function Loading() {
+  const size = 72;
+  const frames = 6;
+
   return (
-    <div className="flex min-h-screen flex-col bg-[#F2F4F6] font-pretendard">
-      <div className="h-[60px] bg-[#F2F4F6]/80" />
-      <main className="flex-1 px-5 pb-10 space-y-4">
-        <div className="py-6 px-1">
-          <div className="h-8 w-36 bg-slate-200 animate-pulse rounded-lg mb-2" />
-          <div className="h-6 w-20 bg-slate-200 animate-pulse rounded-lg" />
+    <div className="flex min-h-screen items-center justify-center bg-[#F2F4F6] font-pretendard">
+      <style>{`
+        @keyframes catRunFrames {
+          from { background-position: 0 0; }
+          to   { background-position: 0 -${size * frames}px; }
+        }
+        @keyframes catWalkLR {
+          0%   { transform: translateX(-32px) scaleX(1);  }
+          48%  { transform: translateX(32px)  scaleX(1);  }
+          50%  { transform: translateX(32px)  scaleX(-1); }
+          98%  { transform: translateX(-32px) scaleX(-1); }
+          100% { transform: translateX(-32px) scaleX(1);  }
+        }
+        .cat-loading {
+          animation: catWalkLR 2.4s linear infinite;
+        }
+        .cat-loading-sprite {
+          width: ${size}px;
+          height: ${size}px;
+          background-image: url('/game/WhiteCatRun.png');
+          background-size: ${size}px ${size * frames}px;
+          background-repeat: no-repeat;
+          background-position: 0 0;
+          image-rendering: pixelated;
+          animation: catRunFrames 0.6s steps(${frames}) infinite;
+        }
+      `}</style>
+
+      <div className="flex flex-col items-center gap-4">
+        <div className="cat-loading">
+          <div className="cat-loading-sprite" />
         </div>
-        <div className="bg-white rounded-[28px] p-6 h-[180px] animate-pulse border border-slate-100" />
-        <div className="grid grid-cols-2 gap-3">
-          <div className="bg-white rounded-[24px] p-4 h-[110px] animate-pulse border border-slate-100" />
-          <div className="bg-white rounded-[24px] p-4 h-[110px] animate-pulse border border-slate-100" />
-        </div>
-        <div className="bg-white rounded-[28px] p-6 h-[180px] animate-pulse border border-slate-100" />
-      </main>
+        <p className="text-[13px] text-[#8B95A1]">잠깐만요...</p>
+      </div>
     </div>
   );
 }

@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context";
+import { logError } from "@/lib/logError";
 import { getDistance } from "@/lib/utils/distance";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -13,14 +15,15 @@ import ChecklistSheet from "@/components/ChecklistSheet";
 import StoreSelectorSheet from "@/components/StoreSelectorSheet";
 import type { GeoState } from "@/lib/hooks/useGeolocation";
 import type { ChecklistTemplate, ChecklistDraft } from "@/types/checklist";
+import { useWorkplaces } from "@/lib/hooks/useWorkplaces";
 
 interface TodaySlot {
   id: string;
   slot_date: string;
   start_time: string;
   end_time: string;
-  work_location: string;
-  cafe_positions: string[];
+  store_id: string;
+  position_keys: string[];
   notes: string | null;
 }
 
@@ -51,6 +54,7 @@ export default function AttendanceCard({
   onRetryLocation,
   onFetchForAttendance,
 }: AttendanceCardProps) {
+  const { byId } = useWorkplaces();
   const [loading, setLoading] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
 
@@ -82,9 +86,9 @@ export default function AttendanceCard({
   const [storeSelectorType, setStoreSelectorType] = useState<"IN" | "OUT" | null>(null);
 
   const supabase = useMemo(() => createClient(), []);
-
-  // 유저 ID (draft 키 생성용)
-  const [userId, setUserId] = useState<string | null>(null);
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
+  const isProcessingRef = useRef(false);
 
   // 체크리스트 재개 상태
   const [pendingResume, setPendingResume] = useState<{
@@ -94,14 +98,6 @@ export default function AttendanceCard({
     totalItems: number;
   } | null>(null);
   const [checklistInitialIds, setChecklistInitialIds] = useState<string[]>([]);
-
-  useEffect(() => {
-    const loadUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) setUserId(user.id);
-    };
-    loadUser();
-  }, [supabase]);
 
   // ─── localStorage draft 헬퍼 ──────────────────────────────────────────────
   const getDraftKey = (uid: string, trigger: "check_in" | "check_out") =>
@@ -143,12 +139,12 @@ export default function AttendanceCard({
 
     const all = (data as ChecklistTemplate[]) ?? [];
 
-    // 오늘 슬롯의 work_location / cafe_positions 기준으로 필터링
-    // cafe_positions가 빈 배열이면 cafe_position=null인 공통 항목만 표시
+    // 오늘 슬롯의 work_location / position_keys 기준으로 필터링
+    // position_keys가 빈 배열이면 position_key=null인 공통 항목만 표시
     return all.filter((item) => {
-      if (item.work_location && item.work_location !== todaySlot.work_location)
+      if (item.work_location && item.work_location !== byId[todaySlot.store_id]?.work_location_key)
         return false;
-      if (item.cafe_position && !todaySlot.cafe_positions.includes(item.cafe_position))
+      if (item.position_key && !todaySlot.position_keys.includes(item.position_key))
         return false;
       return true;
     });
@@ -208,12 +204,9 @@ export default function AttendanceCard({
     logId: string | null,
     totalItems: number
   ) => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!userId) return;
     const { error } = await supabase.from("checklist_submissions").insert({
-      profile_id: user.id,
+      profile_id: userId,
       trigger,
       attendance_log_id: logId,
       checked_item_ids: checkedIds,
@@ -246,12 +239,8 @@ export default function AttendanceCard({
   }) => {
     setLoading(true);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
     const insertData: Record<string, any> = {
-      profile_id: user?.id,
+      profile_id: userId,
       type,
       user_lat: lat,
       user_lng: lng,
@@ -260,7 +249,6 @@ export default function AttendanceCard({
     };
 
     if (nearestStore) {
-      insertData.store_id = nearestStore.id;
       if (type === "IN") insertData.check_in_store_id = nearestStore.id;
       else insertData.check_out_store_id = nearestStore.id;
     }
@@ -287,6 +275,7 @@ export default function AttendanceCard({
           description: "먼저 출근 버튼을 눌러주세요",
         });
       } else {
+        logError({ message: "출퇴근 기록 실패", error, source: "AttendanceCard/processAttendance", context: { type, attendanceType } });
         toast.error("기록에 실패했어요. 다시 시도해주세요.");
       }
       setLoading(false);
@@ -514,70 +503,76 @@ export default function AttendanceCard({
 
   // ─── 출퇴근 버튼 탭 ────────────────────────────────────────────────────────
   const handleAttendance = async (type: "IN" | "OUT") => {
-    // 퇴근: 체크리스트 먼저 확인
-    if (type === "OUT") {
-      const items = await fetchChecklistItems("check_out");
-      if (items.length > 0) {
-        // 이탈 후 재개: 기존 draft 있으면 체크 상태 복원
-        const outDraft = userId ? loadDraft(userId, "check_out") : null;
-        const initialIds = outDraft?.checkedIds ?? [];
-        setChecklistItems(items);
-        setChecklistTrigger("check_out");
-        setChecklistInitialIds(initialIds);
-        setShowChecklist(true);
-        // 신규 시작이면 draft 생성
-        if (!outDraft && userId) {
-          saveDraft(userId, {
-            userId,
-            date: new Date().toISOString().slice(0, 10),
-            trigger: "check_out",
-            attendanceLogId: null,
-            checkedIds: [],
-            totalItems: items.length,
-          });
-        }
-        return;
-      }
-      // 체크리스트 없으면 바로 퇴근 흐름
-      await runCheckoutFlow();
-      return;
-    }
-
-    setIsRetrying(true);
-    setPendingType(type);
-
+    if (isProcessingRef.current) return; // 중복 클릭 방지
+    isProcessingRef.current = true;
     try {
-      // 출퇴근 기록은 항상 10초 캐시 기준으로 신선한 위치 사용
-      const result = await onFetchForAttendance();
-
-      if (result.status === "ready") {
-        setPendingType(null);
-        await proceedWithCoordinates(type, result.lat!, result.lng!);
+      // 퇴근: 체크리스트 먼저 확인
+      if (type === "OUT") {
+        const items = await fetchChecklistItems("check_out");
+        if (items.length > 0) {
+          // 이탈 후 재개: 기존 draft 있으면 체크 상태 복원
+          const outDraft = userId ? loadDraft(userId, "check_out") : null;
+          const initialIds = outDraft?.checkedIds ?? [];
+          setChecklistItems(items);
+          setChecklistTrigger("check_out");
+          setChecklistInitialIds(initialIds);
+          setShowChecklist(true);
+          // 신규 시작이면 draft 생성
+          if (!outDraft && userId) {
+            saveDraft(userId, {
+              userId,
+              date: new Date().toISOString().slice(0, 10),
+              trigger: "check_out",
+              attendanceLogId: null,
+              checkedIds: [],
+              totalItems: items.length,
+            });
+          }
+          return;
+        }
+        // 체크리스트 없으면 바로 퇴근 흐름
+        await runCheckoutFlow();
         return;
       }
 
-      if (result.status === "denied") {
-        setShowPermissionGuide(true);
-        return;
-      }
+      setIsRetrying(true);
+      setPendingType(type);
 
-      // timeout / unavailable → 권한은 있으나 GPS 응답 없음, onRetryLocation으로 재시도
-      const retryResult = await onRetryLocation();
-      if (retryResult.status === "ready") {
-        setPendingType(null);
-        await proceedWithCoordinates(type, retryResult.lat!, retryResult.lng!);
-        return;
-      }
+      try {
+        // 출퇴근 기록은 항상 10초 캐시 기준으로 신선한 위치 사용
+        const result = await onFetchForAttendance();
 
-      if (retryResult.status === "denied") {
-        setShowPermissionGuide(true);
-        return;
-      }
+        if (result.status === "ready") {
+          setPendingType(null);
+          await proceedWithCoordinates(type, result.lat!, result.lng!);
+          return;
+        }
 
-      // GPS 재시도까지 실패 → 매장 수동 선택 fallback
-      openStoreFallback(type);
+        if (result.status === "denied") {
+          setShowPermissionGuide(true);
+          return;
+        }
+
+        // timeout / unavailable → 권한은 있으나 GPS 응답 없음, onRetryLocation으로 재시도
+        const retryResult = await onRetryLocation();
+        if (retryResult.status === "ready") {
+          setPendingType(null);
+          await proceedWithCoordinates(type, retryResult.lat!, retryResult.lng!);
+          return;
+        }
+
+        if (retryResult.status === "denied") {
+          setShowPermissionGuide(true);
+          return;
+        }
+
+        // GPS 재시도까지 실패 → 매장 수동 선택 fallback
+        openStoreFallback(type);
+      } finally {
+        setIsRetrying(false);
+      }
     } finally {
-      setIsRetrying(false);
+      isProcessingRef.current = false;
     }
   };
 
@@ -598,7 +593,14 @@ export default function AttendanceCard({
         return;
       }
 
-      // 권한 안내 후에도 여전히 실패 → 매장 수동 선택 fallback
+      // 권한 안내 후에도 여전히 denied → 출근 차단
+      if (result.status === "denied") {
+        setPendingType(null);
+        toast.error("위치 권한을 허용해야 출근할 수 있어요. 설정에서 위치 권한을 켜주세요.");
+        return;
+      }
+
+      // timeout / unavailable → GPS 오류이므로 수동 선택 허용
       openStoreFallback(type);
     } finally {
       setIsRetrying(false);
@@ -703,9 +705,9 @@ export default function AttendanceCard({
                   ✈️ 출장중
                 </span>
               )}
-            {todaySlots[0]?.cafe_positions && todaySlots[0].cafe_positions.length > 0 && (
+            {todaySlots[0]?.position_keys && todaySlots[0].position_keys.length > 0 && (
               <div className="flex gap-1 mt-1">
-                {todaySlots[0].cafe_positions.map((pos) => (
+                {todaySlots[0].position_keys.map((pos) => (
                   <span
                     key={pos}
                     className="inline-block text-[11px] font-bold bg-[#E8F3FF] text-[#3182F6] px-2 py-0.5 rounded-md"
@@ -734,7 +736,7 @@ export default function AttendanceCard({
         {/* ── 위치 탐색 중 오버레이 ────────────────────────────── */}
         {isRetrying && (
           <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-[#F2F4F6] mb-3">
-            <Loader2 className="w-4 h-4 text-[#3182F6] animate-spin shrink-0" />
+            <div className="cat-spinner shrink-0" />
             <div>
               <p className="text-[13px] font-bold text-[#191F28]">위치를 찾고 있어요</p>
               <p className="text-[11px] text-[#8B95A1]">GPS 신호를 확인하는 중이에요</p>
@@ -752,7 +754,7 @@ export default function AttendanceCard({
           >
             {isButtonBusy ? (
               <span className="flex items-center gap-2">
-                <Loader2 className="w-5 h-5 animate-spin" /> 처리 중...
+                <div className="cat-spinner" /> 처리 중...
               </span>
             ) : "출근하기"}
           </Button>
@@ -792,7 +794,7 @@ export default function AttendanceCard({
           >
             {loading ? (
               <span className="flex items-center gap-2">
-                <Loader2 className="w-5 h-5 animate-spin" /> 처리 중...
+                <div className="cat-spinner" /> 처리 중...
               </span>
             ) : "퇴근하기"}
           </Button>

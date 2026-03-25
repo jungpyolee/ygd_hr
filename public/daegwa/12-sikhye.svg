@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- 식혜: 달콤한 쌀음료 대마법사 -->
+  <!-- 마법사 로브/몸통 -->
+  <ellipse cx="50" cy="60" rx="30" ry="25" fill="#7B4F2E"/>
+  <!-- 로브 무늬 -->
+  <ellipse cx="50" cy="60" rx="22" ry="18" fill="#5C3820" opacity="0.5"/>
+  <!-- 식혜 그릇/컵 -->
+  <rect x="30" y="35" width="40" height="30" rx="8" ry="8" fill="#F5DEB3"/>
+  <rect x="28" y="33" width="44" height="8" rx="4" ry="4" fill="#E8C88A"/>
+  <!-- 식혜 음료 (amber색) -->
+  <rect x="31" y="40" width="38" height="24" rx="5" ry="5" fill="#D4922A" opacity="0.85"/>
+  <!-- 쌀알 떠있는 것 -->
+  <ellipse cx="40" cy="52" rx="3" ry="1.5" fill="white" opacity="0.9"/>
+  <ellipse cx="52" cy="48" rx="3" ry="1.5" fill="white" opacity="0.9"/>
+  <ellipse cx="60" cy="54" rx="3" ry="1.5" fill="white" opacity="0.9"/>
+  <ellipse cx="45" cy="57" rx="2.5" ry="1.5" fill="white" opacity="0.9"/>
+  <!-- 마법사 눈 (컵 위에) -->
+  <circle cx="42" cy="42" r="5" fill="white"/>
+  <circle cx="58" cy="42" r="5" fill="white"/>
+  <circle cx="43" cy="43" r="3" fill="#1a1a4e"/>
+  <circle cx="59" cy="43" r="3" fill="#1a1a4e"/>
+  <!-- 눈 빛 (마법) -->
+  <circle cx="44" cy="41.5" r="1" fill="#88AAFF"/>
+  <circle cx="60" cy="41.5" r="1" fill="#88AAFF"/>
+  <!-- 마법사 모자 -->
+  <polygon points="25,35 50,5 75,35" fill="#2D1B69"/>
+  <rect x="22" y="33" width="56" height="6" rx="3" ry="3" fill="#3D2B7A"/>
+  <!-- 모자 별 장식 -->
+  <polygon points="50,10 52,16 58,16 53,20 55,26 50,22 45,26 47,20 42,16 48,16" fill="#FFD700" opacity="0.8"/>
+  <!-- 마법 지팡이 -->
+  <line x1="78" y1="80" x2="90" y2="20" stroke="#8B6914" stroke-width="3"/>
+  <circle cx="90" cy="18" r="6" fill="#9B59B6"/>
+  <circle cx="90" cy="18" r="4" fill="#BF7FE8"/>
+  <!-- 독 연기 효과 -->
+  <ellipse cx="30" cy="65" rx="6" ry="4" fill="#44FF44" opacity="0.3"/>
+  <ellipse cx="70" cy="68" rx="5" ry="3" fill="#44FF44" opacity="0.3"/>
+  <!-- 발 -->
+  <ellipse cx="38" cy="83" rx="9" ry="4" fill="#5C3820"/>
+  <ellipse cx="62" cy="83" rx="9" ry="4" fill="#5C3820"/>
+</svg>

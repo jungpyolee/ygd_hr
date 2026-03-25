@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { createClient } from "@/lib/supabase";
+import { logError } from "@/lib/logError";
 import { ChevronLeft, CheckCircle2, UploadCloud } from "lucide-react";
 import { format } from "date-fns";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -15,6 +16,7 @@ interface OnboardingProps {
 export default function OnboardingFunnel({ onComplete }: OnboardingProps) {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
+  const isSubmittingRef = useRef(false);
   const supabase = createClient();
 
   // 폼 상태
@@ -67,6 +69,8 @@ export default function OnboardingFunnel({ onComplete }: OnboardingProps) {
   };
 
   const handleSubmit = async () => {
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
     setLoading(true);
     const {
       data: { user },
@@ -93,23 +97,25 @@ export default function OnboardingFunnel({ onComplete }: OnboardingProps) {
 
         if (updateError) throw updateError;
 
-        await sendNotification({
+        sendNotification({
           target_role: "admin",
           type: "onboarding",
           title: "🎉 새 직원 등록",
           content: `${name}님이 온보딩을 완료하고 프로필을 등록했습니다.`,
           source_id: user.id,
-        });
+        }).catch((e) => console.error("온보딩 알림 발송 실패:", e));
       } catch (error) {
-        console.error("업로드 중 에러 발생:", error);
+        logError({ message: "온보딩 저장 실패", error, source: "OnboardingFunnel/handleSubmit" });
         toast.error("저장에 실패했어요", {
           description: "잠시 후 다시 시도해 주세요.",
         });
+        isSubmittingRef.current = false;
         setLoading(false);
         return;
       }
     }
 
+    isSubmittingRef.current = false;
     setLoading(false);
     onComplete();
   };

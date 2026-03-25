@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import useSWR from "swr";
+import { parseISO, startOfDay, differenceInCalendarDays, isBefore } from "date-fns";
 import { createClient } from "@/lib/supabase";
+import { logError } from "@/lib/logError";
+import AvatarDisplay from "@/components/AvatarDisplay";
 import {
   Trash2,
   Palette,
@@ -17,9 +20,13 @@ import {
   FileCheck,
   Briefcase,
   MapPin,
+  Search,
+  ChevronRight,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
+import { useWorkplaces } from "@/lib/hooks/useWorkplaces";
 
 // 🚀 스키마 100% 반영된 인터페이스
 interface Profile {
@@ -30,8 +37,6 @@ interface Profile {
   department: string | null;
   position: string | null;
   role: string;
-  target_in_time: string | null;
-  target_out_time: string | null;
   created_at: string;
   join_date: string | null;
   health_cert_verified: boolean | null;
@@ -44,10 +49,10 @@ interface Profile {
   bank_name: string | null;
   health_cert_date: string | null;
   employment_type: string | null;
-  work_locations: string[] | null;
-  cafe_positions: string[] | null;
+  position_keys: string[] | null;
   hourly_wage: number | null;
   insurance_type: string | null;
+  avatar_config?: any;
 }
 
 const EMPLOYMENT_TYPE_OPTIONS = [
@@ -56,17 +61,31 @@ const EMPLOYMENT_TYPE_OPTIONS = [
   { value: "part_time_daily", label: "일일 알바" },
 ];
 
-const WORK_LOCATION_OPTIONS = [
-  { value: "factory", label: "공장" },
-  { value: "cafe", label: "카페" },
-  { value: "catering", label: "케이터링" },
-];
+function getHealthStatus(date: string | null, warningDays = 30) {
+  if (!date) return "none";
+  const expiry = parseISO(date);
+  const today = startOfDay(new Date());
+  if (isBefore(expiry, today)) return "expired";
+  const daysUntil = differenceInCalendarDays(expiry, today);
+  if (daysUntil <= warningDays) return "soon";
+  return "ok";
+}
 
-const CAFE_POSITION_OPTIONS = [
-  { value: "hall", label: "홀" },
-  { value: "kitchen", label: "주방" },
-  { value: "showroom", label: "쇼룸" },
-];
+function HealthBadge({ date, verified, warningDays = 30 }: { date: string | null; verified: boolean | null; warningDays?: number }) {
+  const status = getHealthStatus(date, warningDays);
+  if (status === "expired")
+    return <span className="text-[11px] font-bold text-[#D9480F] bg-[#FFF4E6] px-2 py-1 rounded-lg">만료</span>;
+  if (status === "soon")
+    return <span className="text-[11px] font-bold text-[#E8590C] bg-[#FFF4E6] px-2 py-1 rounded-lg">임박</span>;
+  if (status === "ok")
+    return (
+      <span className="text-[11px] font-bold text-[#2F9E44] bg-[#EBFBEE] px-2 py-1 rounded-lg">
+        {verified ? "확인" : "유효"}
+      </span>
+    );
+  return <span className="text-[11px] font-bold text-[#8B95A1] bg-[#F2F4F6] px-2 py-1 rounded-lg">미입력</span>;
+}
+
 
 // 파일 업로드용 키 타입
 type DocKey = "employment_contract_url" | "health_cert_url";
@@ -77,8 +96,8 @@ interface WorkDefault {
   day_of_week: number;
   start_time: string;
   end_time: string;
-  work_location: string;
-  cafe_positions: string[];
+  store_id: string;
+  position_keys: string[];
   is_active: boolean;
 }
 
@@ -94,7 +113,26 @@ function generateTimeOptions(startH: number, endH: number) {
 }
 
 export default function AdminEmployeesPage() {
+  const { workplaces, byKey, byId, positionsOf, positionsOfStore, hasPositions, hasPositionsStore } = useWorkplaces();
   const [uploading, setUploading] = useState(false);
+
+  // 보건증 만료 주의 기준일 (매장 설정)
+  const { data: storeSettings } = useSWR("admin-store-settings", async () => {
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("stores")
+      .select("health_cert_warning_days")
+      .order("display_order")
+      .limit(1)
+      .single();
+    return data as { health_cert_warning_days: number } | null;
+  }, { dedupingInterval: 60_000, revalidateOnFocus: false });
+  const warningDays = storeSettings?.health_cert_warning_days ?? 30;
+
+  // 목록 필터 상태
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterType, setFilterType] = useState<string>("");
+  const [filterHealth, setFilterHealth] = useState<string>("");
 
   const [editingEmployee, setEditingEmployee] = useState<Profile | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{
@@ -108,6 +146,9 @@ export default function AdminEmployeesPage() {
   // 항목이 많으므로 객체 하나로 묶어서 폼 상태 관리
   const [editForm, setEditForm] = useState<Partial<Profile>>({});
 
+  // 근무지 배정 상태 (employee_store_assignments)
+  const [assignedStoreIds, setAssignedStoreIds] = useState<string[]>([]);
+
   // work_defaults 상태
   const [workDefaults, setWorkDefaults] = useState<WorkDefault[]>([]);
   const [workDefaultsLoading, setWorkDefaultsLoading] = useState(false);
@@ -119,6 +160,7 @@ export default function AdminEmployeesPage() {
   const {
     data: employees = [],
     isLoading: loading,
+    error: employeesError,
     mutate: mutateEmployees,
   } = useSWR(
     "admin-employees-list",
@@ -128,11 +170,55 @@ export default function AdminEmployeesPage() {
         .from("profiles")
         .select("*")
         .order("created_at", { ascending: true });
-      if (error) return [];
+      if (error) throw error;
       return (data as Profile[]) ?? [];
     },
     { dedupingInterval: 60_000, revalidateOnFocus: false },
   );
+
+  // 전체 매장 배정 맵 (profile_id → store_id[])
+  const { data: assignmentsMap = {} } = useSWR(
+    "admin-all-assignments",
+    async () => {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("employee_store_assignments")
+        .select("profile_id, store_id");
+      const map: Record<string, string[]> = {};
+      for (const row of data ?? []) {
+        if (!map[row.profile_id]) map[row.profile_id] = [];
+        map[row.profile_id].push(row.store_id);
+      }
+      return map;
+    },
+    { dedupingInterval: 60_000, revalidateOnFocus: false },
+  );
+
+  // 필터링된 직원 목록
+  const filteredEmployees = employees.filter((emp) => {
+    if (searchQuery && !emp.name?.includes(searchQuery)) return false;
+    if (filterType && emp.employment_type !== filterType) return false;
+    if (filterHealth) {
+      const status = getHealthStatus(emp.health_cert_date, warningDays);
+      if (filterHealth === "warning") {
+        if (status !== "expired" && status !== "soon") return false;
+      } else {
+        if (filterHealth !== status) return false;
+      }
+    }
+    return true;
+  });
+
+  // 통계
+  const stats = {
+    total: employees.length,
+    full_time: employees.filter((e) => e.employment_type === "full_time").length,
+    part_time_fixed: employees.filter((e) => e.employment_type === "part_time_fixed").length,
+    part_time_daily: employees.filter((e) => e.employment_type === "part_time_daily").length,
+    expired: employees.filter((e) => getHealthStatus(e.health_cert_date, warningDays) === "expired").length,
+    soon: employees.filter((e) => getHealthStatus(e.health_cert_date, warningDays) === "soon").length,
+    none: employees.filter((e) => getHealthStatus(e.health_cert_date, warningDays) === "none").length,
+  };
 
   const handleColorChange = async (id: string, newColor: string) => {
     const supabase = createClient();
@@ -141,6 +227,7 @@ export default function AdminEmployeesPage() {
       .update({ color_hex: newColor })
       .eq("id", id);
     if (error) {
+      logError({ message: "직원 색상 변경 실패", error, source: "employees/handleColorChange", context: { profileId: id } });
       toast.error("색상 변경에 실패했어요", {
         description: "다시 시도해주세요",
       });
@@ -170,6 +257,7 @@ export default function AdminEmployeesPage() {
       toast.success(`${name}님이 삭제됐어요`);
       mutateEmployees((prev) => prev?.filter((emp) => emp.id !== id));
     } else {
+      logError({ message: "직원 삭제 실패", error, source: "employees/confirmDelete", context: { profileId: id } });
       toast.error("삭제에 실패했어요", { description: "다시 시도해주세요" });
     }
   };
@@ -177,6 +265,12 @@ export default function AdminEmployeesPage() {
   const openEditModal = async (employee: Profile) => {
     setEditingEmployee(employee);
     setEditForm({ ...employee });
+    const supabase = createClient();
+    const { data: asgn } = await supabase
+      .from("employee_store_assignments")
+      .select("store_id")
+      .eq("profile_id", employee.id);
+    setAssignedStoreIds((asgn ?? []).map((a: { store_id: string }) => a.store_id));
     await fetchWorkDefaults(employee.id);
   };
 
@@ -200,11 +294,11 @@ export default function AdminEmployeesPage() {
       day_of_week,
       start_time,
       end_time,
-      work_location,
-      cafe_positions,
+      store_id,
+      position_keys,
       id,
     } = editingDefault;
-    if (!start_time || !end_time || !work_location) {
+    if (!start_time || !end_time || !store_id) {
       toast.error("시작 시간, 종료 시간, 근무 장소를 모두 입력해주세요.");
       setSavingDefault(false);
       return;
@@ -216,11 +310,12 @@ export default function AdminEmployeesPage() {
         .update({
           start_time,
           end_time,
-          work_location,
-          cafe_positions: cafe_positions || [],
+          store_id,
+          position_keys: position_keys || [],
         })
         .eq("id", id);
       if (error) {
+        logError({ message: "기본 근무 패턴 수정 실패", error, source: "employees/handleSaveWorkDefault", context: { profileId: editingEmployee.id } });
         toast.error("저장에 실패했어요", { description: error.message });
       } else {
         toast.success("기본 근무 패턴을 수정했어요");
@@ -232,10 +327,11 @@ export default function AdminEmployeesPage() {
         day_of_week,
         start_time,
         end_time,
-        work_location,
-        cafe_positions: cafe_positions || [],
+        store_id,
+        position_keys: position_keys || [],
       });
       if (error) {
+        logError({ message: "기본 근무 패턴 추가 실패", error, source: "employees/handleSaveWorkDefault", context: { profileId: editingEmployee.id } });
         toast.error("저장에 실패했어요", { description: error.message });
       } else {
         toast.success("기본 근무 패턴을 추가했어요");
@@ -254,6 +350,7 @@ export default function AdminEmployeesPage() {
       .delete()
       .eq("id", id);
     if (error) {
+      logError({ message: "기본 근무 패턴 삭제 실패", error, source: "employees/handleDeleteWorkDefault", context: { workDefaultId: id } });
       toast.error("삭제에 실패했어요");
     } else {
       toast.success("기본 근무 패턴을 삭제했어요");
@@ -277,18 +374,44 @@ export default function AdminEmployeesPage() {
       .update(safeForm)
       .eq("id", editingEmployee.id);
 
-    if (error)
+    if (error) {
+      logError({ message: "직원 정보 수정 실패", error, source: "employees/handleSaveEdit", context: { profileId: editingEmployee.id } });
       return toast.error("수정에 실패했어요", {
         description: "다시 시도해주세요",
       });
+    }
 
-    // 즉시 캐시 반영
-    mutateEmployees((prev) =>
-      prev?.map((emp) =>
-        emp.id === editingEmployee.id
-          ? ({ ...emp, ...editForm } as Profile)
-          : emp,
-      ),
+    // 근무지 배정 동기화 (employee_store_assignments)
+    const profileId = editingEmployee.id;
+    const { data: existing } = await supabase
+      .from("employee_store_assignments")
+      .select("store_id")
+      .eq("profile_id", profileId);
+    const existingIds = (existing ?? []).map((a: { store_id: string }) => a.store_id);
+    const toDelete = existingIds.filter((id) => !assignedStoreIds.includes(id));
+    const toInsert = assignedStoreIds.filter((id) => !existingIds.includes(id));
+    if (toDelete.length > 0) {
+      await supabase
+        .from("employee_store_assignments")
+        .delete()
+        .eq("profile_id", profileId)
+        .in("store_id", toDelete);
+    }
+    if (toInsert.length > 0) {
+      await supabase
+        .from("employee_store_assignments")
+        .insert(toInsert.map((store_id) => ({ profile_id: profileId, store_id })));
+    }
+
+    // 즉시 캐시 반영 후 서버 재검증
+    mutateEmployees(
+      (prev) =>
+        prev?.map((emp) =>
+          emp.id === editingEmployee.id
+            ? ({ ...emp, ...editForm } as Profile)
+            : emp,
+        ),
+      { revalidate: true },
     );
     toast.success("정보를 수정했어요");
     setEditingEmployee(null);
@@ -394,184 +517,187 @@ export default function AdminEmployeesPage() {
     toast.success("서류를 삭제했어요");
   };
 
+  if (employeesError)
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-3">
+        <p className="text-[15px] font-semibold text-[#8B95A1]">직원 목록을 불러오지 못했어요</p>
+        <button
+          onClick={() => mutateEmployees()}
+          className="text-[14px] text-[#3182F6] font-medium"
+        >
+          다시 시도하기
+        </button>
+      </div>
+    );
+
   if (loading)
     return (
       <div className="flex justify-center items-center h-64">
-        <div className="w-8 h-8 border-4 border-[#3182F6] border-t-transparent rounded-full animate-spin" />
+        <div className="cat-spinner-lg" />
       </div>
     );
 
   return (
     <div className="max-w-4xl animate-in fade-in duration-500 pb-20 relative">
-      <div className="mb-8">
+      <div className="mb-5">
         <h1 className="text-2xl font-bold text-[#191F28] mb-1">직원 관리</h1>
         <p className="text-[14px] text-[#8B95A1]">
           인사 정보, 근무 조건, 증빙 서류를 통합 관리하세요.
         </p>
       </div>
 
-      <div className="space-y-4">
-        {employees.map((employee) => {
-          const isAdmin = employee.role === "admin";
-          const isHealthCertExpired =
-            employee.health_cert_date &&
-            new Date(employee.health_cert_date) < new Date();
+      {/* 통계 바 */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        <button
+          onClick={() => { setFilterType(""); setFilterHealth(""); }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-bold transition-all ${filterType === "" && filterHealth === "" ? "bg-[#191F28] text-white" : "bg-white border border-[#E5E8EB] text-[#4E5968]"}`}
+        >
+          전체 <span className={`${filterType === "" && filterHealth === "" ? "bg-white/20" : "bg-[#F2F4F6]"} px-1.5 py-0.5 rounded-md`}>{stats.total}</span>
+        </button>
+        <button
+          onClick={() => { setFilterType("full_time"); setFilterHealth(""); }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-bold transition-all ${filterType === "full_time" ? "bg-[#191F28] text-white" : "bg-white border border-[#E5E8EB] text-[#4E5968]"}`}
+        >
+          정규직 <span className={`${filterType === "full_time" ? "bg-white/20" : "bg-[#F2F4F6]"} px-1.5 py-0.5 rounded-md`}>{stats.full_time}</span>
+        </button>
+        <button
+          onClick={() => { setFilterType("part_time_fixed"); setFilterHealth(""); }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-bold transition-all ${filterType === "part_time_fixed" ? "bg-[#191F28] text-white" : "bg-white border border-[#E5E8EB] text-[#4E5968]"}`}
+        >
+          고정알바 <span className={`${filterType === "part_time_fixed" ? "bg-white/20" : "bg-[#F2F4F6]"} px-1.5 py-0.5 rounded-md`}>{stats.part_time_fixed}</span>
+        </button>
+        <button
+          onClick={() => { setFilterType("part_time_daily"); setFilterHealth(""); }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-bold transition-all ${filterType === "part_time_daily" ? "bg-[#191F28] text-white" : "bg-white border border-[#E5E8EB] text-[#4E5968]"}`}
+        >
+          일일알바 <span className={`${filterType === "part_time_daily" ? "bg-white/20" : "bg-[#F2F4F6]"} px-1.5 py-0.5 rounded-md`}>{stats.part_time_daily}</span>
+        </button>
+        {(stats.expired > 0 || stats.soon > 0) && (
+          <button
+            onClick={() => { setFilterType(""); setFilterHealth(filterHealth === "warning" ? "" : "warning"); }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-bold transition-all ${filterHealth === "warning" ? "bg-[#D9480F] text-white" : "bg-[#FFF4E6] border border-[#FFD8A8] text-[#D9480F]"}`}
+          >
+            <AlertTriangle className="w-3.5 h-3.5" />
+            보건증 주의 <span className={`${filterHealth === "warning" ? "bg-white/20" : "bg-[#FFD8A8]"} px-1.5 py-0.5 rounded-md`}>{stats.expired + stats.soon}</span>
+          </button>
+        )}
+        {stats.none > 0 && (
+          <button
+            onClick={() => { setFilterType(""); setFilterHealth(filterHealth === "none" ? "" : "none"); }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-bold transition-all ${filterHealth === "none" ? "bg-[#8B95A1] text-white" : "bg-white border border-[#E5E8EB] text-[#8B95A1]"}`}
+          >
+            미입력 <span className={`${filterHealth === "none" ? "bg-white/20" : "bg-[#F2F4F6]"} px-1.5 py-0.5 rounded-md`}>{stats.none}</span>
+          </button>
+        )}
+      </div>
 
-          return (
-            <div
-              key={employee.id}
-              className="bg-white rounded-[20px] p-5 sm:p-6 border border-slate-100 shadow-[0_2px_10px_rgba(0,0,0,0.02)] flex flex-col sm:flex-row sm:items-center justify-between gap-5 transition-all hover:shadow-[0_4px_20px_rgba(0,0,0,0.06)]"
-            >
-              <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 w-full">
-                <div className="flex items-start sm:items-center gap-4 shrink-0">
-                  <div
-                    className="w-14 h-14 rounded-full flex items-center justify-center text-[18px] font-bold text-white shadow-sm shrink-0"
-                    style={{ backgroundColor: employee.color_hex || "#8B95A1" }}
-                  >
-                    {employee.name?.charAt(0)}
-                  </div>
-                  <div className="sm:w-[130px]">
-                    <div className="flex items-center gap-2 mb-1">
-                      <p className="text-[18px] font-bold text-[#191F28]">
-                        {employee.name}
-                      </p>
-                      {isAdmin && (
-                        <span className="bg-[#E8F3FF] text-[#3182F6] text-[11px] font-bold px-1.5 py-0.5 rounded-md">
-                          관리자
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[12px] font-medium text-[#4E5968] mb-0.5">
-                      {employee.department || "소속 없음"}{" "}
-                      {employee.position ? `· ${employee.position}` : ""}
-                    </p>
-                    <p className="text-[11px] text-[#8B95A1]">
-                      입사:{" "}
-                      {employee.join_date
-                        ? employee.join_date.replace(/-/g, ".")
-                        : "미정"}
-                    </p>
-                  </div>
-                </div>
+      {/* 검색 */}
+      <div className="relative mb-3">
+        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8B95A1]" />
+        <input
+          type="text"
+          placeholder="이름으로 검색"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full pl-10 pr-4 py-2.5 bg-white border border-[#E5E8EB] rounded-xl text-[14px] text-[#191F28] focus:outline-none focus:border-[#3182F6] transition-all"
+        />
+      </div>
 
-                <div className="flex flex-col justify-center gap-3 flex-1 bg-[#F9FAFB] sm:bg-transparent p-4 sm:p-0 rounded-xl">
-                  {/* 주요 정보 요약 */}
-                  <div className="flex flex-wrap gap-4 sm:gap-6">
-                    <div className="flex items-center gap-2">
-                      <Phone className="w-4 h-4 text-[#8B95A1]" />
-                      <p className="text-[13px] font-medium text-[#4E5968]">
-                        {employee.phone || (
-                          <span className="text-[#D1D6DB]">미입력</span>
-                        )}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <CreditCard className="w-4 h-4 text-[#8B95A1]" />
-                      <p className="text-[13px] font-medium text-[#4E5968]">
-                        {employee.bank_name ? `${employee.bank_name} ` : ""}
-                        {employee.account_number || (
-                          <span className="text-[#D1D6DB]">계좌 미입력</span>
-                        )}
-                      </p>
-                      {employee.account_number && (
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(
-                              employee.account_number!,
-                            );
-                            toast.success("계좌번호를 복사했어요");
-                          }}
-                          className="text-[11px] font-bold text-[#3182F6] bg-[#E8F3FF] hover:bg-[#D0E5FF] px-2 py-0.5 rounded-md transition-colors"
-                        >
-                          복사
-                        </button>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <FileText className="w-4 h-4 text-[#8B95A1]" />
-                      {employee.health_cert_date ? (
-                        <p
-                          className={`text-[13px] font-bold ${
-                            isHealthCertExpired
-                              ? "text-[#D9480F]"
-                              : "text-[#3182F6]"
-                          }`}
-                        >
-                          ~{employee.health_cert_date.substring(2)}{" "}
-                          {isHealthCertExpired
-                            ? "(만료)"
-                            : employee.health_cert_verified
-                              ? "(확인완료)"
-                              : ""}
-                        </p>
-                      ) : (
-                        <p className="text-[13px] font-medium text-[#D1D6DB]">
-                          보건증 미입력
-                        </p>
-                      )}
-                    </div>
-                  </div>
+      {/* 컴팩트 직원 목록 */}
+      <div className="bg-white rounded-2xl border border-[#E5E8EB] overflow-hidden">
+        {filteredEmployees.length === 0 ? (
+          <div className="py-12 text-center text-[14px] text-[#8B95A1]">
+            조건에 맞는 직원이 없어요.
+          </div>
+        ) : (
+          filteredEmployees.map((employee, idx) => {
+            const isAdmin = employee.role === "admin";
+            const empTypeLabel =
+              employee.employment_type === "full_time"
+                ? "정규직"
+                : employee.employment_type === "part_time_fixed"
+                  ? "고정알바"
+                  : employee.employment_type === "part_time_daily"
+                    ? "일일알바"
+                    : null;
 
-                  {/* 서류 뱃지 영역 */}
-                  <div className="flex flex-wrap gap-2 mt-1">
-                    {[
-                      {
-                        label: "계약서",
-                        url: employee.employment_contract_url,
-                      },
-                      { label: "보건증", url: employee.health_cert_url },
-                    ].map((doc) =>
-                      doc.url ? (
-                        <button
-                          key={doc.label}
-                          onClick={() => handleViewDocument(doc.url!)}
-                          className="flex items-center gap-1.5 px-2 py-1 bg-[#E8F3FF] text-[#3182F6] hover:bg-[#D0E5FF] rounded-lg text-[11px] font-bold transition-colors"
-                        >
-                          <FileCheck className="w-3.5 h-3.5" /> {doc.label}
-                        </button>
-                      ) : null,
+            const storeIds = assignmentsMap[employee.id] ?? [];
+            const storeLabels = storeIds
+              .map((sid) => byId[sid]?.label ?? "")
+              .filter(Boolean)
+              .join(", ");
+
+            const positionLabels = (employee.position_keys ?? [])
+              .map((key) => {
+                for (const sid of storeIds) {
+                  const pos = (byId[sid]?.positions ?? []).find((p) => p.position_key === key);
+                  if (pos) return pos.label;
+                }
+                return null;
+              })
+              .filter(Boolean)
+              .join(", ");
+
+            const subLine = [storeLabels, positionLabels].filter(Boolean).join(" · ");
+
+            return (
+              <div
+                key={employee.id}
+                className={`flex items-center gap-3 px-4 py-3.5 cursor-pointer hover:bg-[#F9FAFB] active:bg-[#F2F4F6] transition-colors ${idx !== 0 ? "border-t border-[#F2F4F6]" : ""}`}
+                onClick={() => openEditModal(employee)}
+              >
+                {/* 아바타 */}
+                <AvatarDisplay
+                  userId={employee.id}
+                  avatarConfig={employee.avatar_config}
+                  size={36}
+                />
+
+                {/* 이름 + 소속 */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[14px] font-bold text-[#191F28]">{employee.name}</span>
+                    {isAdmin && (
+                      <span className="bg-[#E8F3FF] text-[#3182F6] text-[10px] font-bold px-1.5 py-0.5 rounded-md">관리자</span>
+                    )}
+                    {empTypeLabel && (
+                      <span className="bg-[#F2F4F6] text-[#8B95A1] text-[10px] font-bold px-1.5 py-0.5 rounded-md">{empTypeLabel}</span>
                     )}
                   </div>
+                  {subLine ? (
+                    <p className="text-[12px] text-[#8B95A1] truncate mt-0.5">{subLine}</p>
+                  ) : (
+                    <p className="text-[12px] text-[#D1D6DB] mt-0.5">매장 미배정</p>
+                  )}
+                  {/* 미입력 항목 태그 */}
+                  {(() => {
+                    const missing = [];
+                    if (!employee.health_cert_date) missing.push("보건증");
+                    if (!employee.bank_account_copy_url) missing.push("계좌");
+                    if (missing.length === 0) return null;
+                    return (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {missing.map((label) => (
+                          <span key={label} className="text-[10px] text-[#8B95A1] bg-[#F2F4F6] px-1.5 py-0.5 rounded-md">
+                            {label} 없음
+                          </span>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
-              </div>
 
-              <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3 w-full sm:w-auto mt-2 sm:mt-0 pt-4 sm:pt-0 border-t border-slate-100 sm:border-0 shrink-0">
-                <button
-                  onClick={() => openEditModal(employee)}
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2.5 bg-[#F9FAFB] hover:bg-[#F2F4F6] border border-slate-200 text-[#4E5968] rounded-xl text-[13px] font-bold transition-colors"
-                >
-                  <Edit2 className="w-4 h-4 text-[#8B95A1]" />
-                  <span>수정하기</span>
-                </button>
-                <div className="relative flex-1 sm:flex-none">
-                  <button className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2.5 bg-[#F9FAFB] hover:bg-[#F2F4F6] border border-slate-200 text-[#4E5968] rounded-xl text-[13px] font-bold transition-colors">
-                    <Palette className="w-4 h-4 text-[#8B95A1]" />
-                    <span>색상</span>
-                  </button>
-                  <input
-                    type="color"
-                    value={employee.color_hex || "#8B95A1"}
-                    onChange={(e) =>
-                      handleColorChange(employee.id, e.target.value)
-                    }
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  />
+                {/* 보건증 상태 */}
+                <div className="shrink-0">
+                  <HealthBadge date={employee.health_cert_date} verified={employee.health_cert_verified} warningDays={warningDays} />
                 </div>
-                {!isAdmin && (
-                  <button
-                    onClick={() =>
-                      handleDeleteEmployee(employee.id, employee.name)
-                    }
-                    className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2.5 bg-[#FFF4E6] hover:bg-[#FFE8CC] text-[#D9480F] rounded-xl text-[13px] font-bold transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    <span>삭제</span>
-                  </button>
-                )}
+
+                {/* 화살표 */}
+                <ChevronRight className="w-4 h-4 text-[#D1D6DB] shrink-0" />
               </div>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </div>
 
       {/* 직원 삭제 확인 다이얼로그 */}
@@ -709,34 +835,6 @@ export default function AdminEmployeesPage() {
                       className="w-full px-4 py-2.5 bg-[#F9FAFB] border border-slate-200 rounded-xl text-[14px] text-[#191F28] focus:outline-none focus:border-[#3182F6] transition-all"
                     />
                   </div>
-                  <div className="col-span-2 grid grid-cols-2 gap-3 mt-1">
-                    <div>
-                      <label className="block text-[12px] font-medium text-[#8B95A1] mb-1">
-                        기본 출근 시간
-                      </label>
-                      <input
-                        type="time"
-                        value={editForm.target_in_time || ""}
-                        onChange={(e) =>
-                          handleFormChange("target_in_time", e.target.value)
-                        }
-                        className="w-full px-4 py-2.5 bg-[#F9FAFB] border border-slate-200 rounded-xl text-[14px] text-[#191F28] focus:outline-none focus:border-[#3182F6] transition-all"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[12px] font-medium text-[#8B95A1] mb-1">
-                        기본 퇴근 시간
-                      </label>
-                      <input
-                        type="time"
-                        value={editForm.target_out_time || ""}
-                        onChange={(e) =>
-                          handleFormChange("target_out_time", e.target.value)
-                        }
-                        className="w-full px-4 py-2.5 bg-[#F9FAFB] border border-slate-200 rounded-xl text-[14px] text-[#191F28] focus:outline-none focus:border-[#3182F6] transition-all"
-                      />
-                    </div>
-                  </div>
                 </div>
 
                 {/* 고용 형태 */}
@@ -771,22 +869,19 @@ export default function AdminEmployeesPage() {
                     근무 가능 장소
                   </label>
                   <div className="flex gap-2 flex-wrap">
-                    {WORK_LOCATION_OPTIONS.map((opt) => {
-                      const selected = (editForm.work_locations || []).includes(
-                        opt.value,
-                      );
+                    {workplaces.map((w) => {
+                      const selected = assignedStoreIds.includes(w.id);
                       return (
                         <button
-                          key={opt.value}
+                          key={w.id}
                           type="button"
                           onClick={() => {
-                            const cur = editForm.work_locations || [];
                             const next = selected
-                              ? cur.filter((v) => v !== opt.value)
-                              : [...cur, opt.value];
-                            handleFormChange("work_locations", next);
-                            if (!next.includes("cafe")) {
-                              handleFormChange("cafe_positions", []);
+                              ? assignedStoreIds.filter((id) => id !== w.id)
+                              : [...assignedStoreIds, w.id];
+                            setAssignedStoreIds(next);
+                            if (!next.some((id) => hasPositionsStore(id))) {
+                              handleFormChange("position_keys", []);
                             }
                           }}
                           className={`px-4 py-2 rounded-xl text-[13px] font-bold transition-all ${
@@ -795,45 +890,45 @@ export default function AdminEmployeesPage() {
                               : "bg-[#F2F4F6] text-[#4E5968]"
                           }`}
                         >
-                          {opt.label}
+                          {w.label}
                         </button>
                       );
                     })}
                   </div>
                 </div>
 
-                {/* 카페 포지션 (카페 선택 시만 표시) */}
-                {(editForm.work_locations || []).includes("cafe") && (
+                {/* 포지션 (포지션 있는 근무지 선택 시만 표시) */}
+                {assignedStoreIds.some((id) => hasPositionsStore(id)) && (
                   <div>
                     <label className="block text-[12px] font-medium text-[#8B95A1] mb-2">
-                      카페 담당 포지션
+                      담당 포지션
                     </label>
                     <div className="flex gap-2 flex-wrap">
-                      {CAFE_POSITION_OPTIONS.map((opt) => {
-                        const selected = (
-                          editForm.cafe_positions || []
-                        ).includes(opt.value);
-                        return (
-                          <button
-                            key={opt.value}
-                            type="button"
-                            onClick={() => {
-                              const cur = editForm.cafe_positions || [];
-                              const next = selected
-                                ? cur.filter((v) => v !== opt.value)
-                                : [...cur, opt.value];
-                              handleFormChange("cafe_positions", next);
-                            }}
-                            className={`px-4 py-2 rounded-xl text-[13px] font-bold transition-all ${
-                              selected
-                                ? "bg-[#E8F3FF] text-[#3182F6] border border-[#3182F6]"
-                                : "bg-[#F2F4F6] text-[#4E5968]"
-                            }`}
-                          >
-                            {opt.label}
-                          </button>
-                        );
-                      })}
+                      {assignedStoreIds
+                        .flatMap((id) => positionsOfStore(id))
+                        .map((p) => {
+                          const selected = (editForm.position_keys || []).includes(p.position_key);
+                          return (
+                            <button
+                              key={p.position_key}
+                              type="button"
+                              onClick={() => {
+                                const cur = editForm.position_keys || [];
+                                const next = selected
+                                  ? cur.filter((v) => v !== p.position_key)
+                                  : [...cur, p.position_key];
+                                handleFormChange("position_keys", next);
+                              }}
+                              className={`px-4 py-2 rounded-xl text-[13px] font-bold transition-all ${
+                                selected
+                                  ? "bg-[#E8F3FF] text-[#3182F6] border border-[#3182F6]"
+                                  : "bg-[#F2F4F6] text-[#4E5968]"
+                              }`}
+                            >
+                              {p.label}
+                            </button>
+                          );
+                        })}
                     </div>
                   </div>
                 )}
@@ -1040,7 +1135,7 @@ export default function AdminEmployeesPage() {
                 </h3>
                 {workDefaultsLoading ? (
                   <div className="flex justify-center py-4">
-                    <div className="w-6 h-6 border-3 border-[#3182F6] border-t-transparent rounded-full animate-spin" />
+                    <div className="cat-spinner" />
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -1060,11 +1155,7 @@ export default function AdminEmployeesPage() {
                                 className="flex items-center gap-2 bg-[#F2F4F6] rounded-xl px-3 py-2"
                               >
                                 <span className="text-[12px] font-bold text-[#3182F6] bg-[#E8F3FF] px-2 py-0.5 rounded-md">
-                                  {wd.work_location === "cafe"
-                                    ? "카페"
-                                    : wd.work_location === "factory"
-                                      ? "공장"
-                                      : "케이터링"}
+                                  {byId[wd.store_id]?.label || wd.store_id}
                                 </span>
                                 <span className="text-[12px] text-[#4E5968] font-medium flex-1">
                                   {wd.start_time.slice(0, 5)} ~{" "}
@@ -1095,8 +1186,8 @@ export default function AdminEmployeesPage() {
                                   day_of_week: dow,
                                   start_time: "09:00",
                                   end_time: "18:00",
-                                  work_location: "cafe",
-                                  cafe_positions: [],
+                                  store_id: workplaces[0]?.id || "",
+                                  position_keys: [],
                                 })
                               }
                               className="text-[12px] text-[#8B95A1] hover:text-[#3182F6] font-bold px-3 py-1.5 hover:bg-[#F2F4F6] rounded-xl transition-all"
@@ -1183,61 +1274,58 @@ export default function AdminEmployeesPage() {
                   근무 장소
                 </label>
                 <div className="flex gap-2">
-                  {WORK_LOCATION_OPTIONS.map((opt) => (
+                  {workplaces.map((w) => (
                     <button
-                      key={opt.value}
+                      key={w.id}
                       type="button"
                       onClick={() =>
                         setEditingDefault((prev) =>
                           prev
                             ? {
                                 ...prev,
-                                work_location: opt.value,
-                                cafe_positions:
-                                  opt.value !== "cafe"
-                                    ? []
-                                    : prev.cafe_positions,
+                                store_id: w.id,
+                                position_keys: !hasPositionsStore(w.id)
+                                  ? []
+                                  : prev.position_keys,
                               }
                             : null,
                         )
                       }
-                      className={`flex-1 py-2 rounded-xl text-[13px] font-bold transition-all ${editingDefault.work_location === opt.value ? "bg-[#3182F6] text-white" : "bg-[#F2F4F6] text-[#4E5968]"}`}
+                      className={`flex-1 py-2 rounded-xl text-[13px] font-bold transition-all ${editingDefault.store_id === w.id ? "bg-[#3182F6] text-white" : "bg-[#F2F4F6] text-[#4E5968]"}`}
                     >
-                      {opt.label}
+                      {w.label}
                     </button>
                   ))}
                 </div>
               </div>
-              {editingDefault.work_location === "cafe" && (
+              {editingDefault.store_id && hasPositionsStore(editingDefault.store_id) && (
                 <div>
                   <label className="block text-[12px] font-medium text-[#8B95A1] mb-2">
-                    카페 포지션
+                    포지션
                   </label>
                   <div className="flex gap-2">
-                    {CAFE_POSITION_OPTIONS.map((opt) => {
-                      const sel = (
-                        editingDefault.cafe_positions || []
-                      ).includes(opt.value);
+                    {positionsOfStore(editingDefault.store_id).map((p) => {
+                      const sel = (editingDefault.position_keys || []).includes(p.position_key);
                       return (
                         <button
-                          key={opt.value}
+                          key={p.position_key}
                           type="button"
                           onClick={() => {
-                            const cur = editingDefault.cafe_positions || [];
+                            const cur = editingDefault.position_keys || [];
                             setEditingDefault((prev) =>
                               prev
                                 ? {
                                     ...prev,
-                                    cafe_positions: sel
-                                      ? cur.filter((v) => v !== opt.value)
-                                      : [...cur, opt.value],
+                                    position_keys: sel
+                                      ? cur.filter((v) => v !== p.position_key)
+                                      : [...cur, p.position_key],
                                   }
                                 : null,
                             );
                           }}
                           className={`flex-1 py-2 rounded-xl text-[13px] font-bold transition-all ${sel ? "bg-[#E8F3FF] text-[#3182F6] border border-[#3182F6]" : "bg-[#F2F4F6] text-[#4E5968]"}`}
                         >
-                          {opt.label}
+                          {p.label}
                         </button>
                       );
                     })}

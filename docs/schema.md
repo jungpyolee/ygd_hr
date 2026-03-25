@@ -1,7 +1,7 @@
 # DB 스키마 (최신 상태)
 
 > **프로젝트**: ymvdjxzkjodasctktunh
-> **최종 갱신**: 2026-03-17 (Epic D 스케줄 5테이블 + profiles 5컬럼 추가)
+> **최종 갱신**: 2026-03-23 (DB-035: company_events 테이블 추가 + schedule_slots 팀뷰 RLS)
 > **DB 시간대**: `Asia/Seoul` (KST, UTC+9) — 모든 롤에 적용됨
 > **timestamptz 저장**: UTC로 저장, 날짜 함수(`DATE_TRUNC`, `CURRENT_DATE` 등)는 KST 기준 동작
 > **연결 방식**: Supabase Management API
@@ -26,6 +26,7 @@
 | `schedule_slots` | 개별 근무 슬롯 (날짜·시간·장소·포지션) |
 | `substitute_requests` | 대타 요청 (pending→approved/rejected→filled) |
 | `substitute_responses` | 대타 수락/거절 응답 |
+| `company_events` | 회사 공지 일정 (어드민 등록, 직원 캘린더 표시) |
 
 ---
 
@@ -43,8 +44,6 @@
 | `position` | text | YES | - | 직급 |
 | `role` | text | YES | `'employee'` | `'admin'` / `'employee'` |
 | `color_hex` | varchar(7) | YES | `'#8B95A1'` | 아바타 색상 |
-| `target_in_time` | text | YES | `'09:00'` | 기본 출근 시간 |
-| `target_out_time` | text | YES | `'18:00'` | 기본 퇴근 시간 |
 | `join_date` | date | YES | - | 입사일 |
 | `employment_contract_url` | text | YES | - | 근로계약서 Storage 경로 |
 | `bank_account_copy_url` | text | YES | - | 통장사본 Storage 경로 |
@@ -55,8 +54,7 @@
 | `account_number` | text | YES | - | 계좌번호 |
 | `bank_name` | text | YES | - | 은행명 |
 | `employment_type` | text | YES | `'part_time_fixed'` | `'full_time'` / `'part_time_fixed'` / `'part_time_daily'` |
-| `work_locations` | text[] | YES | `'{}'` | `'cafe'` / `'factory'` / `'catering'` 복수 선택 |
-| `cafe_positions` | text[] | YES | `'{}'` | `'hall'` / `'kitchen'` / `'showroom'` 복수 선택 |
+| `position_keys` | text[] | YES | `'{}'` | `'hall'` / `'kitchen'` / `'showroom'` 복수 선택 |
 | `hourly_wage` | integer | YES | - | 시급 (원, 알바만) |
 | `insurance_type` | text | YES | - | `'national'` (2대보험) / `'3.3'` (원천징수) |
 | `created_at` | timestamptz | YES | `now()` | 생성일 |
@@ -77,7 +75,6 @@
 |------|------|------|--------|------|
 | `id` | uuid | NO | `gen_random_uuid()` | PK |
 | `profile_id` | uuid | NO | - | FK → profiles.id |
-| `store_id` | uuid | **YES** | - | FK → stores.id (레거시, 신규는 아래 컬럼 사용) |
 | `check_in_store_id` | uuid | YES | - | FK → stores.id (출근 매장, 출장출근 시 null) |
 | `check_out_store_id` | uuid | YES | - | FK → stores.id (퇴근 매장, 원격/출장퇴근 시 null) |
 | `type` | text | NO | - | `'IN'` / `'OUT'` |
@@ -92,15 +89,16 @@
 
 | 값 | 설명 |
 |----|------|
-| `regular` | 일반 출퇴근 (반경 내) |
+| `regular` | 일반 출퇴근 (GPS 반경 내) |
 | `remote_out` | 원격퇴근 (반경 밖 퇴근, 사유 필수) |
 | `business_trip_in` | 출장출근 (반경 밖 출근, 사용자 확인) |
 | `business_trip_out` | 출장퇴근 (출장출근 후 반경 밖 퇴근, 사유 자동입력) |
+| `fallback_in` | 수동출근 — GPS 실패 후 직원이 매장 직접 선택 (`distance_m=0`) 또는 관리자 처리 (`distance_m=null`, `reason="관리자 수동 처리"`) |
+| `fallback_out` | 수동퇴근 — GPS 실패 후 직원이 매장 직접 선택 (`distance_m=0`) 또는 관리자 처리 (`distance_m=null`, `reason="관리자 수동 처리"`) |
 
 **제약조건**
 - PK: `id`
 - FK: `profile_id` → `profiles.id`
-- FK: `store_id` → `stores.id` (nullable, DB-003 이후)
 - FK: `check_in_store_id` → `stores.id`
 - FK: `check_out_store_id` → `stores.id`
 
@@ -108,7 +106,7 @@
 
 ## stores
 
-매장 정보. 위도/경도 기반 출근 반경 판단에 사용.
+매장 정보. 위도/경도 기반 출근 반경 판단 + 근무지 메타데이터 관리.
 
 | 컬럼 | 타입 | NULL | 기본값 | 설명 |
 |------|------|------|--------|------|
@@ -116,13 +114,85 @@
 | `name` | text | NO | - | 매장명 |
 | `lat` | float8 | NO | - | 위도 |
 | `lng` | float8 | NO | - | 경도 |
-| `radius_m` | integer | YES | `100` | 출근 가능 반경 (미터) |
+| `work_location_key` | text | YES | - | 코드 식별자 (`cafe`/`factory`/`catering`) UNIQUE |
+| `label` | text | NO | `''` | UI 한글 표시명 |
+| `color` | text | NO | `'#8B95A1'` | UI 색상 |
+| `bg_color` | text | NO | `'#F2F4F6'` | UI 배경색 |
+| `display_order` | integer | NO | `0` | 정렬 순서 |
+| `is_gps_required` | boolean | NO | `true` | GPS 위치 체크 필요 여부 (케이터링 등 이동형 근무지는 false) |
+| `overtime_unit` | integer | NO | `30` | 추가근무 인정 단위(분): 15/30/60/0(자유입력) |
+| `overtime_include_early` | boolean | NO | `false` | 일찍 출근한 시간도 추가근무에 포함할지 여부 |
+| `overtime_min_minutes` | integer | NO | `10` | 이 값(분) 이상일 때만 확인 필요로 표시 |
+
+**비고**
+- `lat`/`lng`는 nullable — `is_gps_required=false`인 근무지는 null 허용
+- `is_gps_required=false`인 경우 코드에서 거리 체크 건너뜀
 
 **제약조건**
 - PK: `id`
+- UNIQUE: `work_location_key`
 
-> ⚠️ 현재 코드(`AttendanceCard.tsx`)에서 반경은 `RADIUS_METER = 100` 상수로 하드코딩되어 있음.
-> `stores.radius_m` 컬럼이 존재하지만 코드에서 활용 안 됨 → 개선 여지 있음.
+---
+
+## store_positions
+
+근무지별 포지션 목록. `stores.work_location_key`가 있는 근무지에 연결.
+
+| 컬럼 | 타입 | NULL | 기본값 | 설명 |
+|------|------|------|--------|------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `store_id` | uuid | NO | - | FK → stores.id (CASCADE) |
+| `position_key` | text | NO | - | 코드 식별자 (`hall`/`kitchen`/`showroom`) |
+| `label` | text | NO | - | UI 한글 표시명 |
+| `display_order` | integer | NO | `0` | 정렬 순서 |
+
+**제약조건**
+- PK: `id`
+- UNIQUE: `(store_id, position_key)`
+- FK: `store_id` → `stores.id` ON DELETE CASCADE
+- RLS: anon/authenticated SELECT, admin ALL
+
+---
+
+## employee_store_assignments
+
+직원-근무지 배정 테이블. `profiles.work_locations text[]`를 관계형으로 전환.
+
+| 컬럼 | 타입 | NULL | 기본값 | 설명 |
+|------|------|------|--------|------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `profile_id` | uuid | NO | - | FK → auth.users(id) CASCADE |
+| `store_id` | uuid | NO | - | FK → stores.id CASCADE |
+| `created_at` | timestamptz | YES | `now()` | 생성일 |
+
+**제약조건**
+- UNIQUE: `(profile_id, store_id)`
+- RLS: admin ALL, 본인 SELECT
+
+---
+
+## overtime_requests
+
+추가근무 인정/넘김 기록. 사장이 직접 관리 (직원 요청 기능 없음).
+
+| 컬럼 | 타입 | NULL | 기본값 | 설명 |
+|------|------|------|--------|------|
+| `id` | uuid | NO | `gen_random_uuid()` | PK |
+| `profile_id` | uuid | NO | - | FK → profiles.id CASCADE |
+| `date` | date | NO | - | 해당 날짜 |
+| `minutes` | integer | NO | - | 인정된 추가근무 분 (dismissed는 0) |
+| `reason` | text | YES | - | 메모 (선택) |
+| `status` | overtime_status | NO | `'pending'` | `approved` / `dismissed` (pending/rejected는 미사용) |
+| `approved_by` | uuid | YES | - | FK → profiles.id (처리한 관리자) |
+| `note` | text | YES | - | 내부 메모 |
+| `created_at` | timestamptz | NO | `now()` | |
+| `updated_at` | timestamptz | NO | `now()` | 자동 갱신 트리거 있음 |
+
+**비고**
+- `overtime_status` ENUM: `pending` / `approved` / `rejected` / `dismissed`
+  - 실제 사용: `approved` (추가근무 인정) / `dismissed` (확인하고 넘김)
+- dismissed 레코드의 `minutes`는 0으로 저장
+- RLS: admin ALL, 직원 SELECT(본인)
 
 ---
 
@@ -397,12 +467,12 @@ DELETE FROM auth.users WHERE id = target_user_id
 | `day_of_week` | int | NO | - | 0=일, 1=월 … 6=토 |
 | `start_time` | time | NO | - | 시작 시간 |
 | `end_time` | time | NO | - | 종료 시간 |
-| `work_location` | text | NO | - | `'cafe'` / `'factory'` / `'catering'` |
-| `cafe_positions` | text[] | YES | `'{}'` | `'hall'` / `'kitchen'` / `'showroom'` |
+| `store_id` | uuid | NO | - | FK → stores.id |
+| `position_keys` | text[] | YES | `'{}'` | DB 기반 position_key 목록 |
 | `is_active` | boolean | YES | `true` | 활성 여부 |
 | `created_at` | timestamptz | YES | `now()` | 생성일 |
 
-**제약**: UNIQUE(profile_id, day_of_week, work_location)
+**제약**: UNIQUE(profile_id, day_of_week, store_id)
 **RLS**: 어드민 ALL / 본인 SELECT
 
 ---
@@ -437,8 +507,8 @@ DELETE FROM auth.users WHERE id = target_user_id
 | `slot_date` | date | NO | - | 근무 날짜 |
 | `start_time` | time | NO | - | 시작 시간 |
 | `end_time` | time | NO | - | 종료 시간 |
-| `work_location` | text | NO | - | `'cafe'` / `'factory'` / `'catering'` |
-| `cafe_positions` | text[] | YES | `'{}'` | `'hall'` / `'kitchen'` / `'showroom'` |
+| `store_id` | uuid | NO | - | FK → stores.id |
+| `position_keys` | text[] | YES | `'{}'` | DB 기반 position_key 목록 |
 | `status` | text | YES | `'active'` | `'active'` / `'cancelled'` / `'substituted'` |
 | `notes` | text | YES | - | 메모 |
 | `created_at` | timestamptz | YES | `now()` | 생성일 |
@@ -525,9 +595,9 @@ DELETE FROM auth.users WHERE id = target_user_id
 
 | # | 항목 | 우선순위 | 상태 |
 |---|------|---------|------|
-| 1 | `stores.radius_m` 컬럼이 있는데 코드에서 하드코딩 상수 사용 중 | 낮음 | 미처리 |
+| 1 | `stores.radius_m` 컬럼이 있는데 코드에서 하드코딩 상수 사용 중 | 낮음 | ✅ DB-005 완료 (컬럼 제거) |
 | 2 | `attendance_logs.profile_id`, `created_at` 인덱스 없음 | 중간 | ✅ DB-001 완료 |
 | 3 | `profiles.updated_at` 자동 갱신 트리거 없음 | 낮음 | ✅ DB-002 완료 |
 | 4 | `attendance_logs.store_id` 단일 컬럼으로 출/퇴근 매장 구분 불가 | 높음 | ✅ DB-003 완료 |
-| 5 | `attendance_logs.store_id` 레거시 컬럼 제거 (check_in/out_store_id로 완전 이관 후) | 낮음 | 미처리 |
+| 5 | `attendance_logs.store_id` 레거시 컬럼 제거 | 낮음 | ✅ DB-005 완료 |
 | 6 | DB 시간대 UTC → KST 통일, 중복 출퇴근 방지 트리거 없음 | 높음 | ✅ DB-004 완료 |

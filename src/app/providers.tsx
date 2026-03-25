@@ -1,6 +1,7 @@
 "use client";
 
 import { SWRConfig } from "swr";
+import { AuthProvider } from "@/lib/auth-context";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   return (
@@ -14,7 +15,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
         errorRetryInterval: 5_000,
       }}
     >
-      {children}
+      <AuthProvider>{children}</AuthProvider>
     </SWRConfig>
   );
 }

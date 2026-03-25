@@ -82,7 +82,7 @@ export default function PWAInstallPrompt() {
   if (!showBanner || !deferredPrompt || isInstalled) return null;
 
   return (
-    <div className="fixed bottom-20 left-4 right-4 z-50 mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl animate-in slide-in-from-bottom-5 fade-in duration-300">
+    <div className="fixed bottom-24 left-4 right-4 z-[60] mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl animate-in slide-in-from-bottom-5 fade-in duration-300">
       <p className="text-[15px] font-bold text-[#191F28]">
         앱으로 설치하는 걸 권장해요
       </p>

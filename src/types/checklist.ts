@@ -2,8 +2,8 @@ export interface ChecklistTemplate {
   id: string;
   title: string;
   trigger: "check_in" | "check_out";
-  work_location: "cafe" | "factory" | "catering" | null;
-  cafe_position: "hall" | "kitchen" | "showroom" | null;
+  work_location: string | null;
+  position_key: string | null;
   order_index: number;
   is_active: boolean;
   created_at: string;

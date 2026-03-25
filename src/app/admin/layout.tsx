@@ -3,10 +3,13 @@
 import { useEffect, useState, useRef, useMemo } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
 import Link from "next/link";
-import { format, addDays, differenceInDays } from "date-fns";
+import { format, addDays, differenceInCalendarDays, parseISO, startOfDay } from "date-fns";
 import { sendNotification } from "@/lib/notifications";
+import AdminPushToggle from "@/components/AdminPushToggle";
+import PushPromptModal from "@/components/PushPromptModal";
 import {
   Users,
   Clock,
@@ -51,6 +54,7 @@ export default function AdminLayout({
   const router = useRouter();
   const pathname = usePathname();
   const supabase = useMemo(() => createClient(), []);
+  const { user, isLoading: authLoading } = useAuth();
 
   // 🚀 외부 영역 클릭 시 알림창 닫기 로직
   useEffect(() => {
@@ -65,17 +69,15 @@ export default function AdminLayout({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showNoti]);
 
-  // 1. 관리자 권한 체크
+  // 1. 관리자 권한 체크 (getUser() 제거 — useAuth()에서 user 재사용)
   useEffect(() => {
-    const checkAdmin = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        router.replace("/login");
-        return;
-      }
+    if (authLoading) return;
+    if (!user) {
+      router.replace("/login");
+      return;
+    }
 
+    const checkAdmin = async () => {
       const { data: profile } = await supabase
         .from("profiles")
         .select("role")
@@ -95,22 +97,26 @@ export default function AdminLayout({
     };
 
     checkAdmin();
-  }, [router, supabase]);
+  }, [user, authLoading, router, supabase]);
 
-  // 2. 🚀 실시간 구독 (필터링 로직 보강)
+  // 2. 🚀 실시간 구독 — payload 직접 반영 (DB 풀 쿼리 제거)
   useEffect(() => {
     if (!isAdmin) return;
 
     const notiChannel = supabase
       .channel("admin-notifications")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: "target_role=eq.admin" }, (payload) => {
-        fetchNotis();
-        if (payload.new.type === "substitute_filled") {
+        const newNoti = payload.new as any;
+        setNotis((prev) => [newNoti, ...prev].slice(0, 15));
+        setUnreadCount((prev) => prev + 1);
+        if (newNoti.type === "substitute_filled") {
           fetchPendingSubCount();
         }
       })
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: "target_role=eq.all" }, () => {
-        fetchNotis();
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: "target_role=eq.all" }, (payload) => {
+        const newNoti = payload.new as any;
+        setNotis((prev) => [newNoti, ...prev].slice(0, 15));
+        setUnreadCount((prev) => prev + 1);
       })
       .subscribe();
 
@@ -157,9 +163,9 @@ export default function AdminLayout({
 
     for (const emp of expiring) {
       if (notifiedIds.has(emp.id)) continue;
-      const daysLeft = differenceInDays(
-        new Date(emp.health_cert_date),
-        today
+      const daysLeft = differenceInCalendarDays(
+        parseISO(emp.health_cert_date),
+        startOfDay(today)
       );
       await sendNotification({
         target_role: "admin",
@@ -209,7 +215,7 @@ export default function AdminLayout({
   if (loading)
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F9FAFB]">
-        <div className="w-8 h-8 border-4 border-[#3182F6] border-t-transparent rounded-full animate-spin" />
+        <div className="cat-spinner-lg" />
       </div>
     );
   if (!isAdmin) return null;
@@ -226,13 +232,8 @@ export default function AdminLayout({
       icon: <Users className="w-5 h-5" />,
     },
     {
-      name: "근태 조회",
-      path: "/admin/attendance",
-      icon: <Clock className="w-5 h-5" />,
-    },
-    {
-      name: "스케줄 관리",
-      path: "/admin/schedules",
+      name: "통합 캘린더",
+      path: "/admin/calendar",
       icon: <CalendarDays className="w-5 h-5" />,
     },
     {
@@ -254,6 +255,11 @@ export default function AdminLayout({
       name: "체크리스트 설정",
       path: "/admin/checklists",
       icon: <ClipboardList className="w-5 h-5" />,
+    },
+    {
+      name: "매장 설정",
+      path: "/admin/settings",
+      icon: <Settings className="w-5 h-5" />,
     },
     {
       name: "직원 모드로 변경",
@@ -321,6 +327,7 @@ export default function AdminLayout({
 
   return (
     <div className="flex min-h-screen bg-[#F9FAFB] relative font-pretendard overflow-x-hidden">
+      <PushPromptModal />
       {/* 💻 Desktop Sidebar */}
       <aside className="hidden md:flex w-64 bg-white border-r border-slate-100 p-6 flex-col shrink-0 sticky top-0 h-screen">
         <h1 className="text-xl font-bold text-[#191F28] mb-10 tracking-tight">
@@ -328,8 +335,10 @@ export default function AdminLayout({
         </h1>
         <nav className="space-y-2 flex-1">
           {menus.map((menu) => {
-            const isActive = pathname === menu.path;
-            const isSchedule = menu.name === "스케줄 관리";
+            const isActive =
+              menu.path === "/admin"
+                ? pathname === "/admin"
+                : pathname === menu.path || pathname.startsWith(menu.path + "/");
             return (
               <Link
                 key={menu.name}
@@ -342,11 +351,6 @@ export default function AdminLayout({
               >
                 {menu.icon}
                 {menu.name}
-                {isSchedule && pendingSubCount > 0 && (
-                  <span className="ml-auto min-w-[20px] h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 leading-none">
-                    {pendingSubCount > 9 ? "9+" : pendingSubCount}
-                  </span>
-                )}
               </Link>
             );
           })}
@@ -423,6 +427,9 @@ export default function AdminLayout({
                     ))
                   )}
                 </div>
+                <div className="border-t border-slate-100">
+                  <AdminPushToggle />
+                </div>
               </div>
             )}
           </div>
@@ -462,27 +469,25 @@ export default function AdminLayout({
             </div>
             <nav className="space-y-3">
               {menus.map((menu) => {
-                const isSchedule = menu.name === "스케줄 관리";
+                const isMobileActive =
+                  menu.path === "/admin"
+                    ? pathname === "/admin"
+                    : pathname === menu.path || pathname.startsWith(menu.path + "/");
                 return (
                   <Link
                     key={menu.name}
                     href={menu.path}
                     onClick={() => setIsMobileMenuOpen(false)}
                     className={`flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-[16px] border ${
-                      pathname === menu.path
+                      isMobileActive
                         ? "bg-[#E8F3FF] border-[#E8F3FF] text-[#3182F6]"
                         : "bg-white border-slate-100 text-[#4E5968]"
                     }`}
                   >
-                    <div className={pathname === menu.path ? "text-[#3182F6]" : "text-[#8B95A1]"}>
+                    <div className={isMobileActive ? "text-[#3182F6]" : "text-[#8B95A1]"}>
                       {menu.icon}
                     </div>
                     {menu.name}
-                    {isSchedule && pendingSubCount > 0 && (
-                      <span className="ml-auto min-w-[20px] h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 leading-none">
-                        {pendingSubCount > 9 ? "9+" : pendingSubCount}
-                      </span>
-                    )}
                   </Link>
                 );
               })}

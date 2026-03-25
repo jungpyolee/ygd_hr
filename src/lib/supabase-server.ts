@@ -8,9 +8,11 @@ export const createServerSupabase = async () => {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
+        getAll() {
+          return cookieStore.getAll();
         },
+        // Server Components은 쿠키 쓰기 불가. 토큰 갱신은 middleware에서 처리됨.
+        setAll() {},
       },
     }
   );

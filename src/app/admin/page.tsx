@@ -1,6 +1,7 @@
 "use client";
 
 import useSWR from "swr";
+import AvatarDisplay from "@/components/AvatarDisplay";
 import {
   Phone,
   Edit2,
@@ -8,19 +9,22 @@ import {
   ArrowRight,
   Clock,
   Users,
+  TimerIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
-import { format, addDays, differenceInDays } from "date-fns";
+import { format, addDays, differenceInCalendarDays, subDays, parseISO, startOfDay } from "date-fns";
+import { useWorkplaces } from "@/lib/hooks/useWorkplaces";
 import { ko } from "date-fns/locale";
 
 interface TodayAttendanceItem {
   profile_id: string;
   name: string;
   color_hex: string;
+  avatar_config?: any;
   start_time: string;
   end_time: string;
-  work_location: string;
+  store_id: string;
   clock_in_time: string | null;
   status: "attended" | "late" | "scheduled" | "absent";
   late_minutes: number;
@@ -30,24 +34,16 @@ interface HealthCertItem {
   id: string;
   name: string;
   color_hex: string | null;
+  avatar_config?: any;
   phone: string | null;
   health_cert_date: string;
   days_left: number;
 }
 
-const LOCATION_LABELS: Record<string, string> = {
-  cafe: "카페",
-  factory: "공장",
-  catering: "케이터링",
-};
-const LOCATION_COLORS: Record<string, string> = {
-  cafe: "#3182F6",
-  factory: "#00B761",
-  catering: "#F59E0B",
-};
 
 export default function AdminDashboardPage() {
   const router = useRouter();
+  const { byId } = useWorkplaces();
 
   const todayText = new Intl.DateTimeFormat("ko-KR", {
     month: "long",
@@ -76,7 +72,7 @@ export default function AdminDashboardPage() {
       const { data: slotsData } = await supabase
         .from("schedule_slots")
         .select(
-          "profile_id, start_time, end_time, work_location, profiles!profile_id(name, color_hex)",
+          "profile_id, start_time, end_time, store_id, profiles!profile_id(name, color_hex, avatar_config)",
         )
         .eq("slot_date", todayStr)
         .eq("status", "active")
@@ -133,9 +129,10 @@ export default function AdminDashboardPage() {
           profile_id: slot.profile_id,
           name: slot.profiles?.name || "알 수 없음",
           color_hex: slot.profiles?.color_hex || "#8B95A1",
+          avatar_config: slot.profiles?.avatar_config ?? null,
           start_time: slot.start_time,
           end_time: slot.end_time,
-          work_location: slot.work_location,
+          store_id: slot.store_id,
           clock_in_time: clockIn,
           status,
           late_minutes,
@@ -147,28 +144,121 @@ export default function AdminDashboardPage() {
     { dedupingInterval: 60_000, revalidateOnFocus: false },
   );
 
-  // 보건증 만료 30일 이내
-  const { data: expiringHealthCerts = [] } = useSWR(
+  // 보건증 만료 + 만료 임박 (만료된 것 포함)
+  const { data: warningHealthCerts = [] } = useSWR(
     "admin-health-cert-expiry",
     async () => {
       const supabase = createClient();
-      const today = format(new Date(), "yyyy-MM-dd");
       const thirtyDaysLater = format(addDays(new Date(), 30), "yyyy-MM-dd");
 
       const { data } = await supabase
         .from("profiles")
-        .select("id, name, color_hex, phone, health_cert_date")
+        .select("id, name, color_hex, avatar_config, phone, health_cert_date")
         .not("health_cert_date", "is", null)
-        .gte("health_cert_date", today)
         .lte("health_cert_date", thirtyDaysLater)
         .order("health_cert_date", { ascending: true });
 
       return ((data ?? []) as HealthCertItem[]).map((p) => ({
         ...p,
-        days_left: differenceInDays(new Date(p.health_cert_date), new Date()),
+        days_left: differenceInCalendarDays(parseISO(p.health_cert_date), startOfDay(new Date())),
       }));
     },
     { dedupingInterval: 300_000, revalidateOnFocus: false },
+  );
+  const expiredHealthCerts = warningHealthCerts.filter((e) => e.days_left < 0);
+  const expiringHealthCerts = warningHealthCerts.filter((e) => e.days_left >= 0);
+
+  // 추가근무 미처리 건수 (date-profile_id 별로 approved/dismissed 없는 것)
+  const { data: pendingOvertimeCount = 0 } = useSWR(
+    "admin-pending-overtime-count",
+    async () => {
+      const supabase = createClient();
+      const today = new Date();
+      const startDate = format(subDays(today, 29), "yyyy-MM-dd");
+      const endDate = format(today, "yyyy-MM-dd");
+      const startStr = new Date(`${startDate}T00:00:00+09:00`).toISOString();
+      const endStr = new Date(`${endDate}T23:59:59.999+09:00`).toISOString();
+
+      const [{ data: logs }, { data: slots }, { data: otRecords }, { data: storeData }] =
+        await Promise.all([
+          supabase
+            .from("attendance_logs")
+            .select("profile_id, type, created_at")
+            .gte("created_at", startStr)
+            .lte("created_at", endStr),
+          supabase
+            .from("schedule_slots")
+            .select("profile_id, slot_date, start_time, end_time")
+            .gte("slot_date", startDate)
+            .lte("slot_date", endDate)
+            .eq("status", "active"),
+          supabase
+            .from("overtime_requests")
+            .select("profile_id, date")
+            .gte("date", startDate)
+            .lte("date", endDate)
+            .in("status", ["approved", "dismissed"]),
+          supabase
+            .from("stores")
+            .select("overtime_min_minutes, overtime_include_early")
+            .order("display_order")
+            .limit(1)
+            .single(),
+        ]);
+
+      const minMinutes = storeData?.overtime_min_minutes ?? 10;
+      const includeEarly = storeData?.overtime_include_early ?? false;
+
+      // processed 키 세트
+      const processedKeys = new Set(
+        (otRecords ?? []).map((r: any) => `${r.date}_${r.profile_id}`)
+      );
+
+      // 출퇴근 쌍
+      const pairMap = new Map<string, { date: string; in: Date; out: Date | null }>();
+      (logs ?? []).forEach((log: any) => {
+        const d = format(new Date(log.created_at), "yyyy-MM-dd");
+        const key = `${d}_${log.profile_id}`;
+        if (log.type === "IN") {
+          if (!pairMap.has(key))
+            pairMap.set(key, { date: d, in: new Date(log.created_at), out: null });
+        } else if (log.type === "OUT") {
+          const p = pairMap.get(key);
+          if (p) p.out = new Date(log.created_at);
+        }
+      });
+
+      // 슬롯 맵
+      const slotMap = new Map<string, { start: string; end: string }>();
+      (slots ?? []).forEach((slot: any) => {
+        const key = `${slot.slot_date}_${slot.profile_id}`;
+        const s = slot.start_time.slice(0, 5);
+        const e = slot.end_time.slice(0, 5);
+        const ex = slotMap.get(key);
+        if (!ex) slotMap.set(key, { start: s, end: e });
+        else slotMap.set(key, { start: s < ex.start ? s : ex.start, end: e > ex.end ? e : ex.end });
+      });
+
+      let count = 0;
+      pairMap.forEach((pair, key) => {
+        if (!pair.out) return;
+        if (processedKeys.has(key)) return;
+        const slot = slotMap.get(key);
+        if (slot) {
+          const toM = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+          const lateOut = Math.max(0, toM(format(pair.out, "HH:mm")) - toM(slot.end));
+          const earlyIn = includeEarly
+            ? Math.max(0, toM(slot.start) - toM(format(pair.in, "HH:mm")))
+            : 0;
+          if (lateOut + earlyIn >= minMinutes) count++;
+        } else {
+          count++; // 스케줄 없음 케이스
+        }
+      });
+
+      return count;
+    },
+    { dedupingInterval: 120_000, revalidateOnFocus: true }
   );
 
   const statusConfig = (item: TodayAttendanceItem) =>
@@ -206,14 +296,14 @@ export default function AdminDashboardPage() {
             {Object.entries(
               todayAttendance.reduce(
                 (acc, item) => {
-                  acc[item.work_location] = (acc[item.work_location] || 0) + 1;
+                  acc[item.store_id] = (acc[item.store_id] || 0) + 1;
                   return acc;
                 },
                 {} as Record<string, number>,
               ),
-            ).map(([loc, cnt]) => (
-              <span key={loc} style={{ color: LOCATION_COLORS[loc] }}>
-                {LOCATION_LABELS[loc]} {cnt}명
+            ).map(([storeId, cnt]) => (
+              <span key={storeId} style={{ color: byId[storeId]?.color }}>
+                {byId[storeId]?.label || storeId} {cnt}명
               </span>
             ))}
           </div>
@@ -233,22 +323,16 @@ export default function AdminDashboardPage() {
                   className="flex items-center justify-between px-4 py-3.5"
                 >
                   <div className="flex items-center gap-3">
-                    <div
-                      className="w-9 h-9 rounded-full flex items-center justify-center text-[14px] font-bold text-white shrink-0"
-                      style={{ backgroundColor: item.color_hex }}
-                    >
-                      {item.name?.charAt(0)}
-                    </div>
+                    <AvatarDisplay userId={item.profile_id} avatarConfig={item.avatar_config} size={36} />
                     <div>
                       <p className="text-[15px] font-bold text-[#191F28]">
                         {item.name}
                       </p>
                       <div className="flex items-center gap-1.5 text-[12px] text-[#8B95A1]">
                         <span
-                          style={{ color: LOCATION_COLORS[item.work_location] }}
+                          style={{ color: byId[item.store_id]?.color }}
                         >
-                          {LOCATION_LABELS[item.work_location] ||
-                            item.work_location}
+                          {byId[item.store_id]?.label || item.store_id}
                         </span>
                         <span>·</span>
                         <span>
@@ -280,65 +364,69 @@ export default function AdminDashboardPage() {
         )}
       </section>
 
-      {/* 보건증 만료 임박 */}
-      {expiringHealthCerts.length > 0 && (
+      {/* 보건증 주의 (만료 + 임박) */}
+      {warningHealthCerts.length > 0 && (
         <section className="mb-8">
           <div className="flex items-center gap-2 mb-3">
-            <AlertCircle className="w-4 h-4 text-[#F59E0B]" />
+            <AlertCircle className="w-4 h-4 text-[#F04438]" />
             <h2 className="text-[17px] font-bold text-[#191F28]">
-              보건증 만료 임박
+              보건증 주의
             </h2>
-            <span className="text-[12px] font-bold text-[#F59E0B] bg-[#FFF7E6] px-2 py-0.5 rounded-full">
-              {expiringHealthCerts.length}명
+            <span className="text-[12px] font-bold text-[#F04438] bg-[#FFF0EE] px-2 py-0.5 rounded-full">
+              {warningHealthCerts.length}명
             </span>
           </div>
-          <div className="bg-white rounded-[24px] border border-[#FFE8A3] overflow-hidden divide-y divide-slate-50">
-            {expiringHealthCerts.map((emp) => (
-              <div
-                key={emp.id}
-                className="flex items-center justify-between px-4 py-3.5"
-              >
+          <div className="bg-white rounded-[24px] border border-[#FFD6D3] overflow-hidden divide-y divide-slate-50">
+            {/* 이미 만료된 직원 */}
+            {expiredHealthCerts.map((emp) => (
+              <div key={emp.id} className="flex items-center justify-between px-4 py-3.5 bg-[#FFF8F7]">
                 <div className="flex items-center gap-3">
-                  <div
-                    className="w-9 h-9 rounded-full flex items-center justify-center text-[14px] font-bold text-white shrink-0"
-                    style={{ backgroundColor: emp.color_hex || "#8B95A1" }}
-                  >
-                    {emp.name.charAt(0)}
-                  </div>
+                  <AvatarDisplay userId={emp.id} avatarConfig={emp.avatar_config} size={36} />
                   <div>
-                    <p className="text-[15px] font-bold text-[#191F28]">
-                      {emp.name}
-                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-[15px] font-bold text-[#191F28]">{emp.name}</p>
+                      <span className="text-[10px] font-bold text-white bg-[#F04438] px-1.5 py-0.5 rounded-md">만료</span>
+                    </div>
                     <p className="text-[12px] text-[#8B95A1]">
-                      {format(new Date(emp.health_cert_date), "M월 d일")} 만료
+                      {format(parseISO(emp.health_cert_date), "yyyy년 M월 d일")} 만료됨
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  {emp.phone && (
+                    <a href={`tel:${emp.phone}`} className="p-2.5 bg-[#F2F4F6] text-[#4E5968] rounded-full hover:bg-[#E5E8EB]">
+                      <Phone className="w-4 h-4" />
+                    </a>
+                  )}
+                  <button onClick={() => router.push("/admin/employees")} className="p-2.5 bg-[#E8F3FF] text-[#3182F6] rounded-full hover:bg-[#D0E5FF]">
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+            {/* 만료 임박 직원 */}
+            {expiringHealthCerts.map((emp) => (
+              <div key={emp.id} className="flex items-center justify-between px-4 py-3.5">
+                <div className="flex items-center gap-3">
+                  <AvatarDisplay userId={emp.id} avatarConfig={emp.avatar_config} size={36} />
+                  <div>
+                    <p className="text-[15px] font-bold text-[#191F28]">{emp.name}</p>
+                    <p className="text-[12px] text-[#8B95A1]">
+                      {format(parseISO(emp.health_cert_date), "M월 d일")} 만료
                       {" · "}
-                      <span
-                        className={
-                          emp.days_left <= 7
-                            ? "text-[#F04438] font-bold"
-                            : "text-[#F59E0B] font-bold"
-                        }
-                      >
-                        {emp.days_left === 0
-                          ? "오늘 만료"
-                          : `${emp.days_left}일 후`}
+                      <span className={emp.days_left <= 7 ? "text-[#F04438] font-bold" : "text-[#F59E0B] font-bold"}>
+                        {emp.days_left === 0 ? "오늘 만료" : `${emp.days_left}일 후`}
                       </span>
                     </p>
                   </div>
                 </div>
                 <div className="flex gap-2">
                   {emp.phone && (
-                    <a
-                      href={`tel:${emp.phone}`}
-                      className="p-2.5 bg-[#F2F4F6] text-[#4E5968] rounded-full hover:bg-[#E5E8EB]"
-                    >
+                    <a href={`tel:${emp.phone}`} className="p-2.5 bg-[#F2F4F6] text-[#4E5968] rounded-full hover:bg-[#E5E8EB]">
                       <Phone className="w-4 h-4" />
                     </a>
                   )}
-                  <button
-                    onClick={() => router.push("/admin/employees")}
-                    className="p-2.5 bg-[#E8F3FF] text-[#3182F6] rounded-full hover:bg-[#D0E5FF]"
-                  >
+                  <button onClick={() => router.push("/admin/employees")} className="p-2.5 bg-[#E8F3FF] text-[#3182F6] rounded-full hover:bg-[#D0E5FF]">
                     <Edit2 className="w-4 h-4" />
                   </button>
                 </div>
@@ -380,6 +468,48 @@ export default function AdminDashboardPage() {
             </div>
           </div>
           <ArrowRight className="w-4 h-4 text-[#D1D6DB] group-hover:text-[#3182F6]" />
+        </button>
+
+        <button
+          onClick={() => router.push("/admin/overtime")}
+          className="group flex items-center justify-between p-6 bg-white rounded-[24px] border border-slate-100 shadow-sm hover:shadow-md transition-all"
+        >
+          <div className="flex items-center gap-4 text-left">
+            <div className="relative w-11 h-11 rounded-2xl bg-[#F2F4F6] flex items-center justify-center group-hover:bg-[#E8F3FF]">
+              <TimerIcon className="w-5 h-5 text-[#4E5968] group-hover:text-[#3182F6]" />
+              {pendingOvertimeCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-[#F59E0B] text-white text-[11px] font-bold rounded-full flex items-center justify-center">
+                  {pendingOvertimeCount}
+                </span>
+              )}
+            </div>
+            <div>
+              <p className="text-[16px] font-bold text-[#191F28]">추가근무 관리</p>
+              <p className="text-[12px] text-[#8B95A1]">
+                {pendingOvertimeCount > 0
+                  ? `확인 필요 ${pendingOvertimeCount}건`
+                  : "모두 확인 완료"}
+              </p>
+            </div>
+          </div>
+          <ArrowRight className="w-4 h-4 text-[#D1D6DB] group-hover:text-[#3182F6]" />
+        </button>
+      </div>
+
+      {/* 테스트용 게임 진입 */}
+      <div className="mt-6">
+        <button
+          onClick={() => router.push("/game")}
+          className="w-full flex items-center justify-between p-4 bg-[#1a1a2e] rounded-[20px]"
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">🐱</span>
+            <div className="text-left">
+              <p className="text-white text-[14px] font-bold">냥냥 서바이벌</p>
+              <p className="text-white/40 text-[11px]">테스트 전용</p>
+            </div>
+          </div>
+          <ArrowRight className="w-4 h-4 text-white/30" />
         </button>
       </div>
     </div>

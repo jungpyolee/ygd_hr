@@ -159,6 +159,32 @@ body::-webkit-scrollbar,
   display: none;
 }
 
+/* 고양이 달리기 스피너 */
+@keyframes catRunFrames {
+  from { background-position: 0 0; }
+  to   { background-position: 0 -144px; }
+}
+.cat-spinner {
+  width: 24px;
+  height: 24px;
+  background-image: url('/game/WhiteCatRun.png');
+  background-size: 24px 144px;
+  background-repeat: no-repeat;
+  background-position: 0 0;
+  image-rendering: pixelated;
+  animation: catRunFrames 0.6s steps(6) infinite;
+}
+.cat-spinner-lg {
+  width: 48px;
+  height: 48px;
+  background-image: url('/game/WhiteCatRun.png');
+  background-size: 48px 288px;
+  background-repeat: no-repeat;
+  background-position: 0 0;
+  image-rendering: pixelated;
+  animation: catRunFrames 0.6s steps(6) infinite;
+}
+
 @layer utilities {
   .scrollbar-hide {
     -ms-overflow-style: none;

@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- 페르시안: 기본형 균형 고양이 (흰색/크림) -->
+
+  <!-- 꼬리 -->
+  <path d="M68 70 Q85 58 82 42 Q80 36 74 40" stroke="#D4C4B0" stroke-width="7" fill="none" stroke-linecap="round"/>
+
+  <!-- 몸통 -->
+  <ellipse cx="48" cy="63" rx="25" ry="21" fill="#F5EDE0"/>
+  <!-- 배 -->
+  <ellipse cx="48" cy="66" rx="16" ry="13" fill="white"/>
+
+  <!-- 뒷다리 -->
+  <ellipse cx="33" cy="83" rx="10" ry="6" fill="#E8D8C4"/>
+  <ellipse cx="63" cy="83" rx="10" ry="6" fill="#E8D8C4"/>
+
+  <!-- 앞발 -->
+  <ellipse cx="23" cy="67" rx="9" ry="7" fill="#E8D8C4" transform="rotate(-10 23 67)"/>
+  <ellipse cx="73" cy="67" rx="9" ry="7" fill="#E8D8C4" transform="rotate(10 73 67)"/>
+
+  <!-- 머리 -->
+  <circle cx="48" cy="35" r="21" fill="#F5EDE0"/>
+
+  <!-- 풍성한 털 (페르시안) -->
+  <ellipse cx="48" cy="42" rx="26" ry="12" fill="#F5EDE0" opacity="0.8"/>
+  <ellipse cx="30" cy="36" rx="8" ry="6" fill="#F5EDE0"/>
+  <ellipse cx="66" cy="36" rx="8" ry="6" fill="#F5EDE0"/>
+
+  <!-- 귀 (작고 둥근 페르시안 귀) -->
+  <polygon points="31,23 27,10 42,21" fill="#F5EDE0"/>
+  <polygon points="65,23 73,10 58,21" fill="#F5EDE0"/>
+  <polygon points="33,22 30,13 41,21" fill="#FFB6C1"/>
+  <polygon points="63,22 70,13 59,21" fill="#FFB6C1"/>
+
+  <!-- 눈 (둥글고 온화한) -->
+  <ellipse cx="40" cy="33" rx="7" ry="7" fill="white"/>
+  <ellipse cx="56" cy="33" rx="7" ry="7" fill="white"/>
+  <circle cx="41" cy="34" r="5" fill="#4A90D9"/>
+  <circle cx="57" cy="34" r="5" fill="#4A90D9"/>
+  <circle cx="40" cy="33.5" r="3" fill="#1A3A6A"/>
+  <circle cx="56" cy="33.5" r="3" fill="#1A3A6A"/>
+  <circle cx="42" cy="32" r="1.8" fill="white"/>
+  <circle cx="58" cy="32" r="1.8" fill="white"/>
+
+  <!-- 코 -->
+  <ellipse cx="48" cy="40" rx="3" ry="2" fill="#FFB6C1"/>
+  <!-- 입 -->
+  <path d="M44 43 Q48 47 52 43" stroke="#C4A08C" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+
+  <!-- 수염 -->
+  <line x1="24" y1="40" x2="40" y2="41" stroke="#C4A08C" stroke-width="1.2" opacity="0.6"/>
+  <line x1="24" y1="43" x2="40" y2="43" stroke="#C4A08C" stroke-width="1.2" opacity="0.6"/>
+  <line x1="72" y1="40" x2="56" y2="41" stroke="#C4A08C" stroke-width="1.2" opacity="0.6"/>
+  <line x1="72" y1="43" x2="56" y2="43" stroke="#C4A08C" stroke-width="1.2" opacity="0.6"/>
+</svg>

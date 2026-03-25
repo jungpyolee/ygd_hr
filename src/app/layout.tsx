@@ -7,6 +7,7 @@ import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 import KakaoEscape from "@/components/KakaoEscape";
 import NextTopLoader from "nextjs-toploader";
 import Providers from "./providers";
+import BottomNav from "@/components/BottomNav";
 
 const isDev = process.env.NEXT_PUBLIC_APP_ENV === "dev";
 const appName = isDev ? "연경당 테섭" : "연경당 HR";
@@ -81,8 +82,22 @@ export default function RootLayout({
         <NextTopLoader color="#3182F6" height={3} showSpinner={false} />
         <KakaoEscape />
         <Providers>{children}</Providers>
+        <BottomNav />
         <Toaster />
         <PWAInstallPrompt />
+        <Script
+          id="gtm"
+          strategy="afterInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+              new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+              j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+              'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+              })(window,document,'script','dataLayer','GTM-5PTDK39H');
+            `,
+          }}
+        />
         <Script id="register-sw" strategy="afterInteractive">
           {`
     (function() {
