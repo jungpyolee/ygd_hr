@@ -23,6 +23,7 @@ export interface PushPayload {
   sourceId?: string;
   notificationId?: string;
   isAdmin: boolean;
+  url?: string; // 제공 시 getNotificationUrl 대신 이 URL 사용
 }
 
 /**
@@ -146,7 +147,12 @@ async function deliverPush(
   subs: { endpoint: string; p256dh: string; auth_key: string }[],
   payload: PushPayload
 ): Promise<void> {
-  const url = getNotificationUrl(payload.type, payload.sourceId, payload.isAdmin);
+  // Dev DB 연결 시 푸시 발송 차단
+  if (process.env.NEXT_PUBLIC_SUPABASE_URL?.includes("rddplpiwvmclreeblkmi")) {
+    console.log("[Push] Dev 환경 — 푸시 발송 skip:", payload.title);
+    return;
+  }
+  const url = payload.url || getNotificationUrl(payload.type, payload.sourceId, payload.isAdmin);
 
   const tag = payload.notificationId
     ? `noti-${payload.notificationId}`

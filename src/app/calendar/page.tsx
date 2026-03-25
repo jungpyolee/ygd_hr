@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import AvatarDisplay from "@/components/AvatarDisplay";
 import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
@@ -101,9 +102,10 @@ interface DayDetailSheetProps {
   dayInfo: DayInfo;
   layers: LayerState;
   onClose: () => void;
+  highlightDate?: string | null;
 }
 
-function DayDetailSheet({ dateStr, dayInfo, layers, onClose }: DayDetailSheetProps) {
+function DayDetailSheet({ dateStr, dayInfo, layers, onClose, highlightDate }: DayDetailSheetProps) {
   const { byId, positionsOfStore } = useWorkplaces();
   const dateLabel = format(parseISO(dateStr), "M월 d일 (EEEE)", { locale: ko });
   const { mySlots, teamSlots, attendance, events } = dayInfo;
@@ -154,7 +156,7 @@ function DayDetailSheet({ dateStr, dayInfo, layers, onClose }: DayDetailSheetPro
                 return (
                   <div
                     key={slot.id}
-                    className="p-3 rounded-2xl"
+                    className={`p-3 rounded-2xl${highlightDate === dateStr ? " animate-slot-glow" : ""}`}
                     style={{ backgroundColor: (store?.color || "#3182F6") + "15", borderLeft: `3px solid ${store?.color || "#3182F6"}` }}
                   >
                     <div className="flex items-center justify-between">
@@ -313,6 +315,22 @@ export default function EmployeeCalendarPage() {
     }
   });
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+
+  // 알림 클릭으로 진입 시 highlight 날짜
+  const searchParams = useSearchParams();
+  const [highlightDate, setHighlightDate] = useState<string | null>(null);
+  useEffect(() => {
+    const h = searchParams.get("highlight");
+    if (h) {
+      setHighlightDate(h);
+      // highlight 날짜가 현재 월에 없으면 해당 월로 이동
+      const hDate = parseISO(h);
+      if (!isSameMonth(hDate, baseDate)) setBaseDate(hDate);
+      // 일정 시간 후 glow 제거
+      const timer = setTimeout(() => setHighlightDate(null), 4500);
+      return () => clearTimeout(timer);
+    }
+  }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const profileId = user?.id ?? null;
 
@@ -630,10 +648,11 @@ export default function EmployeeCalendarPage() {
                           }
 
                           const showBorder = !done && !isAbsent;
+                          const isGlowing = highlightDate === dateStr;
                           return (
                             <div
                               key={slot.id}
-                              className="text-[9px] font-bold px-1 py-0.5 rounded truncate mx-0.5 leading-tight"
+                              className={`text-[9px] font-bold px-1 py-0.5 rounded truncate mx-0.5 leading-tight${isGlowing ? " animate-slot-glow" : ""}`}
                               style={{
                                 backgroundColor: bg,
                                 color: textCol,
@@ -770,6 +789,7 @@ export default function EmployeeCalendarPage() {
           dayInfo={selectedDayInfo}
           layers={layers}
           onClose={() => setSelectedDay(null)}
+          highlightDate={highlightDate}
         />
       )}
     </div>

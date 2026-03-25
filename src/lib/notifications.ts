@@ -43,6 +43,7 @@ interface CreateNotificationParams {
   title: string;
   content: string;
   source_id?: string;
+  push_url?: string; // 제공 시 기본 URL 대신 이 URL로 푸시 알림 이동
 }
 
 /**
@@ -57,6 +58,7 @@ export const createNotification = async ({
   title,
   content,
   source_id,
+  push_url,
 }: CreateNotificationParams): Promise<{ error: Error | null }> => {
   // 호출자 인증 확인 (미인증 클라이언트 차단)
   const cookieStore = await cookies();
@@ -91,6 +93,7 @@ export const createNotification = async ({
       content,
       source_id,
       notificationId,
+      push_url,
     })
   );
 
@@ -105,27 +108,23 @@ async function dispatchPush({
   content,
   source_id,
   notificationId,
+  push_url,
 }: CreateNotificationParams & { notificationId?: string }) {
   console.log("[Push] dispatchPush 시작:", { type, profile_id, target_role });
   try {
+    const basePush = {
+      title,
+      body: content,
+      type,
+      sourceId: source_id,
+      notificationId,
+      isAdmin: target_role === "admin",
+      ...(push_url ? { url: push_url } : {}),
+    };
     if (profile_id) {
-      await sendPushToProfile(profile_id, {
-        title,
-        body: content,
-        type,
-        sourceId: source_id,
-        notificationId,
-        isAdmin: target_role === "admin", // ✅ DB 조회 없이 target_role로 판단
-      });
+      await sendPushToProfile(profile_id, basePush);
     } else {
-      await sendPushToRole(target_role, {
-        title,
-        body: content,
-        type,
-        sourceId: source_id,
-        notificationId,
-        isAdmin: target_role === "admin",
-      });
+      await sendPushToRole(target_role, basePush);
     }
   } catch (err) {
     console.error("[Push] 발송 실패:", err);
