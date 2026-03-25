@@ -21,6 +21,8 @@ export default function LocationPermissionGuide({
   const isIOSStandalone =
     isIOS &&
     (navigator as Navigator & { standalone?: boolean }).standalone === true;
+  const isAndroidStandalone =
+    !isIOS && window.matchMedia("(display-mode: standalone)").matches;
 
   let label: string;
   let steps: string[];
@@ -51,8 +53,16 @@ export default function LocationPermissionGuide({
         '"위치" → "허용"을 선택해요',
       ];
     }
+  } else if (isAndroidStandalone) {
+    // Android 설치된 PWA (주소창 없음)
+    label = "Android 설정 방법";
+    steps = [
+      "Android 설정 앱을 열어요",
+      '"앱" → "Chrome"을 탭해요',
+      '"권한" → "위치" → "앱 사용 중 허용"을 선택해요',
+    ];
   } else {
-    // Android Chrome
+    // Android Chrome 브라우저
     label = "Android 설정 방법";
     steps = [
       "주소창 왼쪽 자물쇠 아이콘을 탭해요",
