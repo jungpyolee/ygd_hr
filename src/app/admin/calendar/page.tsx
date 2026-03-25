@@ -151,7 +151,7 @@ function SlotBottomSheet({
   const isNew = !slot?.id;
   const { workplaces, byId, positionsOfStore } = useWorkplaces();
   const [form, setForm] = useState<Partial<ScheduleSlot>>({
-    profile_id: defaultProfileId || profiles[0]?.id || "",
+    profile_id: defaultProfileId || "",
     slot_date: defaultDate || "",
     start_time: "09:00",
     end_time: "18:00",
@@ -204,6 +204,7 @@ function SlotBottomSheet({
               onChange={(e) => setForm((p) => ({ ...p, profile_id: e.target.value }))}
               className="w-full px-3 py-2.5 bg-[#F9FAFB] border border-slate-200 rounded-xl text-[14px] text-[#191F28] focus:outline-none focus:border-[#3182F6]"
             >
+              {isNew && <option value="">직원을 선택해주세요</option>}
               {profiles.map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
@@ -347,6 +348,7 @@ interface DaySheetProps {
   onEditSlot: (slot: ScheduleSlot) => void;
   onAddSlot: (date: string) => void;
   onMutate: () => void;
+  filterProfileId?: string;
 }
 
 function DaySheet({
@@ -360,6 +362,7 @@ function DaySheet({
   onEditSlot,
   onAddSlot,
   onMutate,
+  filterProfileId,
 }: DaySheetProps) {
   const { byId, positionsOfStore } = useWorkplaces();
   const supabase = createClient();
@@ -376,10 +379,12 @@ function DaySheet({
   const profileById: Record<string, Profile> = {};
   profiles.forEach((p) => { profileById[p.id] = p; });
 
-  const daySlots = slots.filter((s) => s.slot_date === dateStr && s.status === "active");
-  const dayEvents = events.filter((e) => e.start_date <= dateStr && e.end_date >= dateStr);
+  const daySlots = slots.filter((s) =>
+    s.slot_date === dateStr && s.status === "active" && (!filterProfileId || s.profile_id === filterProfileId)
+  );
+  const dayEvents = filterProfileId ? [] : events.filter((e) => e.start_date <= dateStr && e.end_date >= dateStr);
   const profilesWithSlots = new Set(daySlots.map((s) => s.profile_id));
-  const unscheduledAtt = attendance.filter(
+  const unscheduledAtt = filterProfileId ? [] : attendance.filter(
     (a) => a.date === dateStr && !a.is_absent && a.clock_in && !profilesWithSlots.has(a.profile_id)
   );
 
@@ -560,7 +565,9 @@ function DaySheet({
       <div className="relative w-full max-w-md bg-white rounded-[28px] px-5 pt-6 pb-6 shadow-2xl animate-in zoom-in-95 fade-in-0 duration-200 max-h-[85vh] overflow-y-auto scrollbar-hide">
         <div className="flex justify-between items-center mb-4">
           <div>
-            <h3 className="text-[17px] font-bold text-[#191F28]">{dateLabel}</h3>
+            <h3 className="text-[17px] font-bold text-[#191F28]">
+              {filterProfileId && profileById[filterProfileId] ? `${profileById[filterProfileId].name} · ` : ""}{dateLabel}
+            </h3>
             <div className="flex items-center gap-2 mt-1">
               {presentCount > 0 && (
                 <span className="text-[12px] font-semibold text-[#3182F6] bg-[#E8F3FF] px-2 py-0.5 rounded-full">출근 {presentCount}명</span>
@@ -716,13 +723,22 @@ export default function AdminCalendarPage() {
   const [viewType, setViewType] = useState<"month" | "week">("week");
   const [baseDate, setBaseDate] = useState(new Date());
   const [storeFilter, setStoreFilter] = useState<string>("all");
-  const [layers, setLayers] = useState({ schedule: true, attendance: true, events: true });
+  const [layers, setLayers] = useState<{ schedule: boolean; attendance: boolean; events: boolean }>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("admin_calendar_layers");
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return { schedule: true, attendance: true, events: true };
+  });
   const [editingSlot, setEditingSlot] = useState<{
     slot: Partial<ScheduleSlot> | null;
     defaultDate?: string;
     defaultProfileId?: string;
   } | null>(null);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [selectedSlotInfo, setSelectedSlotInfo] = useState<{ profileId: string; dateStr: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [showAdmin, setShowAdmin] = useState(() => {
     if (typeof window !== "undefined") {
@@ -811,6 +827,7 @@ export default function AdminCalendarPage() {
 
       // [1] 스케줄 기반 결근 항목 생성
       slots.forEach((slot) => {
+        if (!profileMap[slot.profile_id]) return; // showAdmin 필터: profileMap에 없는 직원 skip
         const key = `${slot.profile_id}_${slot.slot_date}`;
         if (!attMap[key]) {
           const p = profileMap[slot.profile_id];
@@ -848,6 +865,7 @@ export default function AdminCalendarPage() {
 
       // [2] 출퇴근 로그 반영
       (logsData || []).forEach((log: any) => {
+        if (!profileMap[log.profile_id]) return; // showAdmin 필터: profileMap에 없는 직원 skip
         const dateKey = format(new Date(log.created_at), "yyyy-MM-dd");
         const key = `${log.profile_id}_${dateKey}`;
         if (!attMap[key]) {
@@ -1187,7 +1205,11 @@ export default function AdminCalendarPage() {
 
   // ─── 레이어 토글 ───
   const toggleLayer = (key: keyof typeof layers) => {
-    setLayers((prev) => ({ ...prev, [key]: !prev[key] }));
+    setLayers((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      localStorage.setItem("admin_calendar_layers", JSON.stringify(next));
+      return next;
+    });
   };
 
   // ─── Month View ───────────────────────────────────────────────────────────
@@ -1336,8 +1358,9 @@ export default function AdminCalendarPage() {
                 return (
                   <th
                     key={d}
-                    className={`px-2 py-3 text-center text-[12px] font-bold ${
-                      isTodayDate ? "bg-[#E8F3FF]" : ""
+                    onClick={() => setSelectedDay(d)}
+                    className={`px-2 py-3 text-center text-[12px] font-bold cursor-pointer hover:bg-[#F9FAFB] transition-colors ${
+                      isTodayDate ? "bg-[#E8F3FF] hover:bg-[#DCE9FF]" : ""
                     }`}
                   >
                     <div
@@ -1398,14 +1421,13 @@ export default function AdminCalendarPage() {
                     : null;
                   const isTodayDate = isToday(parseISO(d));
                   const isDayPast = isBefore(parseISO(d), startOfDay(new Date()));
-                  const isFutureDay = !isDayPast && !isTodayDate;
 
                   return (
                     <td
                       key={d}
-                      className={`px-1 py-1.5 align-top ${isTodayDate ? "bg-[#F5F9FF]" : ""}`}
+                      className={`px-1 py-1 align-top ${isTodayDate ? "bg-[#F5F9FF]" : ""}`}
                     >
-                      <div className="flex flex-col items-stretch gap-1 min-h-[68px]">
+                      <div className="flex flex-col items-stretch gap-1 min-h-[54px]">
                         {daySlots.map((slot) => {
                           const positions = slot.position_keys?.length
                             ? slot.position_keys
@@ -1414,8 +1436,14 @@ export default function AdminCalendarPage() {
                             : null;
                           const isSubstituted = slot.status === "substituted";
                           const slotAtt = att;
+
+                          // 이슈 #1: 슬롯 시작시간 기준으로 "지난 출근시간" 판단
+                          const slotStartDt = new Date(`${d}T${slot.start_time}`);
+                          const now = new Date();
+                          const isPastScheduledStart = isDayPast || (isTodayDate && now >= slotStartDt);
+
                           let borderColor = "";
-                          if (slotAtt && !isFutureDay) {
+                          if (slotAtt && isPastScheduledStart) {
                             if (slotAtt.is_absent) borderColor = "#EF4444";
                             else if (slotAtt.late_minutes && slotAtt.late_minutes > 0) borderColor = "#F97316";
                             else borderColor = "#00B761";
@@ -1430,11 +1458,11 @@ export default function AdminCalendarPage() {
                               onClick={() =>
                                 mode === "edit"
                                   ? setEditingSlot({ slot, defaultDate: d, defaultProfileId: profile.id })
-                                  : setSelectedDay(d)
+                                  : setSelectedSlotInfo({ profileId: profile.id, dateStr: d })
                               }
-                              className={`w-full text-left px-2 py-1.5 rounded-lg transition-all ${
+                              className={`w-full text-left px-1.5 py-1 rounded-lg transition-all ${
                                 isSubstituted ? "text-[#8B95A1] line-through" : "text-[#191F28]"
-                              } ${mode === "edit" ? "hover:opacity-80 active:scale-[0.97]" : "cursor-default"}`}
+                              } ${mode === "edit" ? "hover:opacity-80 active:scale-[0.97]" : "hover:opacity-80 active:scale-[0.97] cursor-pointer"}`}
                               style={{
                                 backgroundColor: isSubstituted ? "#F2F4F6" : storeColor + "18",
                                 borderLeft: `3px solid ${isSubstituted ? "#D1D6DB" : activeBorderColor}`,
@@ -1452,14 +1480,16 @@ export default function AdminCalendarPage() {
                               <div className="text-[10px] text-[#4E5968] mt-0.5 leading-tight">
                                 {slot.start_time.slice(0, 5)}~{slot.end_time.slice(0, 5)}
                               </div>
-                              {slotAtt && slotAtt.clock_in && !slotAtt.is_absent && (
-                                <div className="text-[9px] text-[#6B7684] mt-0.5">
-                                  ✓ {format(new Date(slotAtt.clock_in), "HH:mm")}
-                                </div>
-                              )}
-                              {slotAtt && slotAtt.is_absent && !isFutureDay && (
-                                <div className="text-[9px] text-[#EF4444] mt-0.5">✗ 결근</div>
-                              )}
+                              {/* 이슈 #2: 항상 고정 높이 div로 감싸 슬롯 높이 통일 */}
+                              <div className="h-[12px] leading-none mt-0.5">
+                                {slotAtt && slotAtt.clock_in && !slotAtt.is_absent ? (
+                                  <span className="text-[9px] text-[#6B7684]">✓ {format(new Date(slotAtt.clock_in), "HH:mm")}</span>
+                                ) : slotAtt && slotAtt.is_absent && isDayPast ? (
+                                  <span className="text-[9px] text-[#EF4444]">✗ 결근</span>
+                                ) : slotAtt && slotAtt.is_absent && isTodayDate && isPastScheduledStart ? (
+                                  <span className="text-[9px] text-[#EF4444]">✗ 미출근</span>
+                                ) : null}
+                              </div>
                             </button>
                           );
                         })}
@@ -1479,7 +1509,7 @@ export default function AdminCalendarPage() {
                             onClick={() =>
                               setEditingSlot({ slot: null, defaultDate: d, defaultProfileId: profile.id })
                             }
-                            className="flex-1 min-h-[52px] flex items-center justify-center rounded-lg text-[#D1D6DB] hover:text-[#3182F6] hover:bg-[#E8F3FF] transition-all"
+                            className="flex-1 min-h-[40px] flex items-center justify-center rounded-lg text-[#D1D6DB] hover:text-[#3182F6] hover:bg-[#E8F3FF] transition-all"
                           >
                             <Plus className="w-4 h-4" />
                           </button>
@@ -1593,6 +1623,27 @@ export default function AdminCalendarPage() {
           </button>
         </div>
 
+        {/* 오늘 버튼 */}
+        {(() => {
+          const today = new Date();
+          const isCurrentRange = viewType === "month"
+            ? isSameMonth(baseDate, today)
+            : startDate <= today && today <= endDate;
+          return (
+            <button
+              onClick={() => setBaseDate(new Date())}
+              disabled={isCurrentRange}
+              className={`px-3 py-1.5 text-[13px] font-bold rounded-xl border transition-all ${
+                isCurrentRange
+                  ? "bg-[#F2F4F6] text-[#B0B8C1] border-transparent cursor-default"
+                  : "bg-white text-[#3182F6] border-[#3182F6] hover:bg-[#E8F3FF]"
+              }`}
+            >
+              오늘
+            </button>
+          );
+        })()}
+
         {/* 근무지 필터 */}
         <select
           value={storeFilter}
@@ -1633,7 +1684,7 @@ export default function AdminCalendarPage() {
               onClick={() => toggleLayer(key)}
               className={`px-3 py-1.5 rounded-full text-[12px] font-bold border transition-all ${
                 layers[key]
-                  ? "bg-[#3182F6] text-white border-[#3182F6]"
+                  ? "bg-[#191F28] text-white border-[#191F28]"
                   : "bg-white text-[#8B95A1] border-slate-200"
               }`}
             >
@@ -1670,13 +1721,6 @@ export default function AdminCalendarPage() {
         >
           <ChevronRight className="w-5 h-5 text-[#4E5968]" />
         </button>
-        <button
-          onClick={() => setBaseDate(new Date())}
-          className="ml-2 px-2.5 py-1 text-[12px] font-bold text-[#3182F6] bg-[#E8F3FF] rounded-full hover:bg-blue-100 transition-all"
-        >
-          오늘
-        </button>
-
         {/* 주간 뷰 전주 복사 */}
         {mode === "edit" && viewType === "week" && (
           <button
@@ -1732,7 +1776,7 @@ export default function AdminCalendarPage() {
         />
       )}
 
-      {/* 날짜 상세 시트 */}
+      {/* 날짜 상세 시트 (날짜 헤더 클릭 — 전체 직원) */}
       {selectedDay && selectedDayData && (
         <DaySheet
           dateStr={selectedDay}
@@ -1748,6 +1792,23 @@ export default function AdminCalendarPage() {
           }}
           onAddSlot={(date) => setEditingSlot({ slot: null, defaultDate: date })}
           onMutate={mutate}
+        />
+      )}
+
+      {/* 슬롯 상세 시트 (슬롯 클릭 — 개인 1명) */}
+      {selectedSlotInfo && !selectedDay && (
+        <DaySheet
+          dateStr={selectedSlotInfo.dateStr}
+          slots={slots.filter((s) => s.slot_date === selectedSlotInfo.dateStr && s.status === "active")}
+          attendance={attendance.filter((a) => a.date === selectedSlotInfo.dateStr)}
+          events={[]}
+          profiles={profiles}
+          mode="view"
+          onClose={() => setSelectedSlotInfo(null)}
+          onEditSlot={() => {}}
+          onAddSlot={() => {}}
+          onMutate={mutate}
+          filterProfileId={selectedSlotInfo.profileId}
         />
       )}
     </div>
