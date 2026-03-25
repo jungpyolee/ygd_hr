@@ -260,6 +260,64 @@ function Badge({
 function UpdateHistory() {
   return (
     <div className="space-y-4">
+      {/* v1.0.4 */}
+      <div className="bg-white rounded-[24px] p-5 border border-slate-100 shadow-sm">
+        <div className="flex items-center gap-3 mb-4">
+          <span className="px-3 py-1 bg-[#3182F6] text-white text-[13px] font-bold rounded-full">
+            v1.0.4
+          </span>
+          <span className="text-[13px] text-[#8B95A1] font-medium">
+            2026. 3. 25. · 크레딧 시스템 + 어드민 리뉴얼
+          </span>
+        </div>
+        <div className="space-y-3">
+          <UpdateItem emoji="🏅" title="크레딧 & 등급 시스템">
+            출퇴근 상태에 따라 크레딧이 쌓여요. 아이언부터 다이아몬드까지
+            6단계 등급이 있고, 연속 출근 보너스도 받을 수 있어요.
+          </UpdateItem>
+          <UpdateItem emoji="📊" title="크레딧 이력 페이지">
+            마이페이지에서 내 등급, 크레딧 점수, 연속 출근 현황, 이번 달
+            크레딧 변동 내역을 확인할 수 있어요.
+          </UpdateItem>
+          <UpdateItem emoji="📆" title="캘린더 뷰 추가">
+            월간 달력에서 내 스케줄, 출퇴근 기록, 팀 동료 스케줄, 회사 일정을
+            레이어별로 확인할 수 있어요.
+          </UpdateItem>
+          <UpdateItem emoji="📊" title="홈 화면 월간 근무 요약">
+            이번 달 총 출근 일수와 근무 시간 요약이 홈 화면에 표시돼요.
+          </UpdateItem>
+          <UpdateItem emoji="⏰" title="추가근무 관리">
+            예정 외 추가근무 내역을 관리자가 등록하고 확인할 수 있어요.
+          </UpdateItem>
+        </div>
+      </div>
+
+      {/* v1.0.3 */}
+      <div className="bg-white rounded-[24px] p-5 border border-slate-100 shadow-sm">
+        <div className="flex items-center gap-3 mb-4">
+          <span className="px-3 py-1 bg-[#3182F6] text-white text-[13px] font-bold rounded-full">
+            v1.0.3
+          </span>
+          <span className="text-[13px] text-[#8B95A1] font-medium">
+            2026. 3. 23. · 캘린더 + 어드민 대시보드
+          </span>
+        </div>
+        <div className="space-y-3">
+          <UpdateItem emoji="📆" title="통합 캘린더 추가">
+            월간 달력에서 내 스케줄, 근태 기록, 팀 동료 스케줄, 회사 공지 일정을
+            한눈에 볼 수 있어요.
+          </UpdateItem>
+          <UpdateItem emoji="🏢" title="회사 일정 표시">
+            관리자가 등록한 휴무일, 회의, 행사 등이 캘린더에 표시돼요.
+            근무지별 일정도 구분돼요.
+          </UpdateItem>
+          <UpdateItem emoji="🎨" title="근무지 색상 시스템 개편">
+            각 근무지에 고유 색상이 적용돼서 스케줄을 더 직관적으로 구분할 수
+            있어요.
+          </UpdateItem>
+        </div>
+      </div>
+
       {/* v1.0.2 */}
       <div className="bg-white rounded-[24px] p-5 border border-slate-100 shadow-sm">
         <div className="flex items-center gap-3 mb-4">
@@ -484,6 +542,46 @@ const SEARCH_INDEX = [
     keywords: ["정보 수정", "이름", "연락처", "프로필"],
   },
   {
+    id: "credit",
+    emoji: "🏅",
+    title: "크레딧 & 등급",
+    keywords: [
+      "크레딧",
+      "등급",
+      "티어",
+      "점수",
+      "스트릭",
+      "연속 출근",
+      "다이아몬드",
+      "플래티넘",
+      "골드",
+      "실버",
+      "브론즈",
+      "아이언",
+      "감점",
+      "가점",
+    ],
+  },
+  {
+    id: "calendar",
+    emoji: "📆",
+    title: "캘린더",
+    keywords: [
+      "캘린더",
+      "월간",
+      "팀 스케줄",
+      "회사 일정",
+      "근태",
+      "출퇴근 기록",
+    ],
+  },
+  {
+    id: "overtime",
+    emoji: "⏰",
+    title: "추가근무",
+    keywords: ["추가근무", "연장근무", "오버타임", "추가근무 요청"],
+  },
+  {
     id: "push",
     emoji: "🔔",
     title: "알림 설정",
@@ -503,7 +601,7 @@ const SEARCH_INDEX = [
 /* ─────────────────────────────────────────────
    메인 페이지
 ───────────────────────────────────────────── */
-const CURRENT_VERSION = "v1.0.2";
+const CURRENT_VERSION = "v1.0.4";
 
 export default function GuidePage() {
   const router = useRouter();
@@ -619,10 +717,10 @@ export default function GuidePage() {
                 연경당 HR
               </p>
               <span className="inline-block px-3 py-1 bg-[#E8F3FF] text-[#3182F6] text-[13px] font-bold rounded-full">
-                v1.0.2
+                v1.0.4
               </span>
             </div>
-            <span className="text-[12px] text-[#8B95A1]">2026. 3. 21.</span>
+            <span className="text-[12px] text-[#8B95A1]">2026. 3. 25.</span>
           </div>
           <p className="mt-3 text-[14px] text-[#4E5968] leading-relaxed">
             근무 기록부터 스케줄 확인까지,
@@ -746,11 +844,28 @@ export default function GuidePage() {
                 </div>
                 <div className="p-3 bg-[#F9FAFB] rounded-[16px]">
                   <p className="text-[13px] font-bold text-[#191F28] mb-1">
+                    🏅 크레딧 카드
+                  </p>
+                  <p className="text-[13px] text-[#4E5968] leading-relaxed">
+                    현재 등급과 크레딧 점수, 연속 출근 일수를 한눈에 확인할 수
+                    있어요. 탭하면 크레딧 상세 페이지로 이동해요.
+                  </p>
+                </div>
+                <div className="p-3 bg-[#F9FAFB] rounded-[16px]">
+                  <p className="text-[13px] font-bold text-[#191F28] mb-1">
                     📅 이번 주 스케줄 카드
                   </p>
                   <p className="text-[13px] text-[#4E5968] leading-relaxed">
                     요일·날짜별로 내 근무 시간과 근무지를 한눈에 볼 수 있어요.
                     탭하면 스케줄 상세 페이지로 이동해요.
+                  </p>
+                </div>
+                <div className="p-3 bg-[#F9FAFB] rounded-[16px]">
+                  <p className="text-[13px] font-bold text-[#191F28] mb-1">
+                    📊 월간 근무 요약
+                  </p>
+                  <p className="text-[13px] text-[#4E5968] leading-relaxed">
+                    이번 달 총 출근 일수와 근무 시간을 요약해서 보여줘요.
                   </p>
                 </div>
                 <div className="p-3 bg-[#F9FAFB] rounded-[16px]">
@@ -1039,6 +1154,11 @@ export default function GuidePage() {
                 내 스케줄과 시간이 겹치면 수락이 안 돼요. 수락 전에 미리
                 확인해요.
               </Tip>
+              <div className="mt-4 px-4 py-3 bg-[#F2F4F6] rounded-[16px]">
+                <p className="text-[13px] text-[#8B95A1] leading-relaxed font-medium">
+                  🔜 대체근무 신청 및 근무 교환 기능은 추후 업데이트 예정이에요.
+                </p>
+              </div>
             </Section>
 
             {/* 10. 공지사항 */}
@@ -1235,6 +1355,245 @@ export default function GuidePage() {
               </div>
               <Tip>
                 알림이 오지 않으면 기기 설정에서 브라우저 알림 권한을 확인해요.
+              </Tip>
+            </Section>
+
+            {/* 크레딧 & 등급 */}
+            <Section
+              id="credit"
+              emoji="🏅"
+              title="크레딧 & 등급"
+              open={open === "credit"}
+              highlighted={highlighted === "credit"}
+              onToggle={toggle}
+            >
+              <p className="text-[14px] text-[#4E5968] leading-relaxed mt-3">
+                출퇴근 상태에 따라 크레딧 점수가 쌓여요. 점수에 따라 등급이
+                결정되고, 연속 출근 시 보너스도 받을 수 있어요.
+              </p>
+              <Sub>크레딧 점수 규칙</Sub>
+              <div className="space-y-2 mt-1">
+                <div className="flex items-center justify-between px-3 py-2 bg-[#F9FAFB] rounded-[12px]">
+                  <p className="text-[13px] text-[#4E5968]">정상 출근</p>
+                  <span className="text-[13px] font-bold text-[#3182F6]">+3점</span>
+                </div>
+                <div className="flex items-center justify-between px-3 py-2 bg-[#F9FAFB] rounded-[12px]">
+                  <p className="text-[13px] text-[#4E5968]">지각 (5~10분)</p>
+                  <span className="text-[13px] font-bold text-[#E67700]">-3점</span>
+                </div>
+                <div className="flex items-center justify-between px-3 py-2 bg-[#F9FAFB] rounded-[12px]">
+                  <p className="text-[13px] text-[#4E5968]">지각 (10분 이상)</p>
+                  <span className="text-[13px] font-bold text-[#E67700]">-10점</span>
+                </div>
+                <div className="flex items-center justify-between px-3 py-2 bg-[#F9FAFB] rounded-[12px]">
+                  <p className="text-[13px] text-[#4E5968]">조기퇴근</p>
+                  <span className="text-[13px] font-bold text-[#E67700]">-8점</span>
+                </div>
+                <div className="flex items-center justify-between px-3 py-2 bg-[#F9FAFB] rounded-[12px]">
+                  <p className="text-[13px] text-[#4E5968]">퇴근 미기록</p>
+                  <span className="text-[13px] font-bold text-[#E67700]">-5점</span>
+                </div>
+                <div className="flex items-center justify-between px-3 py-2 bg-[#F9FAFB] rounded-[12px]">
+                  <p className="text-[13px] text-[#4E5968]">무단결근</p>
+                  <span className="text-[13px] font-bold text-[#FF4545]">-50점</span>
+                </div>
+                <div className="flex items-center justify-between px-3 py-2 bg-[#F9FAFB] rounded-[12px]">
+                  <p className="text-[13px] text-[#4E5968]">대타 출근 보너스 (월 2회)</p>
+                  <span className="text-[13px] font-bold text-[#3182F6]">+10점</span>
+                </div>
+              </div>
+
+              <Sub>등급 체계</Sub>
+              <div className="space-y-2 mt-1">
+                <div className="flex items-center justify-between px-3 py-2 bg-[#F9FAFB] rounded-[12px]">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[16px]">💎</span>
+                    <p className="text-[13px] font-bold text-[#191F28]">다이아몬드</p>
+                  </div>
+                  <span className="text-[12px] text-[#8B95A1]">900~1000점</span>
+                </div>
+                <div className="flex items-center justify-between px-3 py-2 bg-[#F9FAFB] rounded-[12px]">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[16px]">❇️</span>
+                    <p className="text-[13px] font-bold text-[#191F28]">플래티넘</p>
+                  </div>
+                  <span className="text-[12px] text-[#8B95A1]">750~899점</span>
+                </div>
+                <div className="flex items-center justify-between px-3 py-2 bg-[#F9FAFB] rounded-[12px]">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[16px]">🥇</span>
+                    <p className="text-[13px] font-bold text-[#191F28]">골드</p>
+                  </div>
+                  <span className="text-[12px] text-[#8B95A1]">600~749점</span>
+                </div>
+                <div className="flex items-center justify-between px-3 py-2 bg-[#F9FAFB] rounded-[12px]">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[16px]">🥈</span>
+                    <p className="text-[13px] font-bold text-[#191F28]">실버</p>
+                  </div>
+                  <span className="text-[12px] text-[#8B95A1]">450~599점</span>
+                </div>
+                <div className="flex items-center justify-between px-3 py-2 bg-[#F9FAFB] rounded-[12px]">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[16px]">🥉</span>
+                    <p className="text-[13px] font-bold text-[#191F28]">브론즈</p>
+                  </div>
+                  <span className="text-[12px] text-[#8B95A1]">300~449점</span>
+                </div>
+                <div className="flex items-center justify-between px-3 py-2 bg-[#F9FAFB] rounded-[12px]">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[16px]">⚙️</span>
+                    <p className="text-[13px] font-bold text-[#191F28]">아이언</p>
+                  </div>
+                  <span className="text-[12px] text-[#8B95A1]">0~299점</span>
+                </div>
+              </div>
+
+              <Sub>연속 출근 보너스</Sub>
+              <p className="text-[13px] text-[#4E5968] leading-relaxed">
+                정상 출근이 연속으로 이어지면 마일스톤 달성 시 보너스 크레딧을
+                받아요.
+              </p>
+              <div className="space-y-2 mt-2">
+                <div className="flex items-center justify-between px-3 py-2 bg-[#F9FAFB] rounded-[12px]">
+                  <p className="text-[13px] text-[#4E5968]">10일 연속</p>
+                  <span className="text-[13px] font-bold text-[#3182F6]">+15점</span>
+                </div>
+                <div className="flex items-center justify-between px-3 py-2 bg-[#F9FAFB] rounded-[12px]">
+                  <p className="text-[13px] text-[#4E5968]">30일 연속</p>
+                  <span className="text-[13px] font-bold text-[#3182F6]">+50점</span>
+                </div>
+                <div className="flex items-center justify-between px-3 py-2 bg-[#F9FAFB] rounded-[12px]">
+                  <p className="text-[13px] text-[#4E5968]">60일 연속</p>
+                  <span className="text-[13px] font-bold text-[#3182F6]">+80점</span>
+                </div>
+                <div className="flex items-center justify-between px-3 py-2 bg-[#F9FAFB] rounded-[12px]">
+                  <p className="text-[13px] text-[#4E5968]">100일 연속</p>
+                  <span className="text-[13px] font-bold text-[#3182F6]">+150점</span>
+                </div>
+              </div>
+
+              <Sub>크레딧 확인 방법</Sub>
+              <div className="space-y-3">
+                <Step
+                  num={1}
+                  text="홈 화면의 크레딧 카드를 탭하거나, 마이페이지 → '내 크레딧'을 탭해요."
+                />
+                <Step
+                  num={2}
+                  text="현재 등급, 점수, 다음 등급까지 남은 점수를 확인해요."
+                />
+                <Step
+                  num={3}
+                  text="아래로 스크롤하면 이번 달 크레딧 변동 내역을 확인할 수 있어요."
+                />
+              </div>
+              <Tip>
+                모든 직원은 500점(실버)에서 시작해요. 지각이나 결근 시 스트릭이
+                초기화되니 꾸준한 정상 출근이 중요해요.
+              </Tip>
+              <Warn>
+                감점이 부당하다고 느끼면 관리자에게 문의해요. 관리자가 예외 사유를
+                확인하고 감점을 취소할 수 있어요.
+              </Warn>
+            </Section>
+
+            {/* 캘린더 */}
+            <Section
+              id="calendar"
+              emoji="📆"
+              title="캘린더"
+              open={open === "calendar"}
+              highlighted={highlighted === "calendar"}
+              onToggle={toggle}
+            >
+              <p className="text-[14px] text-[#4E5968] leading-relaxed mt-3">
+                내 스케줄, 출퇴근 기록, 팀 동료 스케줄, 회사 일정을 월간 달력으로
+                한눈에 볼 수 있어요.
+              </p>
+              <Sub>캘린더 보는 방법</Sub>
+              <div className="space-y-3">
+                <Step
+                  num={1}
+                  text="하단 메뉴에서 '캘린더'를 탭해요."
+                />
+                <Step
+                  num={2}
+                  text="좌우 화살표로 월을 이동할 수 있어요."
+                />
+                <Step
+                  num={3}
+                  text="날짜를 탭하면 해당 날의 상세 정보를 확인할 수 있어요."
+                />
+              </div>
+              <Sub>레이어 토글</Sub>
+              <p className="text-[13px] text-[#4E5968] leading-relaxed">
+                상단 필터 버튼으로 보고 싶은 정보만 골라서 표시할 수 있어요.
+              </p>
+              <div className="space-y-2 mt-2">
+                <div className="p-3 bg-[#F9FAFB] rounded-[16px]">
+                  <p className="text-[13px] font-bold text-[#191F28] mb-1">
+                    📅 내 스케줄
+                  </p>
+                  <p className="text-[13px] text-[#4E5968] leading-relaxed">
+                    배정된 근무 일정이 근무지 색상으로 표시돼요.
+                  </p>
+                </div>
+                <div className="p-3 bg-[#F9FAFB] rounded-[16px]">
+                  <p className="text-[13px] font-bold text-[#191F28] mb-1">
+                    ☀️🌙 내 근태
+                  </p>
+                  <p className="text-[13px] text-[#4E5968] leading-relaxed">
+                    실제 출퇴근 기록이 표시돼요. 출근과 퇴근 시간을 한눈에 확인할
+                    수 있어요.
+                  </p>
+                </div>
+                <div className="p-3 bg-[#F9FAFB] rounded-[16px]">
+                  <p className="text-[13px] font-bold text-[#191F28] mb-1">
+                    👥 팀
+                  </p>
+                  <p className="text-[13px] text-[#4E5968] leading-relaxed">
+                    같은 날 근무하는 동료들의 스케줄을 볼 수 있어요.
+                  </p>
+                </div>
+                <div className="p-3 bg-[#F9FAFB] rounded-[16px]">
+                  <p className="text-[13px] font-bold text-[#191F28] mb-1">
+                    🏢 회사 일정
+                  </p>
+                  <p className="text-[13px] text-[#4E5968] leading-relaxed">
+                    휴무일, 회의, 행사 등 회사 전체 일정이 표시돼요.
+                  </p>
+                </div>
+              </div>
+            </Section>
+
+            {/* 추가근무 */}
+            <Section
+              id="overtime"
+              emoji="⏰"
+              title="추가근무"
+              open={open === "overtime"}
+              highlighted={highlighted === "overtime"}
+              onToggle={toggle}
+            >
+              <p className="text-[14px] text-[#4E5968] leading-relaxed mt-3">
+                예정된 근무 시간 외에 추가로 근무한 경우, 관리자가 추가근무를
+                기록해요.
+              </p>
+              <Sub>추가근무 확인 방법</Sub>
+              <div className="space-y-3">
+                <Step
+                  num={1}
+                  text="캘린더에서 해당 날짜를 탭해요."
+                />
+                <Step
+                  num={2}
+                  text="승인된 추가근무 내역이 표시돼요."
+                />
+              </div>
+              <Tip>
+                추가근무는 관리자가 등록하고 승인해요. 추가근무가 누락됐다면
+                관리자에게 문의해요.
               </Tip>
             </Section>
           </div>
