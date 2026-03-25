@@ -40,6 +40,7 @@ import {
   addDays,
   isBefore,
   startOfDay,
+  getWeekOfMonth,
 } from "date-fns";
 import { ko } from "date-fns/locale";
 import { useWorkplaces } from "@/lib/hooks/useWorkplaces";
@@ -723,7 +724,13 @@ export default function AdminCalendarPage() {
   } | null>(null);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [showAdmin, setShowAdmin] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("calendar_showAdmin") === "true";
+    }
+    return false;
+  });
+  const [viewProfileId, setViewProfileId] = useState<string | null>(null);
 
   // 수정 세션 동안 변경된 weekly_schedule IDs 추적
   const editSessionRef = useRef<Set<string>>(new Set());
@@ -1239,12 +1246,12 @@ export default function AdminCalendarPage() {
               <button
                 key={dateStr}
                 onClick={() => setSelectedDay(dateStr)}
-                className={`min-h-[80px] p-1.5 border-b border-r border-slate-100 text-left transition-colors hover:bg-[#F9FAFB] ${
+                className={`h-[84px] overflow-hidden p-1.5 border-b border-r border-slate-100 text-left transition-colors hover:bg-[#F9FAFB] ${
                   idx % 7 === 6 ? "border-r-0" : ""
                 } ${!isCurrentMonth ? "bg-[#FAFAFA]" : ""}`}
               >
                 {/* 날짜 숫자 */}
-                <div className="mb-1">
+                <div className="mb-0.5">
                   <span
                     className={`text-[12px] font-bold w-6 h-6 flex items-center justify-center rounded-full ${
                       isTodayDate
@@ -1262,16 +1269,18 @@ export default function AdminCalendarPage() {
                   </span>
                 </div>
 
-                {/* 회사 일정 */}
-                {dayEvents.slice(0, 1).map((ev) => (
-                  <div
-                    key={ev.id}
-                    className="text-[10px] font-bold px-1 py-0.5 rounded mb-0.5 truncate"
-                    style={{ backgroundColor: ev.color + "22", color: ev.color }}
-                  >
-                    {ev.title}
-                  </div>
-                ))}
+                {/* 회사 일정 — 항상 고정 높이로 레이아웃 안정화 */}
+                <div className="h-[18px] overflow-hidden mb-0.5">
+                  {dayEvents.slice(0, 1).map((ev) => (
+                    <div
+                      key={ev.id}
+                      className="text-[10px] font-bold px-1 py-0.5 rounded truncate"
+                      style={{ backgroundColor: ev.color + "22", color: ev.color }}
+                    >
+                      {ev.title}
+                    </div>
+                  ))}
+                </div>
 
                 {/* 근태 요약 */}
                 {layers.attendance && (
@@ -1343,21 +1352,23 @@ export default function AdminCalendarPage() {
                     </div>
                     <div className="text-[11px] font-normal text-[#8B95A1]">{d.slice(5)}</div>
 
-                    {/* 당일 회사 일정 */}
-                    {layers.events && (() => {
-                      const dayEvents = events.filter(
-                        (e) => e.start_date <= d && e.end_date >= d
-                      );
-                      return dayEvents.slice(0, 1).map((ev) => (
-                        <div
-                          key={ev.id}
-                          className="mt-1 text-[9px] font-bold px-1 py-0.5 rounded truncate mx-1"
-                          style={{ backgroundColor: ev.color + "22", color: ev.color }}
-                        >
-                          {ev.title}
-                        </div>
-                      ));
-                    })()}
+                    {/* 당일 회사 일정 — 항상 고정 높이로 레이아웃 안정화 */}
+                    <div className="mt-1 h-[18px] overflow-hidden mx-1">
+                      {layers.events && (() => {
+                        const dayEvents = events.filter(
+                          (e) => e.start_date <= d && e.end_date >= d
+                        );
+                        return dayEvents.slice(0, 1).map((ev) => (
+                          <div
+                            key={ev.id}
+                            className="text-[9px] font-bold px-1 py-0.5 rounded truncate"
+                            style={{ backgroundColor: ev.color + "22", color: ev.color }}
+                          >
+                            {ev.title}
+                          </div>
+                        ));
+                      })()}
+                    </div>
                   </th>
                 );
               })}
@@ -1367,12 +1378,15 @@ export default function AdminCalendarPage() {
             {profiles.map((profile) => (
               <tr key={profile.id} className="border-b border-slate-50 last:border-0">
                 <td className="px-4 py-3 sticky left-0 z-10 bg-white border-r border-slate-50">
-                  <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setViewProfileId(profile.id)}
+                    className="flex items-center gap-2 hover:opacity-70 transition-opacity active:scale-[0.97]"
+                  >
                     <AvatarDisplay userId={profile.id} avatarConfig={profile.avatar_config} size={28} />
                     <span className="text-[13px] font-bold text-[#191F28] truncate max-w-[60px]">
                       {profile.name}
                     </span>
-                  </div>
+                  </button>
                 </td>
 
                 {weekDates.map((d, i) => {
@@ -1383,6 +1397,8 @@ export default function AdminCalendarPage() {
                     ? attendance.find((a) => a.profile_id === profile.id && a.date === d)
                     : null;
                   const isTodayDate = isToday(parseISO(d));
+                  const isDayPast = isBefore(parseISO(d), startOfDay(new Date()));
+                  const isFutureDay = !isDayPast && !isTodayDate;
 
                   return (
                     <td
@@ -1399,7 +1415,7 @@ export default function AdminCalendarPage() {
                           const isSubstituted = slot.status === "substituted";
                           const slotAtt = att;
                           let borderColor = "";
-                          if (slotAtt) {
+                          if (slotAtt && !isFutureDay) {
                             if (slotAtt.is_absent) borderColor = "#EF4444";
                             else if (slotAtt.late_minutes && slotAtt.late_minutes > 0) borderColor = "#F97316";
                             else borderColor = "#00B761";
@@ -1437,7 +1453,7 @@ export default function AdminCalendarPage() {
                                   ✓ {format(new Date(slotAtt.clock_in), "HH:mm")}
                                 </div>
                               )}
-                              {slotAtt && slotAtt.is_absent && (
+                              {slotAtt && slotAtt.is_absent && !isFutureDay && (
                                 <div className="text-[9px] text-red-200 mt-0.5">✗ 결근</div>
                               )}
                             </button>
@@ -1587,7 +1603,11 @@ export default function AdminCalendarPage() {
 
         {/* 어드민 포함 토글 */}
         <button
-          onClick={() => setShowAdmin((v) => !v)}
+          onClick={() => setShowAdmin((v) => {
+            const next = !v;
+            localStorage.setItem("calendar_showAdmin", String(next));
+            return next;
+          })}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-bold border transition-all ${
             showAdmin ? "bg-[#191F28] text-white border-[#191F28]" : "bg-white text-[#8B95A1] border-slate-200"
           }`}
@@ -1629,8 +1649,16 @@ export default function AdminCalendarPage() {
         </button>
         <h2 className="text-[16px] font-bold text-[#191F28]">
           {viewType === "month"
-            ? format(baseDate, "yyyy년 M월", { locale: ko })
-            : `${format(startDate, "yyyy년 M월 d일")} — ${format(endDate, "M월 d일")}`}
+            ? baseDate.getFullYear() === new Date().getFullYear()
+              ? format(baseDate, "M월", { locale: ko })
+              : format(baseDate, "yyyy년 M월", { locale: ko })
+            : (() => {
+                const isCurrentYear = startDate.getFullYear() === new Date().getFullYear();
+                const weekNum = getWeekOfMonth(startDate, { weekStartsOn: 0 });
+                return isCurrentYear
+                  ? `${format(startDate, "M월")} ${weekNum}주차`
+                  : `${format(startDate, "yyyy년 M월")} ${weekNum}주차`;
+              })()}
         </h2>
         <button
           onClick={() => navigate(1)}
@@ -1689,6 +1717,14 @@ export default function AdminCalendarPage() {
           onDelete={editingSlot.slot?.id ? handleDeleteSlot : undefined}
           defaultDate={editingSlot.defaultDate}
           defaultProfileId={editingSlot.defaultProfileId}
+        />
+      )}
+
+      {/* 직원 프로필 모달 (주간뷰 직원 셀 클릭) */}
+      {viewProfileId && (
+        <EmployeeProfileModal
+          profileId={viewProfileId}
+          onClose={() => setViewProfileId(null)}
         />
       )}
 

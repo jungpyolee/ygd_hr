@@ -11,6 +11,7 @@ interface StoreSettings {
   overtime_unit: number;
   overtime_include_early: boolean;
   overtime_min_minutes: number;
+  health_cert_warning_days: number;
 }
 
 const UNIT_OPTIONS = [
@@ -22,8 +23,8 @@ const UNIT_OPTIONS = [
 
 export default function AdminSettingsPage() {
   const [saving, setSaving] = useState(false);
-  // controlled state for min_minutes input
   const [minMinutesInput, setMinMinutesInput] = useState<string | null>(null);
+  const [healthWarningInput, setHealthWarningInput] = useState<string | null>(null);
 
   const {
     data: store,
@@ -34,7 +35,7 @@ export default function AdminSettingsPage() {
     const { data } = await supabase
       .from("stores")
       .select(
-        "id, name, overtime_unit, overtime_include_early, overtime_min_minutes"
+        "id, name, overtime_unit, overtime_include_early, overtime_min_minutes, health_cert_warning_days"
       )
       .order("display_order")
       .limit(1)
@@ -107,6 +108,35 @@ export default function AdminSettingsPage() {
     } catch {
       setMinMinutesInput(null);
       mutate(); // 오류 시 서버 값으로 복구
+      toast.error("저장에 실패했어요", {
+        description: "잠시 후 다시 시도해주세요.",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleHealthWarningBlur = async () => {
+    if (!store || saving || healthWarningInput === null) return;
+    const value = Math.max(1, parseInt(healthWarningInput) || 30);
+    if (value === store.health_cert_warning_days) {
+      setHealthWarningInput(null);
+      return;
+    }
+    setSaving(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("stores")
+        .update({ health_cert_warning_days: value })
+        .eq("id", store.id);
+      if (error) throw error;
+      mutate({ ...store, health_cert_warning_days: value }, false);
+      setHealthWarningInput(null);
+      toast.success("저장됐어요");
+    } catch {
+      setHealthWarningInput(null);
+      mutate();
       toast.error("저장에 실패했어요", {
         description: "잠시 후 다시 시도해주세요.",
       });
@@ -241,6 +271,45 @@ export default function AdminSettingsPage() {
                     분 이상
                   </span>
                 </div>
+              </div>
+            </div>
+          </section>
+
+          {/* 보건증 관리 */}
+          <section className="bg-white rounded-[20px] border border-[#E5E8EB] overflow-hidden">
+            <div className="px-5 py-4 border-b border-[#F2F4F6]">
+              <p className="text-[16px] font-bold text-[#191F28]">
+                보건증 관리
+              </p>
+              <p className="text-[12px] text-[#8B95A1] mt-0.5">
+                보건증 만료 주의 표시 기준을 설정해요
+              </p>
+            </div>
+            <div className="px-5 py-4">
+              <p className="text-[14px] font-bold text-[#191F28] mb-1">
+                만료 주의 기준
+              </p>
+              <p className="text-[12px] text-[#8B95A1] mb-3">
+                만료일까지 이 일수 이하 남은 경우 주의로 표시돼요
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  max={365}
+                  value={
+                    healthWarningInput !== null
+                      ? healthWarningInput
+                      : store.health_cert_warning_days
+                  }
+                  onChange={(e) => setHealthWarningInput(e.target.value)}
+                  onBlur={handleHealthWarningBlur}
+                  disabled={saving}
+                  className="w-24 bg-[#F2F4F6] rounded-[12px] px-4 py-2.5 text-[16px] font-bold text-[#191F28] outline-none text-center disabled:opacity-60"
+                />
+                <span className="text-[14px] font-semibold text-[#4E5968]">
+                  일 이내
+                </span>
               </div>
             </div>
           </section>

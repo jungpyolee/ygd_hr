@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
 import Link from "next/link";
-import { format, addDays, differenceInDays } from "date-fns";
+import { format, addDays, differenceInCalendarDays, parseISO, startOfDay } from "date-fns";
 import { sendNotification } from "@/lib/notifications";
 import AdminPushToggle from "@/components/AdminPushToggle";
 import PushPromptModal from "@/components/PushPromptModal";
@@ -162,9 +162,9 @@ export default function AdminLayout({
 
     for (const emp of expiring) {
       if (notifiedIds.has(emp.id)) continue;
-      const daysLeft = differenceInDays(
-        new Date(emp.health_cert_date),
-        today
+      const daysLeft = differenceInCalendarDays(
+        parseISO(emp.health_cert_date),
+        startOfDay(today)
       );
       await sendNotification({
         target_role: "admin",

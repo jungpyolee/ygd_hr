@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import useSWR from "swr";
+import { parseISO, startOfDay, differenceInCalendarDays, isBefore } from "date-fns";
 import { createClient } from "@/lib/supabase";
 import { logError } from "@/lib/logError";
 import AvatarDisplay from "@/components/AvatarDisplay";
@@ -60,18 +61,18 @@ const EMPLOYMENT_TYPE_OPTIONS = [
   { value: "part_time_daily", label: "일일 알바" },
 ];
 
-function getHealthStatus(date: string | null) {
+function getHealthStatus(date: string | null, warningDays = 30) {
   if (!date) return "none";
-  const expiry = new Date(date);
-  const now = new Date();
-  if (expiry < now) return "expired";
-  const daysUntil = (expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
-  if (daysUntil <= 30) return "soon";
+  const expiry = parseISO(date);
+  const today = startOfDay(new Date());
+  if (isBefore(expiry, today)) return "expired";
+  const daysUntil = differenceInCalendarDays(expiry, today);
+  if (daysUntil <= warningDays) return "soon";
   return "ok";
 }
 
-function HealthBadge({ date, verified }: { date: string | null; verified: boolean | null }) {
-  const status = getHealthStatus(date);
+function HealthBadge({ date, verified, warningDays = 30 }: { date: string | null; verified: boolean | null; warningDays?: number }) {
+  const status = getHealthStatus(date, warningDays);
   if (status === "expired")
     return <span className="text-[11px] font-bold text-[#D9480F] bg-[#FFF4E6] px-2 py-1 rounded-lg">만료</span>;
   if (status === "soon")
@@ -114,6 +115,19 @@ function generateTimeOptions(startH: number, endH: number) {
 export default function AdminEmployeesPage() {
   const { workplaces, byKey, byId, positionsOf, positionsOfStore, hasPositions, hasPositionsStore } = useWorkplaces();
   const [uploading, setUploading] = useState(false);
+
+  // 보건증 만료 주의 기준일 (매장 설정)
+  const { data: storeSettings } = useSWR("admin-store-settings", async () => {
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("stores")
+      .select("health_cert_warning_days")
+      .order("display_order")
+      .limit(1)
+      .single();
+    return data as { health_cert_warning_days: number } | null;
+  }, { dedupingInterval: 60_000, revalidateOnFocus: false });
+  const warningDays = storeSettings?.health_cert_warning_days ?? 30;
 
   // 목록 필터 상태
   const [searchQuery, setSearchQuery] = useState("");
@@ -185,7 +199,7 @@ export default function AdminEmployeesPage() {
     if (searchQuery && !emp.name?.includes(searchQuery)) return false;
     if (filterType && emp.employment_type !== filterType) return false;
     if (filterHealth) {
-      const status = getHealthStatus(emp.health_cert_date);
+      const status = getHealthStatus(emp.health_cert_date, warningDays);
       if (filterHealth !== status) return false;
     }
     return true;
@@ -197,9 +211,9 @@ export default function AdminEmployeesPage() {
     full_time: employees.filter((e) => e.employment_type === "full_time").length,
     part_time_fixed: employees.filter((e) => e.employment_type === "part_time_fixed").length,
     part_time_daily: employees.filter((e) => e.employment_type === "part_time_daily").length,
-    expired: employees.filter((e) => getHealthStatus(e.health_cert_date) === "expired").length,
-    soon: employees.filter((e) => getHealthStatus(e.health_cert_date) === "soon").length,
-    none: employees.filter((e) => getHealthStatus(e.health_cert_date) === "none").length,
+    expired: employees.filter((e) => getHealthStatus(e.health_cert_date, warningDays) === "expired").length,
+    soon: employees.filter((e) => getHealthStatus(e.health_cert_date, warningDays) === "soon").length,
+    none: employees.filter((e) => getHealthStatus(e.health_cert_date, warningDays) === "none").length,
   };
 
   const handleColorChange = async (id: string, newColor: string) => {
@@ -385,13 +399,15 @@ export default function AdminEmployeesPage() {
         .insert(toInsert.map((store_id) => ({ profile_id: profileId, store_id })));
     }
 
-    // 즉시 캐시 반영
-    mutateEmployees((prev) =>
-      prev?.map((emp) =>
-        emp.id === editingEmployee.id
-          ? ({ ...emp, ...editForm } as Profile)
-          : emp,
-      ),
+    // 즉시 캐시 반영 후 서버 재검증
+    mutateEmployees(
+      (prev) =>
+        prev?.map((emp) =>
+          emp.id === editingEmployee.id
+            ? ({ ...emp, ...editForm } as Profile)
+            : emp,
+        ),
+      { revalidate: true },
     );
     toast.success("정보를 수정했어요");
     setEditingEmployee(null);
@@ -653,7 +669,7 @@ export default function AdminEmployeesPage() {
 
                 {/* 보건증 상태 */}
                 <div className="shrink-0">
-                  <HealthBadge date={employee.health_cert_date} verified={employee.health_cert_verified} />
+                  <HealthBadge date={employee.health_cert_date} verified={employee.health_cert_verified} warningDays={warningDays} />
                 </div>
 
                 {/* 화살표 */}

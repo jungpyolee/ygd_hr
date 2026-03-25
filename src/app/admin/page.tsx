@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
-import { format, addDays, differenceInDays, subDays } from "date-fns";
+import { format, addDays, differenceInCalendarDays, subDays, parseISO, startOfDay } from "date-fns";
 import { useWorkplaces } from "@/lib/hooks/useWorkplaces";
 import { ko } from "date-fns/locale";
 
@@ -162,7 +162,7 @@ export default function AdminDashboardPage() {
 
       return ((data ?? []) as HealthCertItem[]).map((p) => ({
         ...p,
-        days_left: differenceInDays(new Date(p.health_cert_date), new Date()),
+        days_left: differenceInCalendarDays(parseISO(p.health_cert_date), startOfDay(new Date())),
       }));
     },
     { dedupingInterval: 300_000, revalidateOnFocus: false },
