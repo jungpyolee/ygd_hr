@@ -300,7 +300,7 @@ interface LayerState {
 export default function EmployeeCalendarPage() {
   const router = useRouter();
   const { user } = useAuth();
-  const { byId } = useWorkplaces();
+  const { byId, workplaces } = useWorkplaces();
 
   const [baseDate, setBaseDate] = useState(new Date());
   const [layers, setLayers] = useState<LayerState>(() => {
@@ -475,22 +475,20 @@ export default function EmployeeCalendarPage() {
       {/* 레이어 토글 */}
       <div className="px-4 pt-4 pb-3 flex items-center gap-2 overflow-x-auto scrollbar-hide">
         {[
-          { key: "mySchedule" as const, label: "내 스케줄", color: "#3182F6" },
-          { key: "myAttendance" as const, label: "내 근무", color: "#00B761" },
-          { key: "team" as const, label: "팀 스케줄", color: "#8B95A1" },
-          { key: "events" as const, label: "회사일정", color: "#F97316" },
-        ].map(({ key, label, color }) => (
+          { key: "mySchedule" as const, label: "내 스케줄" },
+          { key: "myAttendance" as const, label: "내 근무" },
+          { key: "team" as const, label: "팀 스케줄" },
+          { key: "events" as const, label: "회사일정" },
+        ].map(({ key, label }) => (
           <button
             key={key}
             onClick={() => toggleLayer(key)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-bold border shrink-0 transition-all ${
               layers[key]
-                ? "text-white border-transparent"
+                ? "bg-[#191F28] text-white border-transparent"
                 : "text-[#8B95A1] bg-white border-slate-200"
             }`}
-            style={layers[key] ? { backgroundColor: color, borderColor: color } : {}}
           >
-            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: layers[key] ? "rgba(255,255,255,0.6)" : color }} />
             {label}
           </button>
         ))}
@@ -602,6 +600,7 @@ export default function EmployeeCalendarPage() {
                           const storeColor = store?.color || "#3182F6";
                           let bg: string, textCol: string, blockText: string;
 
+                          const storeBgColor = store?.bg_color || storeColor + "20";
                           if (layers.myAttendance) {
                             if (done) {
                               // 퇴근 완료
@@ -610,8 +609,8 @@ export default function EmployeeCalendarPage() {
                               blockText = `✓ ${format(att!.clock_in!, "HH:mm")}`;
                             } else if (worked) {
                               // 출근 중
-                              bg = storeColor;
-                              textCol = "white";
+                              bg = storeColor + "30";
+                              textCol = storeColor;
                               blockText = `↑ ${format(att!.clock_in!, "HH:mm")}`;
                             } else if (isAbsent) {
                               // 결근 (과거 날짜만)
@@ -620,21 +619,26 @@ export default function EmployeeCalendarPage() {
                               blockText = "결근";
                             } else {
                               // 예정 (미래 or 오늘)
-                              bg = isCurrentMonth ? storeColor : storeColor + "66";
-                              textCol = "white";
+                              bg = isCurrentMonth ? storeBgColor : storeColor + "12";
+                              textCol = storeColor;
                               blockText = slot.start_time.slice(0, 5);
                             }
                           } else {
-                            bg = isCurrentMonth ? storeColor : storeColor + "66";
-                            textCol = "white";
+                            bg = isCurrentMonth ? storeBgColor : storeColor + "12";
+                            textCol = storeColor;
                             blockText = slot.start_time.slice(0, 5);
                           }
 
+                          const showBorder = !done && !isAbsent;
                           return (
                             <div
                               key={slot.id}
                               className="text-[9px] font-bold px-1 py-0.5 rounded truncate mx-0.5 leading-tight"
-                              style={{ backgroundColor: bg, color: textCol }}
+                              style={{
+                                backgroundColor: bg,
+                                color: textCol,
+                                borderLeft: showBorder ? `2px solid ${storeColor}` : undefined,
+                              }}
                             >
                               {blockText}
                             </div>
@@ -684,9 +688,17 @@ export default function EmployeeCalendarPage() {
 
       {/* 범례 */}
       <div className="px-5 mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] text-[#8B95A1]">
-        {layers.mySchedule && (
-          <span className="flex items-center gap-1.5">
-            <span className="w-3 h-2 rounded-sm bg-[#3182F6]" />예정 근무
+        {layers.mySchedule && workplaces.length > 0 && (
+          <span className="flex items-center gap-1.5 flex-wrap gap-y-1">
+            {workplaces.map((wp) => (
+              <span key={wp.id} className="flex items-center gap-1">
+                <span
+                  className="w-3 h-2 rounded-sm"
+                  style={{ backgroundColor: wp.bg_color, borderLeft: `2px solid ${wp.color}` }}
+                />
+                <span style={{ color: wp.color }}>{wp.label}</span>
+              </span>
+            ))}
           </span>
         )}
         {layers.myAttendance && (

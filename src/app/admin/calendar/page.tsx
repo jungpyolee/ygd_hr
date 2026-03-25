@@ -1421,6 +1421,9 @@ export default function AdminCalendarPage() {
                             else borderColor = "#00B761";
                           }
 
+                          const storeColor = byId[slot.store_id]?.color || "#8B95A1";
+                          const activeBorderColor = borderColor || storeColor;
+
                           return (
                             <button
                               key={slot.id}
@@ -1430,31 +1433,32 @@ export default function AdminCalendarPage() {
                                   : setSelectedDay(d)
                               }
                               className={`w-full text-left px-2 py-1.5 rounded-lg transition-all ${
-                                isSubstituted ? "text-[#8B95A1] line-through" : "text-white"
+                                isSubstituted ? "text-[#8B95A1] line-through" : "text-[#191F28]"
                               } ${mode === "edit" ? "hover:opacity-80 active:scale-[0.97]" : "cursor-default"}`}
                               style={{
-                                backgroundColor: isSubstituted
-                                  ? "#F2F4F6"
-                                  : byId[slot.store_id]?.color || "#8B95A1",
-                                borderLeft: borderColor ? `3px solid ${borderColor}` : undefined,
+                                backgroundColor: isSubstituted ? "#F2F4F6" : storeColor + "18",
+                                borderLeft: `3px solid ${isSubstituted ? "#D1D6DB" : activeBorderColor}`,
                               }}
                             >
-                              <div className="text-[11px] font-bold truncate leading-tight">
+                              <div
+                                className="text-[11px] font-bold truncate leading-tight"
+                                style={{ color: isSubstituted ? "#8B95A1" : storeColor }}
+                              >
                                 {byId[slot.store_id]?.label || "—"}
                                 {positions && (
-                                  <span className="opacity-80 ml-0.5 font-normal">·{positions}</span>
+                                  <span className="text-[#8B95A1] ml-0.5 font-normal">·{positions}</span>
                                 )}
                               </div>
-                              <div className="text-[10px] opacity-90 mt-0.5 leading-tight">
+                              <div className="text-[10px] text-[#4E5968] mt-0.5 leading-tight">
                                 {slot.start_time.slice(0, 5)}~{slot.end_time.slice(0, 5)}
                               </div>
                               {slotAtt && slotAtt.clock_in && !slotAtt.is_absent && (
-                                <div className="text-[9px] opacity-80 mt-0.5">
+                                <div className="text-[9px] text-[#6B7684] mt-0.5">
                                   ✓ {format(new Date(slotAtt.clock_in), "HH:mm")}
                                 </div>
                               )}
                               {slotAtt && slotAtt.is_absent && !isFutureDay && (
-                                <div className="text-[9px] text-red-200 mt-0.5">✗ 결근</div>
+                                <div className="text-[9px] text-[#EF4444] mt-0.5">✗ 결근</div>
                               )}
                             </button>
                           );

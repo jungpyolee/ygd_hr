@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import useSWR from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import { createClient } from "@/lib/supabase";
 import { toast } from "sonner";
 
@@ -14,6 +14,24 @@ interface StoreSettings {
   health_cert_warning_days: number;
 }
 
+interface StoreColorSettings {
+  id: string;
+  label: string;
+  color: string;
+  bg_color: string;
+}
+
+const COLOR_PRESETS = [
+  { label: "인디고", color: "#4F46E5", bg_color: "#EEF2FF" },
+  { label: "바이올렛", color: "#7C3AED", bg_color: "#F5F3FF" },
+  { label: "로즈", color: "#E11D48", bg_color: "#FFF1F2" },
+  { label: "앰버", color: "#D97706", bg_color: "#FFFBEB" },
+  { label: "틸", color: "#0891B2", bg_color: "#ECFEFF" },
+  { label: "슬레이트", color: "#475569", bg_color: "#F1F5F9" },
+  { label: "에메랄드", color: "#059669", bg_color: "#ECFDF5" },
+  { label: "오렌지", color: "#EA580C", bg_color: "#FFF7ED" },
+];
+
 const UNIT_OPTIONS = [
   { value: 15, label: "15분" },
   { value: 30, label: "30분" },
@@ -23,8 +41,47 @@ const UNIT_OPTIONS = [
 
 export default function AdminSettingsPage() {
   const [saving, setSaving] = useState(false);
+  const [colorSaving, setColorSaving] = useState<string | null>(null);
   const [minMinutesInput, setMinMinutesInput] = useState<string | null>(null);
   const [healthWarningInput, setHealthWarningInput] = useState<string | null>(null);
+  const { mutate: globalMutate } = useSWRConfig();
+
+  const { data: storeColors, mutate: mutateColors } = useSWR<StoreColorSettings[]>(
+    "admin-store-colors",
+    async () => {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("stores")
+        .select("id, label, color, bg_color")
+        .not("work_location_key", "is", null)
+        .order("display_order");
+      return (data ?? []) as StoreColorSettings[];
+    }
+  );
+
+  const handleColorChange = async (storeId: string, color: string, bg_color: string) => {
+    if (colorSaving) return;
+    setColorSaving(storeId);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("stores")
+        .update({ color, bg_color })
+        .eq("id", storeId);
+      if (error) throw error;
+      mutateColors(
+        (prev) => prev?.map((s) => s.id === storeId ? { ...s, color, bg_color } : s),
+        false
+      );
+      globalMutate("workplaces");
+      toast.success("색상이 저장됐어요");
+    } catch {
+      mutateColors();
+      toast.error("저장에 실패했어요", { description: "잠시 후 다시 시도해주세요." });
+    } finally {
+      setColorSaving(null);
+    }
+  };
 
   const {
     data: store,
@@ -162,6 +219,62 @@ export default function AdminSettingsPage() {
         <p className="text-[14px] text-[#8B95A1]">매장 정보를 불러올 수 없어요.</p>
       ) : (
         <div className="space-y-4">
+          {/* 근무지 색상 */}
+          {storeColors && storeColors.length > 0 && (
+            <section className="bg-white rounded-[20px] border border-[#E5E8EB] overflow-hidden">
+              <div className="px-5 py-4 border-b border-[#F2F4F6]">
+                <p className="text-[16px] font-bold text-[#191F28]">근무지 색상</p>
+                <p className="text-[12px] text-[#8B95A1] mt-0.5">
+                  스케줄 캘린더에 표시되는 근무지 색상을 설정해요
+                </p>
+              </div>
+              <div className="divide-y divide-[#F2F4F6]">
+                {storeColors.map((s) => (
+                  <div key={s.id} className="px-5 py-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span
+                        className="w-3 h-3 rounded-full"
+                        style={{ backgroundColor: s.color }}
+                      />
+                      <p className="text-[14px] font-bold text-[#191F28]">{s.label}</p>
+                      <span
+                        className="text-[11px] font-bold px-2 py-0.5 rounded-full ml-auto"
+                        style={{ backgroundColor: s.bg_color, color: s.color }}
+                      >
+                        미리보기
+                      </span>
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                      {COLOR_PRESETS.map((preset) => {
+                        const isSelected = s.color === preset.color;
+                        return (
+                          <button
+                            key={preset.color}
+                            onClick={() => handleColorChange(s.id, preset.color, preset.bg_color)}
+                            disabled={colorSaving === s.id}
+                            title={preset.label}
+                            className="relative w-8 h-8 rounded-full transition-all active:scale-[0.90] disabled:opacity-50"
+                            style={{
+                              backgroundColor: preset.color,
+                              outline: isSelected ? `3px solid ${preset.color}` : "none",
+                              outlineOffset: "2px",
+                            }}
+                          >
+                            {isSelected && (
+                              <span className="absolute inset-0 flex items-center justify-center text-white text-[12px] font-bold">
+                                ✓
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
           {/* 추가근무 규칙 */}
           <section className="bg-white rounded-[20px] border border-[#E5E8EB] overflow-hidden">
             <div className="px-5 py-4 border-b border-[#F2F4F6]">
