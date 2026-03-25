@@ -1215,7 +1215,7 @@ export default function AdminCalendarPage() {
         </div>
 
         {/* 날짜 셀 */}
-        <div className="grid grid-cols-7">
+        <div className="grid grid-cols-7" style={{ gridAutoRows: "84px" }}>
           {calDays.map((day, idx) => {
             const dateStr = format(day, "yyyy-MM-dd");
             const isCurrentMonth = isSameMonth(day, baseDate);
@@ -1246,7 +1246,7 @@ export default function AdminCalendarPage() {
               <button
                 key={dateStr}
                 onClick={() => setSelectedDay(dateStr)}
-                className={`h-[84px] overflow-hidden p-1.5 border-b border-r border-slate-100 text-left transition-colors hover:bg-[#F9FAFB] ${
+                className={`overflow-hidden p-1.5 border-b border-r border-slate-100 text-left transition-colors hover:bg-[#F9FAFB] ${
                   idx % 7 === 6 ? "border-r-0" : ""
                 } ${!isCurrentMonth ? "bg-[#FAFAFA]" : ""}`}
               >
