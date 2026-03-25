@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import AvatarDisplay from "@/components/AvatarDisplay";
 import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
@@ -11,12 +11,10 @@ import {
   Plus,
   X,
   Pencil,
-  Save,
   Eye,
   Layers,
   CalendarDays,
   LayoutGrid,
-  AlertTriangle,
   Clock,
   MapPin,
   PenLine,
@@ -109,13 +107,6 @@ interface CompanyEvent {
   store_id: string | null;
 }
 
-interface DraftState {
-  inserts: ScheduleSlot[];                    // 추가 예정 슬롯 (tempId 포함)
-  updates: Record<string, Partial<ScheduleSlot>>;  // slotId → 변경 필드
-  deletes: string[];                          // 삭제 예정 slotId 목록
-}
-
-const EMPTY_DRAFT: DraftState = { inserts: [], updates: {}, deletes: [] };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
@@ -137,21 +128,6 @@ function generateTimeOptions(startH: number, endH: number): string[] {
 const START_TIMES = generateTimeOptions(7, 21);
 const END_TIMES = generateTimeOptions(7, 22);
 
-function buildScheduleNotifContent(profileId: string, draft: DraftState, rawSlots: ScheduleSlot[]): string {
-  const insertCount = draft.inserts.filter((s) => s.profile_id === profileId).length;
-  const updateCount = Object.keys(draft.updates).filter((slotId) => {
-    const orig = rawSlots.find((s) => s.id === slotId);
-    return orig?.profile_id === profileId || draft.updates[slotId].profile_id === profileId;
-  }).length;
-  const deleteCount = draft.deletes.filter((slotId) => rawSlots.find((s) => s.id === slotId)?.profile_id === profileId).length;
-  const parts: string[] = [];
-  if (insertCount > 0) parts.push(`${insertCount}개 추가`);
-  if (updateCount > 0) parts.push(`${updateCount}개 변경`);
-  if (deleteCount > 0) parts.push(`${deleteCount}개 삭제`);
-  return parts.length > 0
-    ? `근무 스케줄이 변경됐어요 (${parts.join(", ")}). 캘린더에서 확인해보세요.`
-    : "스케줄이 업데이트됐어요. 캘린더에서 확인해보세요.";
-}
 
 // ─── SlotBottomSheet ─────────────────────────────────────────────────────────
 interface SlotSheetProps {
@@ -361,6 +337,273 @@ function SlotBottomSheet({
   );
 }
 
+// ─── SlotInfoSheet (슬롯 정보 + 수정/삭제) ─────────────────────────────────
+interface SlotInfoSheetProps {
+  slot: ScheduleSlot;
+  profile: Profile | undefined;
+  attendance: AttendanceEntry | undefined;
+  onClose: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}
+
+function SlotInfoSheet({ slot, profile, attendance, onClose, onEdit, onDelete }: SlotInfoSheetProps) {
+  const { byId, positionsOfStore } = useWorkplaces();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const store = byId[slot.store_id];
+  const positions = slot.position_keys?.length
+    ? slot.position_keys
+        .map((k) => positionsOfStore(slot.store_id).find((p) => p.position_key === k)?.label || k)
+        .join(" · ")
+    : null;
+  const dateLabel = format(parseISO(slot.slot_date), "M월 d일 (EEEE)", { locale: ko });
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-md bg-white rounded-[28px] px-5 pt-6 pb-6 shadow-2xl animate-in zoom-in-95 fade-in-0 duration-200">
+        <div className="flex justify-between items-center mb-5">
+          <h3 className="text-[18px] font-bold text-[#191F28]">근무 정보</h3>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-[#F2F4F6]">
+            <X className="w-5 h-5 text-[#8B95A1]" />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          {profile && (
+            <div className="flex items-center gap-3">
+              <AvatarDisplay userId={profile.id} avatarConfig={profile.avatar_config} size={40} />
+              <span className="text-[16px] font-bold text-[#191F28]">{profile.name}</span>
+            </div>
+          )}
+
+          <div className="text-[14px] text-[#4E5968] font-medium">{dateLabel}</div>
+
+          <div
+            className="p-3 rounded-2xl"
+            style={{ backgroundColor: (store?.color || "#3182F6") + "15", borderLeft: `3px solid ${store?.color || "#3182F6"}` }}
+          >
+            <div className="flex items-center gap-1.5">
+              <MapPin className="w-3.5 h-3.5" style={{ color: store?.color || "#3182F6" }} />
+              <span className="text-[14px] font-bold" style={{ color: store?.color || "#3182F6" }}>
+                {store?.label || "근무지"}
+              </span>
+              {positions && <span className="text-[12px] text-[#8B95A1]">· {positions}</span>}
+            </div>
+            <div className="flex items-center gap-1 mt-1 text-[13px] text-[#4E5968]">
+              <Clock className="w-3.5 h-3.5" />
+              {slot.start_time.slice(0, 5)} — {slot.end_time.slice(0, 5)}
+            </div>
+          </div>
+
+          {slot.notes && (
+            <div className="text-[13px] text-[#4E5968] bg-[#F9FAFB] p-3 rounded-xl">
+              {slot.notes}
+            </div>
+          )}
+
+          {attendance && attendance.clock_in && (
+            <div className="p-3 bg-green-50 rounded-xl border-l-[3px] border-green-400">
+              <div className="flex items-center gap-2 text-[12px]">
+                <span className="text-[#8B95A1]">출근</span>
+                <span className="font-bold text-[#4E5968]">{format(new Date(attendance.clock_in), "HH:mm")}</span>
+                {attendance.clock_out && (
+                  <>
+                    <span className="text-[#D1D6DB]">→</span>
+                    <span className="text-[#8B95A1]">퇴근</span>
+                    <span className="font-bold text-[#4E5968]">{format(new Date(attendance.clock_out), "HH:mm")}</span>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-3 mt-6">
+          <button
+            onClick={onEdit}
+            className="flex-1 py-3.5 bg-[#3182F6] text-white font-bold rounded-2xl active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+          >
+            <Pencil className="w-4 h-4" />
+            수정하기
+          </button>
+          <button
+            onClick={() => {
+              if (!confirmDelete) { setConfirmDelete(true); return; }
+              setDeleting(true);
+              onDelete();
+            }}
+            disabled={deleting}
+            className={`flex-1 py-3.5 font-bold rounded-2xl transition-all text-[14px] ${
+              confirmDelete ? "bg-red-500 text-white" : "bg-[#F2F4F6] text-[#8B95A1]"
+            }`}
+          >
+            {deleting ? "삭제 중..." : confirmDelete ? "정말 삭제할까요?" : "삭제하기"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── CopyPreviewModal (전주 복사 미리보기) ────────────────────────────────────
+interface CopyPreviewModalProps {
+  initialSlots: ScheduleSlot[];
+  profiles: Profile[];
+  onClose: () => void;
+  onSave: (slots: ScheduleSlot[]) => Promise<void>;
+}
+
+function CopyPreviewModal({ initialSlots, profiles, onClose, onSave }: CopyPreviewModalProps) {
+  const [slots, setSlots] = useState<ScheduleSlot[]>(initialSlots);
+  const [editingSlot, setEditingSlot] = useState<ScheduleSlot | null>(null);
+  const [saving, setSaving] = useState(false);
+  const { byId, positionsOfStore } = useWorkplaces();
+
+  const profileMap = useMemo(() => {
+    const map = new Map<string, ScheduleSlot[]>();
+    slots.forEach((s) => {
+      if (!map.has(s.profile_id)) map.set(s.profile_id, []);
+      map.get(s.profile_id)!.push(s);
+    });
+    map.forEach((list) => list.sort((a, b) => a.slot_date.localeCompare(b.slot_date)));
+    return map;
+  }, [slots]);
+
+  const handleRemove = (id: string) => {
+    setSlots((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  const handleEditSave = async (data: Partial<ScheduleSlot>) => {
+    if (!editingSlot) return;
+    setSlots((prev) =>
+      prev.map((s) =>
+        s.id === editingSlot.id
+          ? {
+              ...s,
+              profile_id: data.profile_id || s.profile_id,
+              slot_date: data.slot_date || s.slot_date,
+              start_time: data.start_time || s.start_time,
+              end_time: data.end_time || s.end_time,
+              store_id: data.store_id || s.store_id,
+              position_keys: data.position_keys ?? s.position_keys,
+              notes: data.notes !== undefined ? (data.notes || null) : s.notes,
+            }
+          : s
+      )
+    );
+    setEditingSlot(null);
+  };
+
+  const handleSaveAll = async () => {
+    setSaving(true);
+    await onSave(slots);
+    setSaving(false);
+  };
+
+  const visibleProfiles = profiles.filter((p) => profileMap.has(p.id));
+
+  return (
+    <div className="fixed inset-0 z-[180] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-lg bg-white rounded-[28px] shadow-2xl animate-in zoom-in-95 fade-in-0 duration-200 max-h-[85vh] flex flex-col">
+        {/* 헤더 */}
+        <div className="flex justify-between items-center px-5 pt-6 pb-4 border-b border-slate-100 shrink-0">
+          <div>
+            <h3 className="text-[18px] font-bold text-[#191F28]">전주 복사 미리보기</h3>
+            <p className="text-[13px] text-[#8B95A1] mt-0.5">
+              {visibleProfiles.length}명 · {slots.length}개 근무
+            </p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-[#F2F4F6]">
+            <X className="w-5 h-5 text-[#8B95A1]" />
+          </button>
+        </div>
+
+        {/* 슬롯 목록 */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5 scrollbar-hide">
+          {slots.length === 0 && (
+            <div className="py-12 text-center text-[#8B95A1] text-[14px]">
+              모든 근무가 제거됐어요
+            </div>
+          )}
+          {visibleProfiles.map((profile) => (
+            <div key={profile.id}>
+              <div className="flex items-center gap-2 mb-2">
+                <AvatarDisplay userId={profile.id} avatarConfig={profile.avatar_config} size={28} />
+                <span className="text-[14px] font-bold text-[#191F28]">{profile.name}</span>
+                <span className="text-[12px] text-[#8B95A1]">{profileMap.get(profile.id)?.length}개</span>
+              </div>
+              <div className="space-y-1.5">
+                {(profileMap.get(profile.id) || []).map((slot) => {
+                  const store = byId[slot.store_id];
+                  const positions = slot.position_keys?.length
+                    ? slot.position_keys
+                        .map((k) => positionsOfStore(slot.store_id).find((p) => p.position_key === k)?.label || k)
+                        .join(" · ")
+                    : null;
+                  return (
+                    <div key={slot.id} className="flex items-center gap-2 p-2.5 bg-[#F9FAFB] rounded-xl">
+                      <div className="w-1 h-8 rounded-full shrink-0" style={{ backgroundColor: store?.color || "#3182F6" }} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 text-[13px]">
+                          <span className="font-bold" style={{ color: store?.color || "#3182F6" }}>
+                            {store?.label || "근무지"}
+                          </span>
+                          {positions && <span className="text-[#8B95A1] text-[11px]">· {positions}</span>}
+                        </div>
+                        <div className="text-[12px] text-[#4E5968]">
+                          {format(parseISO(slot.slot_date), "M/d(EEE)", { locale: ko })} · {slot.start_time.slice(0, 5)}~{slot.end_time.slice(0, 5)}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setEditingSlot(slot)}
+                        className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-[#E8F3FF] transition-all"
+                      >
+                        <Pencil className="w-3.5 h-3.5 text-[#8B95A1]" />
+                      </button>
+                      <button
+                        onClick={() => handleRemove(slot.id)}
+                        className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-[#FFEBEB] transition-all"
+                      >
+                        <X className="w-3.5 h-3.5 text-[#8B95A1]" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* 하단 저장 */}
+        <div className="px-5 py-4 border-t border-slate-100 shrink-0">
+          <button
+            onClick={handleSaveAll}
+            disabled={saving || slots.length === 0}
+            className="w-full py-3.5 bg-[#3182F6] text-white font-bold rounded-2xl disabled:opacity-50 active:scale-[0.98] transition-all"
+          >
+            {saving ? "저장 중..." : `${slots.length}개 근무 저장하기`}
+          </button>
+        </div>
+      </div>
+
+      {/* 슬롯 편집 */}
+      {editingSlot && (
+        <SlotBottomSheet
+          slot={editingSlot}
+          profiles={profiles}
+          onClose={() => setEditingSlot(null)}
+          onSave={handleEditSave}
+          defaultDate={editingSlot.slot_date}
+          defaultProfileId={editingSlot.profile_id}
+        />
+      )}
+    </div>
+  );
+}
+
 // ─── DaySheet (날짜 상세 바텀시트) ───────────────────────────────────────────
 interface DaySheetProps {
   dateStr: string;
@@ -368,7 +611,6 @@ interface DaySheetProps {
   attendance: AttendanceEntry[];
   events: CompanyEvent[];
   profiles: Profile[];
-  mode: "view" | "edit";
   onClose: () => void;
   onEditSlot: (slot: ScheduleSlot) => void;
   onAddSlot: (date: string) => void;
@@ -382,7 +624,6 @@ function DaySheet({
   attendance,
   events,
   profiles,
-  mode,
   onClose,
   onEditSlot,
   onAddSlot,
@@ -627,43 +868,27 @@ function DaySheet({
           {daySlots.map((slot) => {
             const att = attByProfile[slot.profile_id];
             const profile = profileById[slot.profile_id];
-            if (mode === "edit") {
-              return (
-                <button
-                  key={slot.id}
-                  onClick={() => onEditSlot(slot)}
-                  className="w-full text-left rounded-[18px] overflow-hidden hover:ring-2 hover:ring-[#3182F6] transition-all active:scale-[0.98]"
-                >
-                  {renderAttCard(att, slot) ?? (
-                    <div className="bg-white p-4 border border-slate-100 rounded-[18px] flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <AvatarDisplay userId={slot.profile_id} avatarConfig={profile?.avatar_config} size={40} />
-                        <div>
-                          <span className="text-[15px] font-bold text-[#191F28]">{profile?.name}</span>
-                          <p className="text-[12px] text-[#8B95A1]">{byId[slot.store_id]?.label}</p>
-                        </div>
-                      </div>
-                      <div className="text-right text-[13px] font-bold text-[#4E5968]">
-                        {slot.start_time.slice(0, 5)} ~ {slot.end_time.slice(0, 5)}
+            return (
+              <button
+                key={slot.id}
+                onClick={() => onEditSlot(slot)}
+                className="w-full text-left rounded-[18px] overflow-hidden hover:ring-2 hover:ring-[#3182F6] transition-all active:scale-[0.98]"
+              >
+                {renderAttCard(att, slot) ?? (
+                  <div className="bg-white p-4 border border-slate-100 rounded-[18px] flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <AvatarDisplay userId={slot.profile_id} avatarConfig={profile?.avatar_config} size={40} />
+                      <div>
+                        <span className="text-[15px] font-bold text-[#191F28]">{profile?.name}</span>
+                        <p className="text-[12px] text-[#8B95A1]">{byId[slot.store_id]?.label}</p>
                       </div>
                     </div>
-                  )}
-                </button>
-              );
-            }
-            return renderAttCard(att, slot) ?? (
-              <div key={slot.id} className="bg-white p-4 border border-slate-100 rounded-[18px] flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <AvatarDisplay userId={slot.profile_id} avatarConfig={profile?.avatar_config} size={40} />
-                  <div>
-                    <span className="text-[15px] font-bold text-[#191F28]">{profile?.name}</span>
-                    <p className="text-[12px] text-[#8B95A1]">{byId[slot.store_id]?.label}</p>
+                    <div className="text-right text-[13px] font-bold text-[#4E5968]">
+                      {slot.start_time.slice(0, 5)} ~ {slot.end_time.slice(0, 5)}
+                    </div>
                   </div>
-                </div>
-                <div className="text-right text-[13px] font-bold text-[#4E5968]">
-                  {slot.start_time.slice(0, 5)} ~ {slot.end_time.slice(0, 5)}
-                </div>
-              </div>
+                )}
+              </button>
             );
           })}
 
@@ -676,15 +901,13 @@ function DaySheet({
           )}
         </div>
 
-        {mode === "edit" && (
-          <button
-            onClick={() => { onAddSlot(dateStr); onClose(); }}
-            className="w-full mt-4 py-3 border-2 border-dashed border-[#E5E8EB] rounded-2xl text-[14px] font-medium text-[#8B95A1] hover:border-[#3182F6] hover:text-[#3182F6] transition-all flex items-center justify-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            근무 추가하기
-          </button>
-        )}
+        <button
+          onClick={() => { onAddSlot(dateStr); onClose(); }}
+          className="w-full mt-4 py-3 border-2 border-dashed border-[#E5E8EB] rounded-2xl text-[14px] font-medium text-[#8B95A1] hover:border-[#3182F6] hover:text-[#3182F6] transition-all flex items-center justify-center gap-2"
+        >
+          <Plus className="w-4 h-4" />
+          근무 추가하기
+        </button>
       </div>
 
       {/* 수동 퇴근 처리 모달 */}
@@ -744,7 +967,6 @@ function DaySheet({
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function AdminCalendarPage() {
-  const [mode, setMode] = useState<"view" | "edit">("view");
   const [viewType, setViewType] = useState<"month" | "week">("week");
   const [baseDate, setBaseDate] = useState(new Date());
   const [storeFilter, setStoreFilter] = useState<string>("all");
@@ -762,9 +984,8 @@ export default function AdminCalendarPage() {
     defaultDate?: string;
     defaultProfileId?: string;
   } | null>(null);
+  const [infoSlot, setInfoSlot] = useState<ScheduleSlot | null>(null);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
-  const [selectedSlotInfo, setSelectedSlotInfo] = useState<{ profileId: string; dateStr: string } | null>(null);
-  const [saving, setSaving] = useState(false);
   const [showAdmin, setShowAdmin] = useState(() => {
     if (typeof window !== "undefined") {
       return localStorage.getItem("calendar_showAdmin") === "true";
@@ -772,9 +993,7 @@ export default function AdminCalendarPage() {
     return false;
   });
   const [viewProfileId, setViewProfileId] = useState<string | null>(null);
-
-  // 수정 모드 초안 상태 (저장 전까지 로컬에만 보관)
-  const [draft, setDraft] = useState<DraftState>(EMPTY_DRAFT);
+  const [copyPreview, setCopyPreview] = useState<{ slots: ScheduleSlot[]; wsId: string } | null>(null);
 
   const { workplaces, byId, positionsOfStore } = useWorkplaces();
 
@@ -979,17 +1198,7 @@ export default function AdminCalendarPage() {
   const attendance = data?.attendance ?? [];
   const events = data?.events ?? [];
 
-  // 수정 모드: rawSlots + draft → 화면에 보이는 slots
-  const slots = useMemo(() => {
-    if (mode !== "edit" || (draft.inserts.length === 0 && Object.keys(draft.updates).length === 0 && draft.deletes.length === 0)) {
-      return rawSlots;
-    }
-    let result = rawSlots.filter((s) => !draft.deletes.includes(s.id));
-    result = result.map((s) => (draft.updates[s.id] ? { ...s, ...draft.updates[s.id] } : s));
-    return [...result, ...draft.inserts];
-  }, [mode, rawSlots, draft]);
-
-  const hasDraftChanges = draft.inserts.length > 0 || Object.keys(draft.updates).length > 0 || draft.deletes.length > 0;
+  const slots = rawSlots;
   const weeklySchedules = data?.weeklySchedules ?? [];
 
   // ─── weekly_schedule 조회/생성 ───
@@ -1008,7 +1217,7 @@ export default function AdminCalendarPage() {
 
     const { data: created, error } = await supabase
       .from("weekly_schedules")
-      .insert({ week_start: weekStart, status: "draft" })
+      .insert({ week_start: weekStart, status: "confirmed", published_at: new Date().toISOString() })
       .select("id")
       .single();
     if (error) {
@@ -1018,102 +1227,13 @@ export default function AdminCalendarPage() {
     return created.id;
   };
 
-  // ─── 수정 모드 진입 ───
-  const handleEnterEdit = () => {
-    setDraft(EMPTY_DRAFT);
-    setMode("edit");
-  };
-
-  // ─── 저장하기 (일괄 DB 반영 + 확정 + 알림) ───
-  const handleSave = async () => {
-    if (!hasDraftChanges) {
-      setMode("view");
-      toast.success("변경 없이 조회 모드로 돌아왔어요");
-      return;
-    }
-    setSaving(true);
-    const supabase = createClient();
-    try {
-      // 1. 신규 슬롯 일괄 INSERT (tempId 제거)
-      if (draft.inserts.length > 0) {
-        const toInsert = draft.inserts.map(({ id: _t, ...rest }) => rest);
-        const { error } = await supabase.from("schedule_slots").insert(toInsert);
-        if (error) { toast.error("슬롯 추가에 실패했어요", { description: error.message }); setSaving(false); return; }
-      }
-      // 2. 수정된 슬롯 개별 UPDATE
-      for (const [slotId, changes] of Object.entries(draft.updates)) {
-        const { id: _i, weekly_schedule_id: _w, status: _s, ...fields } = changes as any;
-        const { error } = await supabase.from("schedule_slots").update(fields).eq("id", slotId);
-        if (error) { toast.error("슬롯 수정에 실패했어요", { description: error.message }); setSaving(false); return; }
-      }
-      // 3. 삭제된 슬롯 일괄 cancelled
-      if (draft.deletes.length > 0) {
-        const { error } = await supabase.from("schedule_slots").update({ status: "cancelled" }).in("id", draft.deletes);
-        if (error) { toast.error("슬롯 삭제에 실패했어요", { description: error.message }); setSaving(false); return; }
-      }
-      // 4. 수정된 주차 확정
-      const wsIds = new Set<string>();
-      draft.inserts.forEach((s) => wsIds.add(s.weekly_schedule_id));
-      Object.keys(draft.updates).forEach((id) => { const o = rawSlots.find((s) => s.id === id); if (o) wsIds.add(o.weekly_schedule_id); });
-      draft.deletes.forEach((id) => { const o = rawSlots.find((s) => s.id === id); if (o) wsIds.add(o.weekly_schedule_id); });
-      if (wsIds.size > 0) {
-        await supabase.from("weekly_schedules").update({ status: "confirmed", published_at: new Date().toISOString() }).in("id", Array.from(wsIds));
-      }
-      // 5. 영향받는 직원 (실제 변경 대상만)
-      const profileIds = new Set<string>();
-      draft.inserts.forEach((s) => profileIds.add(s.profile_id));
-      Object.entries(draft.updates).forEach(([slotId, ch]) => {
-        const o = rawSlots.find((s) => s.id === slotId); if (o) profileIds.add(o.profile_id);
-        if (ch.profile_id) profileIds.add(ch.profile_id);
-      });
-      draft.deletes.forEach((id) => { const o = rawSlots.find((s) => s.id === id); if (o) profileIds.add(o.profile_id); });
-      // 6. 대표 변경 날짜 (알림 URL용)
-      const allDates = new Set<string>();
-      draft.inserts.forEach((s) => allDates.add(s.slot_date));
-      Object.keys(draft.updates).forEach((id) => { const o = rawSlots.find((s) => s.id === id); if (o) allDates.add(o.slot_date); });
-      draft.deletes.forEach((id) => { const o = rawSlots.find((s) => s.id === id); if (o) allDates.add(o.slot_date); });
-      const highlightDate = Array.from(allDates).sort()[0] || "";
-      // 7. 각 직원에게 알림 (createNotification → Web Push 포함)
-      const modifiedProfileIds = Array.from(profileIds);
-      if (modifiedProfileIds.length > 0) {
-        await Promise.allSettled(
-          modifiedProfileIds.map((pid) =>
-            createNotification({
-              profile_id: pid, target_role: "employee", type: "schedule_updated",
-              title: "스케줄이 업데이트됐어요",
-              content: buildScheduleNotifContent(pid, draft, rawSlots),
-              push_url: highlightDate ? `/calendar?highlight=${highlightDate}` : undefined,
-            })
-          )
-        );
-        toast.success(`${modifiedProfileIds.length}명에게 스케줄 알림을 보냈어요`);
-      } else {
-        toast.success("스케줄을 저장했어요");
-      }
-    } catch (err) {
-      logError({ message: "스케줄 저장 실패", error: err, source: "admin/calendar/handleSave" });
-      toast.error("저장에 실패했어요", { description: "잠시 후 다시 시도해주세요." });
-    }
-    setDraft(EMPTY_DRAFT);
-    setSaving(false);
-    setMode("view");
-    mutate();
-  };
-
-  // ─── 취소 (초안 폐기) ───
-  const handleCancel = () => {
-    setDraft(EMPTY_DRAFT);
-    setMode("view");
-  };
-
-  // ─── 슬롯 저장 (초안에 반영) ───
+  // ─── 슬롯 저장 (DB 직접 반영 + 알림) ───
   const handleSaveSlot = async (formData: Partial<ScheduleSlot>, isNew: boolean) => {
     if (!formData.slot_date) return;
     const startMin = timeToMinutes(formData.start_time!);
     const endMin = timeToMinutes(formData.end_time!);
     if (startMin >= endMin) { toast.error("시작 시간이 종료 시간보다 늦어요"); return; }
 
-    // 클라이언트 중복/겹침 검사 (displaySlots 기반)
     const sameDaySlots = slots.filter(
       (s) => s.profile_id === formData.profile_id && s.slot_date === formData.slot_date && s.status === "active" && s.id !== (formData.id ?? "")
     );
@@ -1127,9 +1247,10 @@ export default function AdminCalendarPage() {
     const wsId = await getOrCreateWeeklySchedule(formData.slot_date);
     if (!wsId) return;
 
+    const supabase = createClient();
+
     if (isNew) {
-      const newSlot: ScheduleSlot = {
-        id: crypto.randomUUID(),
+      const { error } = await supabase.from("schedule_slots").insert({
         weekly_schedule_id: wsId,
         profile_id: formData.profile_id!,
         slot_date: formData.slot_date!,
@@ -1139,48 +1260,79 @@ export default function AdminCalendarPage() {
         position_keys: formData.position_keys || [],
         status: "active",
         notes: formData.notes || null,
-      };
-      setDraft((prev) => ({ ...prev, inserts: [...prev.inserts, newSlot] }));
+      });
+      if (error) { toast.error("근무 추가에 실패했어요", { description: error.message }); return; }
+
+      await supabase.from("weekly_schedules")
+        .update({ status: "confirmed", published_at: new Date().toISOString() })
+        .eq("id", wsId);
+
+      createNotification({
+        profile_id: formData.profile_id!, target_role: "employee", type: "schedule_updated",
+        title: "스케줄이 업데이트됐어요",
+        content: `근무가 추가됐어요 (${formData.slot_date} ${formData.start_time}~${formData.end_time}).`,
+        source_id: formData.slot_date,
+        push_url: `/calendar?highlight=${formData.slot_date}`,
+      });
       toast.success("근무를 추가했어요");
     } else {
-      const isPendingInsert = draft.inserts.some((s) => s.id === formData.id);
-      if (isPendingInsert) {
-        setDraft((prev) => ({
-          ...prev,
-          inserts: prev.inserts.map((s) =>
-            s.id === formData.id
-              ? { ...s, profile_id: formData.profile_id!, slot_date: formData.slot_date!, start_time: formData.start_time!, end_time: formData.end_time!, store_id: formData.store_id!, position_keys: formData.position_keys || [], notes: formData.notes || null }
-              : s
-          ),
-        }));
-      } else {
-        setDraft((prev) => ({
-          ...prev,
-          updates: { ...prev.updates, [formData.id!]: { profile_id: formData.profile_id, slot_date: formData.slot_date, start_time: formData.start_time, end_time: formData.end_time, store_id: formData.store_id, position_keys: formData.position_keys || [], notes: formData.notes || null } },
-        }));
-      }
+      const { error } = await supabase.from("schedule_slots").update({
+        profile_id: formData.profile_id,
+        slot_date: formData.slot_date,
+        start_time: formData.start_time,
+        end_time: formData.end_time,
+        store_id: formData.store_id,
+        position_keys: formData.position_keys || [],
+        notes: formData.notes || null,
+      }).eq("id", formData.id);
+      if (error) { toast.error("근무 수정에 실패했어요", { description: error.message }); return; }
+
+      const origSlot = rawSlots.find((s) => s.id === formData.id);
+      const affectedProfiles = new Set<string>();
+      if (origSlot) affectedProfiles.add(origSlot.profile_id);
+      if (formData.profile_id) affectedProfiles.add(formData.profile_id);
+
+      await Promise.allSettled(
+        Array.from(affectedProfiles).map((pid) =>
+          createNotification({
+            profile_id: pid, target_role: "employee", type: "schedule_updated",
+            title: "스케줄이 업데이트됐어요",
+            content: `근무가 변경됐어요 (${formData.slot_date} ${formData.start_time}~${formData.end_time}).`,
+            source_id: formData.slot_date,
+            push_url: `/calendar?highlight=${formData.slot_date}`,
+          })
+        )
+      );
       toast.success("근무를 수정했어요");
     }
     setEditingSlot(null);
+    setInfoSlot(null);
+    mutate();
   };
 
-  // ─── 슬롯 삭제 (초안에 반영) ───
-  const handleDeleteSlot = (id: string) => {
-    const isPendingInsert = draft.inserts.some((s) => s.id === id);
-    if (isPendingInsert) {
-      setDraft((prev) => ({ ...prev, inserts: prev.inserts.filter((s) => s.id !== id) }));
-    } else {
-      setDraft((prev) => {
-        const newUpdates = { ...prev.updates };
-        delete newUpdates[id];
-        return { ...prev, updates: newUpdates, deletes: [...prev.deletes, id] };
+  // ─── 슬롯 삭제 (DB 직접 반영 + 알림) ───
+  const handleDeleteSlot = async (id: string) => {
+    const supabase = createClient();
+    const slot = rawSlots.find((s) => s.id === id);
+    const { error } = await supabase.from("schedule_slots").update({ status: "cancelled" }).eq("id", id);
+    if (error) { toast.error("근무 삭제에 실패했어요", { description: error.message }); return; }
+
+    if (slot) {
+      createNotification({
+        profile_id: slot.profile_id, target_role: "employee", type: "schedule_updated",
+        title: "스케줄이 업데이트됐어요",
+        content: `근무가 삭제됐어요 (${slot.slot_date}).`,
+        source_id: slot.slot_date,
+        push_url: `/calendar?highlight=${slot.slot_date}`,
       });
     }
     toast.success("근무를 삭제했어요");
+    setInfoSlot(null);
     setEditingSlot(null);
+    mutate();
   };
 
-  // ─── 주간 이전주 복사 (초안에 반영) ───
+  // ─── 주간 이전주 복사 (미리보기 모달) ───
   const handleCopyPrevWeek = async () => {
     if (viewType !== "week") return;
     const supabase = createClient();
@@ -1202,31 +1354,53 @@ export default function AdminCalendarPage() {
     const existingSet = new Set(
       slots.filter((s) => s.status === "active").map((s) => `${s.profile_id}_${s.slot_date}`)
     );
-    const newInserts: ScheduleSlot[] = [];
+    const previewSlots: ScheduleSlot[] = [];
     prevSlots.forEach((s: any) => {
       const idx = prevWeekDates.indexOf(s.slot_date);
       if (idx === -1) return;
       const targetDate = weekDates[idx];
       if (existingSet.has(`${s.profile_id}_${targetDate}`)) return;
-      newInserts.push({
+      previewSlots.push({
         id: crypto.randomUUID(), weekly_schedule_id: wsId, profile_id: s.profile_id,
         slot_date: targetDate, start_time: s.start_time, end_time: s.end_time,
         store_id: s.store_id, position_keys: s.position_keys || [], status: "active", notes: s.notes || null,
       });
       existingSet.add(`${s.profile_id}_${targetDate}`);
     });
-    if (newInserts.length === 0) { toast.error("복사할 슬롯이 없어요"); return; }
-    setDraft((prev) => ({ ...prev, inserts: [...prev.inserts, ...newInserts] }));
-    toast.success(`${newInserts.length}개 근무를 복사했어요`);
+    if (previewSlots.length === 0) { toast.error("복사할 슬롯이 없어요"); return; }
+    setCopyPreview({ slots: previewSlots, wsId });
   };
 
-  // ─── 페이지 이탈 가드 ───
-  useEffect(() => {
-    if (!hasDraftChanges || mode !== "edit") return;
-    const handler = (e: BeforeUnloadEvent) => e.preventDefault();
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
-  }, [hasDraftChanges, mode]);
+  // ─── 전주 복사 미리보기 → 최종 저장 ───
+  const handleCopyPreviewSave = async (finalSlots: ScheduleSlot[]) => {
+    if (finalSlots.length === 0) { setCopyPreview(null); return; }
+    const supabase = createClient();
+    const toInsert = finalSlots.map(({ id: _t, ...rest }) => rest);
+    const { error } = await supabase.from("schedule_slots").insert(toInsert);
+    if (error) { toast.error("복사에 실패했어요", { description: error.message }); return; }
+
+    const wsId = finalSlots[0].weekly_schedule_id;
+    await supabase.from("weekly_schedules")
+      .update({ status: "confirmed", published_at: new Date().toISOString() })
+      .eq("id", wsId);
+
+    const affectedProfiles = new Set(finalSlots.map((s) => s.profile_id));
+    const highlightDate = weekDates[0];
+    await Promise.allSettled(
+      Array.from(affectedProfiles).map((pid) =>
+        createNotification({
+          profile_id: pid, target_role: "employee", type: "schedule_updated",
+          title: "스케줄이 업데이트됐어요",
+          content: "이번 주 근무가 배정됐어요. 캘린더에서 확인해보세요.",
+          source_id: highlightDate,
+          push_url: `/calendar?highlight=${highlightDate}`,
+        })
+      )
+    );
+    toast.success(`${finalSlots.length}개 근무를 저장했어요`);
+    setCopyPreview(null);
+    mutate();
+  };
 
   // ─── 레이어 토글 ───
   const toggleLayer = (key: keyof typeof layers) => {
@@ -1480,14 +1654,10 @@ export default function AdminCalendarPage() {
                           return (
                             <button
                               key={slot.id}
-                              onClick={() =>
-                                mode === "edit"
-                                  ? setEditingSlot({ slot, defaultDate: d, defaultProfileId: profile.id })
-                                  : setSelectedSlotInfo({ profileId: profile.id, dateStr: d })
-                              }
+                              onClick={() => setInfoSlot(slot)}
                               className={`w-full text-left px-1.5 py-1 rounded-lg transition-all ${
                                 isSubstituted ? "text-[#8B95A1] line-through" : "text-[#191F28]"
-                              } ${mode === "edit" ? "hover:opacity-80 active:scale-[0.97]" : "hover:opacity-80 active:scale-[0.97] cursor-pointer"}`}
+                              } hover:opacity-80 active:scale-[0.97] cursor-pointer`}
                               style={{
                                 backgroundColor: isSubstituted ? "#F2F4F6" : storeColor + "18",
                                 borderLeft: `3px solid ${isSubstituted ? "#D1D6DB" : activeBorderColor}`,
@@ -1528,8 +1698,8 @@ export default function AdminCalendarPage() {
                           </div>
                         )}
 
-                        {/* 수정 모드: 빈 셀 + 버튼 */}
-                        {mode === "edit" && daySlots.length === 0 && (
+                        {/* 빈 셀: 클릭 시 근무 추가 */}
+                        {daySlots.length === 0 && (
                           <button
                             onClick={() =>
                               setEditingSlot({ slot: null, defaultDate: d, defaultProfileId: profile.id })
@@ -1578,52 +1748,13 @@ export default function AdminCalendarPage() {
             스케줄 · 근태 · 회사일정을 한 곳에서 관리해요
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Link
-            href="/admin/calendar/events"
-            className="px-3 py-2 text-[13px] font-medium text-[#4E5968] bg-white border border-slate-200 rounded-xl hover:bg-[#F2F4F6] transition-all"
-          >
-            회사 일정 관리
-          </Link>
-          {mode === "view" ? (
-            <button
-              onClick={handleEnterEdit}
-              className="flex items-center gap-2 px-4 py-2 bg-[#3182F6] text-white text-[14px] font-bold rounded-xl hover:bg-blue-600 transition-all active:scale-[0.97]"
-            >
-              <Pencil className="w-4 h-4" />
-              수정하기
-            </button>
-          ) : (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleCancel}
-                disabled={saving}
-                className="px-4 py-2 text-[14px] font-bold text-[#4E5968] bg-white border border-slate-200 rounded-xl hover:bg-[#F2F4F6] transition-all disabled:opacity-50"
-              >
-                {saving ? "되돌리는 중..." : "취소"}
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="flex items-center gap-2 px-4 py-2 bg-[#00B761] text-white text-[14px] font-bold rounded-xl hover:bg-green-600 transition-all active:scale-[0.97] disabled:opacity-50"
-              >
-                <Save className="w-4 h-4" />
-                {saving ? "저장 중..." : "저장하기"}
-              </button>
-            </div>
-          )}
-        </div>
+        <Link
+          href="/admin/calendar/events"
+          className="px-3 py-2 text-[13px] font-medium text-[#4E5968] bg-white border border-slate-200 rounded-xl hover:bg-[#F2F4F6] transition-all"
+        >
+          회사 일정 관리
+        </Link>
       </div>
-
-      {/* 수정 모드 배너 */}
-      {mode === "edit" && (
-        <div className="flex items-center gap-2 px-4 py-3 bg-orange-50 border border-orange-200 rounded-2xl">
-          <AlertTriangle className="w-4 h-4 text-orange-500 shrink-0" />
-          <p className="text-[13px] text-orange-700 font-medium">
-            수정 모드예요 — 저장하기를 누르면 변경사항이 반영되고 직원에게 알림이 가요.{hasDraftChanges && ` (${draft.inserts.length + Object.keys(draft.updates).length + draft.deletes.length}건 변경)`}
-          </p>
-        </div>
-      )}
 
       {/* 컨트롤 바 */}
       <div className="flex items-center gap-3 flex-wrap">
@@ -1748,7 +1879,7 @@ export default function AdminCalendarPage() {
           <ChevronRight className="w-5 h-5 text-[#4E5968]" />
         </button>
         {/* 주간 뷰 전주 복사 */}
-        {mode === "edit" && viewType === "week" && (
+        {viewType === "week" && (
           <button
             onClick={handleCopyPrevWeek}
             className="ml-auto px-3 py-1.5 text-[12px] font-bold text-[#4E5968] bg-white border border-slate-200 rounded-xl hover:bg-[#F2F4F6] transition-all"
@@ -1782,7 +1913,7 @@ export default function AdminCalendarPage() {
       )}
 
       {/* 슬롯 편집 바텀시트 */}
-      {editingSlot !== null && mode === "edit" && (
+      {editingSlot !== null && (
         <SlotBottomSheet
           slot={editingSlot.slot}
           profiles={profiles}
@@ -1794,11 +1925,35 @@ export default function AdminCalendarPage() {
         />
       )}
 
+      {/* 슬롯 정보 시트 (슬롯 클릭 → 정보 + 수정/삭제) */}
+      {infoSlot && !editingSlot && (
+        <SlotInfoSheet
+          slot={infoSlot}
+          profile={profiles.find((p) => p.id === infoSlot.profile_id)}
+          attendance={attendance.find((a) => a.profile_id === infoSlot.profile_id && a.date === infoSlot.slot_date)}
+          onClose={() => setInfoSlot(null)}
+          onEdit={() => {
+            setEditingSlot({ slot: infoSlot, defaultDate: infoSlot.slot_date, defaultProfileId: infoSlot.profile_id });
+          }}
+          onDelete={() => handleDeleteSlot(infoSlot.id)}
+        />
+      )}
+
       {/* 직원 프로필 모달 (주간뷰 직원 셀 클릭) */}
       {viewProfileId && (
         <EmployeeProfileModal
           profileId={viewProfileId}
           onClose={() => setViewProfileId(null)}
+        />
+      )}
+
+      {/* 전주 복사 미리보기 */}
+      {copyPreview && (
+        <CopyPreviewModal
+          initialSlots={copyPreview.slots}
+          profiles={profiles}
+          onClose={() => setCopyPreview(null)}
+          onSave={handleCopyPreviewSave}
         />
       )}
 
@@ -1810,7 +1965,6 @@ export default function AdminCalendarPage() {
           attendance={selectedDayData.attendance}
           events={selectedDayData.events}
           profiles={profiles}
-          mode={mode}
           onClose={() => setSelectedDay(null)}
           onEditSlot={(slot) => {
             setSelectedDay(null);
@@ -1818,23 +1972,6 @@ export default function AdminCalendarPage() {
           }}
           onAddSlot={(date) => setEditingSlot({ slot: null, defaultDate: date })}
           onMutate={mutate}
-        />
-      )}
-
-      {/* 슬롯 상세 시트 (슬롯 클릭 — 개인 1명) */}
-      {selectedSlotInfo && !selectedDay && (
-        <DaySheet
-          dateStr={selectedSlotInfo.dateStr}
-          slots={slots.filter((s) => s.slot_date === selectedSlotInfo.dateStr && s.status === "active")}
-          attendance={attendance.filter((a) => a.date === selectedSlotInfo.dateStr)}
-          events={[]}
-          profiles={profiles}
-          mode="view"
-          onClose={() => setSelectedSlotInfo(null)}
-          onEditSlot={() => {}}
-          onAddSlot={() => {}}
-          onMutate={mutate}
-          filterProfileId={selectedSlotInfo.profileId}
         />
       )}
     </div>

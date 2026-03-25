@@ -323,7 +323,14 @@ export default function HomeClient({
       case "substitute_approved":
         router.push(`/schedule?request_id=${noti.source_id}`);
         break;
+      case "schedule_updated":
+      case "schedule_published":
+        router.push(noti.source_id ? `/calendar?highlight=${noti.source_id}` : "/calendar");
+        break;
       case "recipe":
+      case "recipe_comment":
+      case "recipe_reply":
+      case "recipe_mention":
         if (noti.source_id) router.push(`/recipes/${noti.source_id}`);
         break;
       case "announcement":
