@@ -49,7 +49,8 @@ export default async function HomePage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const todayStr = format(new Date(), "yyyy-MM-dd");
+  // Vercel 서버는 UTC이므로 KST 기준 날짜를 명시적으로 계산
+  const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date());
 
   // Critical path: 출퇴근 버튼에 필요한 데이터만 await
   const [

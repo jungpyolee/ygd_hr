@@ -128,14 +128,13 @@ export async function processCheckinCredit(
 
   if (existing && existing.length > 0) return null; // 이미 처리됨
 
-  // 지각 판정
+  // 지각 판정 — KST 기준 분(minute-of-day)으로 비교
+  // (서버가 UTC이므로 setHours를 쓰면 UTC 기준이 되어 오차 발생)
   const [sh, sm] = slotStartTime.split(":").map(Number);
   const checkin = new Date(checkinTime);
-  const scheduled = new Date(checkin);
-  scheduled.setHours(sh, sm, 0, 0);
-
-  // KST 보정: checkinTime이 UTC인 경우 scheduled도 같은 날짜 기준으로 맞춤
-  const diffMin = (checkin.getTime() - scheduled.getTime()) / 60000;
+  const kstCheckinMin = ((checkin.getUTCHours() + 9) % 24) * 60 + checkin.getUTCMinutes();
+  const scheduledMin = sh * 60 + sm;
+  const diffMin = kstCheckinMin - scheduledMin;
 
   let eventType: string;
   let points: number;
