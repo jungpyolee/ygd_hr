@@ -51,12 +51,38 @@ export function useGeolocation() {
           resolve(s);
         },
         ({ code }) => {
-          // code 1: PERMISSION_DENIED, code 2: POSITION_UNAVAILABLE, code 3: TIMEOUT
-          const status: GeoStatus = code === 1 ? "denied" : code === 2 ? "unavailable" : "timeout";
-          const s: GeoState = { status };
-          setState(s);
-          if (inFlightRef.current === p) inFlightRef.current = null;
-          resolve(s);
+          // code 1: PERMISSION_DENIED → denied
+          // code 3: TIMEOUT → timeout (GPS 불량, 수동 선택 허용)
+          // code 2: POSITION_UNAVAILABLE → 위치 서비스 꺼짐(denied)과 GPS 불량(unavailable) 구분 필요
+          if (code === 1) {
+            const s: GeoState = { status: "denied" };
+            setState(s);
+            if (inFlightRef.current === p) inFlightRef.current = null;
+            resolve(s);
+            return;
+          }
+          if (code === 3) {
+            const s: GeoState = { status: "timeout" };
+            setState(s);
+            if (inFlightRef.current === p) inFlightRef.current = null;
+            resolve(s);
+            return;
+          }
+          // code 2: permissions API로 시스템 차단 vs GPS 불량 구분
+          const resolveCode2 = (status: GeoStatus) => {
+            const s: GeoState = { status };
+            setState(s);
+            if (inFlightRef.current === p) inFlightRef.current = null;
+            resolve(s);
+          };
+          if (navigator.permissions) {
+            navigator.permissions
+              .query({ name: "geolocation" as PermissionName })
+              .then((perm) => resolveCode2(perm.state === "denied" ? "denied" : "unavailable"))
+              .catch(() => resolveCode2("unavailable"));
+          } else {
+            resolveCode2("unavailable");
+          }
         },
         GEO_OPTIONS
       );
@@ -95,10 +121,32 @@ export function useGeolocation() {
           resolve(s);
         },
         ({ code }) => {
-          const status: GeoStatus = code === 1 ? "denied" : code === 2 ? "unavailable" : "timeout";
-          const s: GeoState = { status };
-          setState(s);
-          resolve(s);
+          if (code === 1) {
+            const s: GeoState = { status: "denied" };
+            setState(s);
+            resolve(s);
+            return;
+          }
+          if (code === 3) {
+            const s: GeoState = { status: "timeout" };
+            setState(s);
+            resolve(s);
+            return;
+          }
+          // code 2: permissions API로 시스템 차단 vs GPS 불량 구분
+          const resolveCode2 = (status: GeoStatus) => {
+            const s: GeoState = { status };
+            setState(s);
+            resolve(s);
+          };
+          if (navigator.permissions) {
+            navigator.permissions
+              .query({ name: "geolocation" as PermissionName })
+              .then((perm) => resolveCode2(perm.state === "denied" ? "denied" : "unavailable"))
+              .catch(() => resolveCode2("unavailable"));
+          } else {
+            resolveCode2("unavailable");
+          }
         },
         GEO_ATTENDANCE_OPTIONS
       );
