@@ -100,6 +100,8 @@
 | `business_trip_out` | 출장퇴근 (출장출근 후 반경 밖 퇴근, 사유 자동입력) |
 | `fallback_in` | 수동출근 — GPS 실패 후 직원이 매장 직접 선택 (`distance_m=0`) 또는 관리자 처리 (`distance_m=null`, `reason="관리자 수동 처리"`) |
 | `fallback_out` | 수동퇴근 — GPS 실패 후 직원이 매장 직접 선택 (`distance_m=0`) 또는 관리자 처리 (`distance_m=null`, `reason="관리자 수동 처리"`) |
+| `qr_in` | QR 출근 — 매장 QR 스캔으로 출근 (`distance_m=0`) |
+| `qr_out` | QR 퇴근 — 매장 QR 스캔으로 퇴근 (`distance_m=0`) |
 
 **제약조건**
 - PK: `id`
@@ -128,6 +130,7 @@
 | `overtime_unit` | integer | NO | `30` | 추가근무 인정 단위(분): 15/30/60/0(자유입력) |
 | `overtime_include_early` | boolean | NO | `false` | 일찍 출근한 시간도 추가근무에 포함할지 여부 |
 | `overtime_min_minutes` | integer | NO | `10` | 이 값(분) 이상일 때만 확인 필요로 표시 |
+| `qr_token` | text | YES | - | QR 출퇴근용 고유 토큰 (UNIQUE) |
 
 **비고**
 - `lat`/`lng`는 nullable — `is_gps_required=false`인 근무지는 null 허용
@@ -135,7 +138,7 @@
 
 **제약조건**
 - PK: `id`
-- UNIQUE: `work_location_key`
+- UNIQUE: `work_location_key`, `qr_token`
 
 ---
 

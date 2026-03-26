@@ -123,6 +123,8 @@ function generateSummary(emp: EmpDay): string {
     );
   } else if (emp.check_in_type === "fallback_in") {
     annotations.push("수동 출근이에요");
+  } else if (emp.check_in_type === "qr_in") {
+    annotations.push("QR 출근이에요");
   }
 
   return [timePart, ...annotations].filter(Boolean).join(" · ");
@@ -165,6 +167,18 @@ function AttendanceBadge({
     return (
       <span className="text-[10px] font-bold bg-[#F3F0FF] text-[#7950F2] px-1.5 py-0.5 rounded-md">
         {reason === "관리자 수동 처리" ? "관리자 처리" : "수동퇴근"}
+      </span>
+    );
+  if (type === "qr_in")
+    return (
+      <span className="text-[10px] font-bold bg-[#E8F3FF] text-[#3182F6] px-1.5 py-0.5 rounded-md">
+        QR출근
+      </span>
+    );
+  if (type === "qr_out")
+    return (
+      <span className="text-[10px] font-bold bg-[#E8F3FF] text-[#3182F6] px-1.5 py-0.5 rounded-md">
+        QR퇴근
       </span>
     );
   return null;

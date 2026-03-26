@@ -28,6 +28,8 @@ export type NotificationType =
   | "onboarding"
   | "attendance_fallback_in"
   | "attendance_fallback_out"
+  | "attendance_qr_in"
+  | "attendance_qr_out"
   | "overtime_approved"
   | "overtime_cancelled";
 

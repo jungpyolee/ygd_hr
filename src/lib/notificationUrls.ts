@@ -23,6 +23,8 @@ export function getNotificationUrl(
       case "attendance_business_trip_out":
       case "attendance_fallback_in":
       case "attendance_fallback_out":
+      case "attendance_qr_in":
+      case "attendance_qr_out":
         return "/admin/attendance";
       case "substitute_requested":
         return "/admin/schedules/substitutes";

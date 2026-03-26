@@ -746,35 +746,54 @@ export default function EmployeeCalendarPage() {
         const monthKey = format(baseDate, "yyyy-MM");
         const isThisMonth = monthKey === format(new Date(), "yyyy-MM");
         const monthSlots = mySlots.filter((s) => s.slot_date.slice(0, 7) === monthKey);
+
+        // 예정 근무시간
         const scheduledMins = monthSlots.reduce((sum, s) => {
           const [sh, sm] = s.start_time.split(":").map(Number);
           const [eh, em] = s.end_time.split(":").map(Number);
           return sum + (eh * 60 + em) - (sh * 60 + sm);
         }, 0);
-        const workH = Math.floor(scheduledMins / 60);
-        const workM = scheduledMins % 60;
+        const schedH = Math.floor(scheduledMins / 60);
+        const schedM = scheduledMins % 60;
+
+        // 실제 근무일 & 근무시간
+        const monthAtt = Object.entries(attendance).filter(([d, a]) => d.slice(0, 7) === monthKey && a?.clock_in);
+        const actualDays = monthAtt.length;
+        const actualMins = monthAtt.reduce((sum, [, a]) => {
+          if (a?.clock_in && a?.clock_out) return sum + differenceInMinutes(a.clock_out, a.clock_in);
+          return sum;
+        }, 0);
+        const actH = Math.floor(actualMins / 60);
+        const actM = actualMins % 60;
+
         return (
           <div className="px-4 mt-4">
             <div className="bg-white rounded-[20px] border border-slate-100 p-4">
-              <h3 className="text-[13px] font-bold text-[#8B95A1] mb-3">
+              <div className="text-[13px] font-bold text-[#8B95A1] mb-3">
                 {isThisMonth ? "이번달 요약" : `${format(baseDate, "M")}월 요약`}
-              </h3>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="text-center">
-                  <div className="text-[22px] font-bold text-[#191F28]">{monthSlots.length}</div>
-                  <div className="text-[11px] text-[#8B95A1] mt-0.5">예정 근무</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-[22px] font-bold text-[#00B761]">
-                    {Object.entries(attendance).filter(([d, a]) => d.slice(0, 7) === monthKey && a?.clock_in).length}
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                {/* 근무일 */}
+                <div>
+                  <div className="text-[11px] text-[#8B95A1] mb-1">근무일</div>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-[22px] font-bold text-[#191F28]">{monthSlots.length}</span>
+                    <span className="text-[13px] text-[#8B95A1]">/</span>
+                    <span className="text-[22px] font-bold text-[#00B761]">{actualDays}</span>
+                    <span className="text-[12px] font-semibold text-[#8B95A1]">일</span>
                   </div>
-                  <div className="text-[11px] text-[#8B95A1] mt-0.5">출근 완료</div>
+                  <div className="text-[10px] text-[#8B95A1] mt-0.5">예정 / 출근완료</div>
                 </div>
-                <div className="text-center">
-                  <div className="text-[22px] font-bold text-[#3182F6]">{workH}</div>
-                  <div className="text-[11px] text-[#8B95A1] mt-0.5">
-                    {workM > 0 ? `시간 ${workM}분` : "시간"}
+                {/* 근무시간 */}
+                <div>
+                  <div className="text-[11px] text-[#8B95A1] mb-1">근무시간</div>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-[22px] font-bold text-[#191F28]">{schedH}{schedM > 0 && <span className="text-[14px]">:{String(schedM).padStart(2, "0")}</span>}</span>
+                    <span className="text-[13px] text-[#8B95A1]">/</span>
+                    <span className="text-[22px] font-bold text-[#3182F6]">{actH}{actM > 0 && <span className="text-[14px]">:{String(actM).padStart(2, "0")}</span>}</span>
+                    <span className="text-[12px] font-semibold text-[#8B95A1]">h</span>
                   </div>
+                  <div className="text-[10px] text-[#8B95A1] mt-0.5">예정 / 실제</div>
                 </div>
               </div>
             </div>

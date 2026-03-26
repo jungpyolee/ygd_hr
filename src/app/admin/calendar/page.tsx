@@ -516,9 +516,11 @@ function SlotInfoSheet({ slot, profile, attendance, onClose, onEdit, onDelete, o
                   <div className="flex gap-1.5 flex-wrap">
                     {attendance.attendance_type_in === "business_trip_in" && <span className="text-[10px] font-bold bg-[#FFF3BF] text-[#E67700] px-1.5 py-0.5 rounded-md">출장출근</span>}
                     {attendance.attendance_type_in === "fallback_in" && <span className="text-[10px] font-bold bg-[#F3F0FF] text-[#7950F2] px-1.5 py-0.5 rounded-md">수동출근</span>}
+                    {attendance.attendance_type_in === "qr_in" && <span className="text-[10px] font-bold bg-[#E8F3FF] text-[#3182F6] px-1.5 py-0.5 rounded-md">QR출근</span>}
                     {attendance.attendance_type_out === "remote_out" && <span className="text-[10px] font-bold bg-[#FFE3E3] text-[#C92A2A] px-1.5 py-0.5 rounded-md">원격퇴근</span>}
                     {attendance.attendance_type_out === "business_trip_out" && <span className="text-[10px] font-bold bg-[#FFF3BF] text-[#E67700] px-1.5 py-0.5 rounded-md">출장퇴근</span>}
                     {attendance.attendance_type_out === "fallback_out" && <span className="text-[10px] font-bold bg-[#F3F0FF] text-[#7950F2] px-1.5 py-0.5 rounded-md">수동퇴근</span>}
+                    {attendance.attendance_type_out === "qr_out" && <span className="text-[10px] font-bold bg-[#E8F3FF] text-[#3182F6] px-1.5 py-0.5 rounded-md">QR퇴근</span>}
                   </div>
 
                   {/* 퇴근 사유 */}
@@ -985,9 +987,11 @@ function DaySheet({
           )}
           {att.attendance_type_in === "business_trip_in" && <span className="text-[10px] font-bold bg-[#FFF3BF] text-[#E67700] px-1.5 py-0.5 rounded-md">출장출근</span>}
           {att.attendance_type_in === "fallback_in" && <span className="text-[10px] font-bold bg-[#F3F0FF] text-[#7950F2] px-1.5 py-0.5 rounded-md">수동출근</span>}
+          {att.attendance_type_in === "qr_in" && <span className="text-[10px] font-bold bg-[#E8F3FF] text-[#3182F6] px-1.5 py-0.5 rounded-md">QR출근</span>}
           {att.attendance_type_out === "remote_out" && <span className="text-[10px] font-bold bg-[#FFE3E3] text-[#C92A2A] px-1.5 py-0.5 rounded-md">원격퇴근</span>}
           {att.attendance_type_out === "business_trip_out" && <span className="text-[10px] font-bold bg-[#FFF3BF] text-[#E67700] px-1.5 py-0.5 rounded-md">출장퇴근</span>}
           {att.attendance_type_out === "fallback_out" && <span className="text-[10px] font-bold bg-[#F3F0FF] text-[#7950F2] px-1.5 py-0.5 rounded-md">수동퇴근</span>}
+          {att.attendance_type_out === "qr_out" && <span className="text-[10px] font-bold bg-[#E8F3FF] text-[#3182F6] px-1.5 py-0.5 rounded-md">QR퇴근</span>}
           {att.reason_out && <span className="text-[10px] text-[#8B95A1]">사유: {att.reason_out}</span>}
         </div>
       </div>

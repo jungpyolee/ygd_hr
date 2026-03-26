@@ -13,26 +13,11 @@ import { ko } from "date-fns/locale";
 import {
   ChevronDown,
   ChevronUp,
-  ArrowUp,
-  ArrowDown,
-  Flame,
   BarChart3,
-  HelpCircle,
   LogOut,
   ChevronRight,
 } from "lucide-react";
 import AvatarDisplay from "@/components/AvatarDisplay";
-import InvalidateCreditSheet from "@/components/InvalidateCreditSheet";
-import StatsGuideModal from "@/components/StatsGuideModal";
-import TierProgressBar from "@/components/TierProgressBar";
-import {
-  EVENT_TYPE_LABELS,
-  TIERS,
-  getTier,
-  getTierProgress,
-  LATE_GRACE_MINUTES,
-  LATE_MAJOR_THRESHOLD,
-} from "@/lib/tier-utils";
 import { toast } from "sonner";
 import { createNotification } from "@/lib/notifications";
 
@@ -44,18 +29,6 @@ interface ProfileRow {
   name: string;
   color_hex: string;
   avatar_config: any;
-  credit_score: number;
-  current_streak: number;
-  longest_streak: number;
-}
-
-interface CreditEvent {
-  id: string;
-  event_type: string;
-  points: number;
-  description: string;
-  reference_date: string | null;
-  created_at: string;
 }
 
 interface SlotRecord {
@@ -85,7 +58,7 @@ interface TodayStatus {
 }
 
 type Period = "this_month" | "last_month" | "all";
-type SortKey = "credit" | "rate" | "name";
+type SortKey = "rate" | "name";
 type Tab = "stats" | "missed";
 
 interface MissedCheckout {
@@ -96,6 +69,9 @@ interface MissedCheckout {
   color_hex: string;
   avatar_config: any;
 }
+
+const LATE_GRACE_MINUTES = 5;
+const LATE_MAJOR_THRESHOLD = 10;
 
 // ─────────────────────────────────────────
 // 유틸
@@ -143,9 +119,7 @@ const supabase = createClient();
 async function fetchProfiles(): Promise<ProfileRow[]> {
   const { data } = await supabase
     .from("profiles")
-    .select(
-      "id, name, color_hex, avatar_config, credit_score, current_streak, longest_streak",
-    )
+    .select("id, name, color_hex, avatar_config")
     .neq("role", "admin")
     .order("name");
   return (data ?? []) as ProfileRow[];
@@ -178,18 +152,6 @@ async function fetchAttendanceStats(
     })),
     logs: (rawLogs ?? []) as LogRecord[],
   };
-}
-
-async function fetchCreditEvents(profileId: string): Promise<CreditEvent[]> {
-  const { data } = await supabase
-    .from("attendance_credits")
-    .select(
-      "id, event_type, points, description, reference_date, created_at",
-    )
-    .eq("profile_id", profileId)
-    .order("created_at", { ascending: false })
-    .limit(50);
-  return (data ?? []) as CreditEvent[];
 }
 
 async function fetchMissedCheckouts(): Promise<MissedCheckout[]> {
@@ -241,15 +203,8 @@ async function fetchMissedCheckouts(): Promise<MissedCheckout[]> {
 export default function StatsPage() {
   const [activeTab, setActiveTab] = useState<Tab>("stats");
   const [period, setPeriod] = useState<Period>("this_month");
-  const [sortKey, setSortKey] = useState<SortKey>("credit");
+  const [sortKey, setSortKey] = useState<SortKey>("rate");
   const [expandedProfile, setExpandedProfile] = useState<string | null>(null);
-  const [showAdjust, setShowAdjust] = useState(false);
-  const [adjustProfile, setAdjustProfile] = useState<{
-    id: string;
-    name: string;
-  } | null>(null);
-  const [showTierDist, setShowTierDist] = useState(false);
-  const [showGuide, setShowGuide] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -262,20 +217,13 @@ export default function StatsPage() {
   const {
     data: profiles = [],
     isLoading: profilesLoading,
-    mutate,
-  } = useSWR("admin-credit-profiles", fetchProfiles, {
+  } = useSWR("admin-profiles", fetchProfiles, {
     revalidateOnFocus: false,
   });
 
   const { data: statsData, isLoading: statsLoading } = useSWR(
     ["admin-stats", start, end],
     () => fetchAttendanceStats(start, end),
-    { revalidateOnFocus: false },
-  );
-
-  const { data: events = [] } = useSWR(
-    expandedProfile ? ["credit-events", expandedProfile] : null,
-    () => fetchCreditEvents(expandedProfile!),
     { revalidateOnFocus: false },
   );
 
@@ -323,7 +271,7 @@ export default function StatsPage() {
 
   const isLoading = profilesLoading || statsLoading;
 
-  // 직원별 통계 계산 (logs 기반)
+  // 직원별 통계 계산
   const { statsMap, todayMap } = useMemo(() => {
     const map = new Map<string, EmployeeStats>();
     const tMap = new Map<string, TodayStatus>();
@@ -331,8 +279,7 @@ export default function StatsPage() {
 
     const { slots, logs } = statsData;
 
-    // 날짜별 profile_id → 최초 IN 로그 매핑
-    const logsByDateProfile = new Map<string, string>(); // "date|profile_id" → created_at
+    const logsByDateProfile = new Map<string, string>();
     for (const l of logs) {
       const logDate = format(new Date(l.created_at), "yyyy-MM-dd");
       const key = `${logDate}|${l.profile_id}`;
@@ -341,7 +288,6 @@ export default function StatsPage() {
       }
     }
 
-    // 직원별 집계
     const perProfile = new Map<string, { attended: number; lateCnt: number; absentCnt: number; workingNow: number; totalSlots: number }>();
 
     for (const slot of slots) {
@@ -351,7 +297,6 @@ export default function StatsPage() {
       }
       const stats = perProfile.get(pid)!;
 
-      // 미래 슬롯은 통계에서 제외
       if (slot.slot_date > todayStr) continue;
 
       stats.totalSlots++;
@@ -359,7 +304,6 @@ export default function StatsPage() {
       const inLog = logsByDateProfile.get(logKey);
 
       if (slot.slot_date < todayStr) {
-        // 과거
         if (!inLog) {
           stats.absentCnt++;
         } else {
@@ -368,16 +312,13 @@ export default function StatsPage() {
           else stats.lateCnt++;
         }
       } else {
-        // 오늘
         if (inLog) {
           stats.workingNow++;
           const cls = classifyCheckin(slot.start_time, inLog);
           if (cls !== "normal") stats.lateCnt++;
         }
-        // 오늘 출근 안 한 건 → 아직 시간 안 됐을 수 있으므로 결근 아님
       }
 
-      // 오늘 상태 맵 (아코디언용)
       if (slot.slot_date === todayStr) {
         tMap.set(pid, {
           slotTime: slot.start_time?.slice(0, 5) ?? null,
@@ -423,23 +364,10 @@ export default function StatsPage() {
     };
   }, [profiles, statsMap]);
 
-  // 티어 분포 (접이식 하단용)
-  const tierCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const tier of TIERS) counts[tier.key] = 0;
-    for (const p of profiles) {
-      const tier = getTier(p.credit_score);
-      counts[tier.key]++;
-    }
-    return counts;
-  }, [profiles]);
-
   // 정렬
   const sortedProfiles = useMemo(() => {
     return [...profiles].sort((a, b) => {
-      if (sortKey === "credit") return b.credit_score - a.credit_score;
       if (sortKey === "name") return a.name.localeCompare(b.name, "ko");
-      // rate
       const ra = statsMap.get(a.id)?.fulfillRate ?? 0;
       const rb = statsMap.get(b.id)?.fulfillRate ?? 0;
       return rb - ra;
@@ -453,29 +381,15 @@ export default function StatsPage() {
   };
 
   const sortLabels: Record<SortKey, string> = {
-    credit: "크레딧순",
     rate: "이행률순",
     name: "이름순",
   };
 
   return (
     <div className="space-y-6">
-      {/* 안내 모달 */}
-      <StatsGuideModal isOpen={showGuide} onClose={() => setShowGuide(false)} />
-
       {/* 헤더 */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-bold text-[#191F28]">근태 통계</h1>
-          {activeTab === "stats" && (
-            <button
-              onClick={() => setShowGuide(true)}
-              className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-[#F2F4F6] transition-colors"
-            >
-              <HelpCircle className="w-4 h-4 text-[#8B95A1]" />
-            </button>
-          )}
-        </div>
+        <h1 className="text-2xl font-bold text-[#191F28]">근태 통계</h1>
       </div>
 
       {/* 탭 */}
@@ -632,7 +546,7 @@ export default function StatsPage() {
             </h2>
           </div>
           <div className="flex gap-1">
-            {(["credit", "rate", "name"] as SortKey[]).map((k) => (
+            {(["rate", "name"] as SortKey[]).map((k) => (
               <button
                 key={k}
                 onClick={() => setSortKey(k)}
@@ -666,12 +580,10 @@ export default function StatsPage() {
             {sortedProfiles.map((p) => {
               const s = statsMap.get(p.id);
               const isExpanded = expandedProfile === p.id;
-              const tier = getTier(p.credit_score);
               const todayStatus = todayMap.get(p.id);
 
               return (
                 <div key={p.id}>
-                  {/* 행 */}
                   <button
                     onClick={() =>
                       setExpandedProfile(isExpanded ? null : p.id)
@@ -692,12 +604,6 @@ export default function StatsPage() {
                           <span className="text-[14px] font-semibold text-[#191F28] truncate">
                             {p.name}
                           </span>
-                          {p.current_streak > 0 && (
-                            <span className="text-[11px] text-orange-500 font-medium flex items-center gap-0.5">
-                              <Flame className="w-3 h-3" />
-                              {p.current_streak}일
-                            </span>
-                          )}
                           {s && s.workingNow > 0 && (
                             <span className="relative flex h-2 w-2">
                               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#3182F6] opacity-75" />
@@ -706,7 +612,6 @@ export default function StatsPage() {
                           )}
                         </div>
 
-                        {/* 통계 수치 */}
                         {s && s.totalSlots > 0 ? (
                           <div className="flex items-center gap-2 mt-1 text-[11px] text-[#8B95A1]">
                             <span>출근 {s.attended + s.workingNow}</span>
@@ -734,23 +639,11 @@ export default function StatsPage() {
                         )}
                       </div>
 
-                      {/* 크레딧 점수 + 미니 진행바 */}
-                      <div className="shrink-0 text-right w-16">
-                        <div className="flex items-center justify-end gap-1">
-                          <span className="text-[12px]">{tier.emoji}</span>
-                          <span className="text-[16px] font-bold text-[#191F28]">
-                            {p.credit_score}
-                          </span>
-                        </div>
-                        <div className="mt-1 h-1 w-full rounded-full bg-[#F2F4F6] overflow-hidden">
-                          <div
-                            className="h-full rounded-full transition-all"
-                            style={{
-                              width: `${getTierProgress(p.credit_score)}%`,
-                              backgroundColor: tier.color,
-                            }}
-                          />
-                        </div>
+                      {/* 이행률 */}
+                      <div className="shrink-0 text-right w-14">
+                        <span className={`text-[16px] font-bold ${s && s.totalSlots > 0 ? getRateColor(s.fulfillRate) : "text-[#D1D6DB]"}`}>
+                          {s && s.totalSlots > 0 ? `${s.fulfillRate}%` : "-"}
+                        </span>
                       </div>
 
                       <div className="shrink-0 ml-1">
@@ -766,8 +659,7 @@ export default function StatsPage() {
                   {/* 아코디언 */}
                   {isExpanded && (
                     <div className="bg-[#F9FAFB] border-t border-[#E5E8EB]">
-                      {/* 오늘 상태 */}
-                      <div className="px-5 py-2.5 border-b border-[#F2F4F6]">
+                      <div className="px-5 py-3">
                         <div className="flex items-center gap-2 text-[12px]">
                           <span className="font-semibold text-[#4E5968]">오늘</span>
                           {todayStatus?.slotTime ? (
@@ -788,72 +680,26 @@ export default function StatsPage() {
                         </div>
                       </div>
 
-                      <div className="px-5 py-3 flex items-center justify-between">
-                        <h3 className="text-[13px] font-semibold text-[#4E5968]">
-                          최근 이벤트
-                        </h3>
-                        <button
-                          onClick={() => {
-                            setAdjustProfile({ id: p.id, name: p.name });
-                            setShowAdjust(true);
-                          }}
-                          className="text-[12px] text-[#3182F6] font-semibold hover:underline"
-                        >
-                          예외 처리
-                        </button>
-                      </div>
-
-                      <div className="max-h-[280px] overflow-y-auto">
-                        {events.length === 0 ? (
-                          <div className="px-5 py-6 text-center text-[#8B95A1] text-[13px]">
-                            아직 이벤트가 없어요
+                      {s && s.totalSlots > 0 && (
+                        <div className="px-5 pb-3 grid grid-cols-4 gap-2">
+                          <div className="bg-white rounded-xl p-2.5 text-center">
+                            <p className="text-[11px] text-[#8B95A1]">출근</p>
+                            <p className="text-[15px] font-bold text-[#191F28]">{s.attended + s.workingNow}</p>
                           </div>
-                        ) : (
-                          events.map((e) => (
-                            <div
-                              key={e.id}
-                              className="flex items-center justify-between px-5 py-2.5 border-t border-[#F2F4F6]"
-                            >
-                              <div className="min-w-0">
-                                <p className="text-[13px] text-[#191F28] truncate">
-                                  {EVENT_TYPE_LABELS[e.event_type] ||
-                                    e.event_type}
-                                </p>
-                                <p className="text-[11px] text-[#8B95A1]">
-                                  {e.reference_date
-                                    ? format(
-                                        new Date(
-                                          e.reference_date + "T00:00:00",
-                                        ),
-                                        "M/d (EEE)",
-                                        { locale: ko },
-                                      )
-                                    : format(
-                                        new Date(e.created_at),
-                                        "M/d HH:mm",
-                                        { locale: ko },
-                                      )}
-                                </p>
-                              </div>
-                              <span
-                                className={`text-[13px] font-bold shrink-0 flex items-center gap-0.5 ${
-                                  e.points > 0
-                                    ? "text-emerald-600"
-                                    : "text-red-500"
-                                }`}
-                              >
-                                {e.points > 0 ? (
-                                  <ArrowUp className="w-3 h-3" />
-                                ) : (
-                                  <ArrowDown className="w-3 h-3" />
-                                )}
-                                {e.points > 0 ? "+" : ""}
-                                {e.points}
-                              </span>
-                            </div>
-                          ))
-                        )}
-                      </div>
+                          <div className="bg-white rounded-xl p-2.5 text-center">
+                            <p className="text-[11px] text-[#8B95A1]">지각</p>
+                            <p className={`text-[15px] font-bold ${s.lateCnt > 0 ? "text-amber-500" : "text-[#191F28]"}`}>{s.lateCnt}</p>
+                          </div>
+                          <div className="bg-white rounded-xl p-2.5 text-center">
+                            <p className="text-[11px] text-[#8B95A1]">결근</p>
+                            <p className={`text-[15px] font-bold ${s.absentCnt > 0 ? "text-red-500" : "text-[#191F28]"}`}>{s.absentCnt}</p>
+                          </div>
+                          <div className="bg-white rounded-xl p-2.5 text-center">
+                            <p className="text-[11px] text-[#8B95A1]">이행률</p>
+                            <p className={`text-[15px] font-bold ${getRateColor(s.fulfillRate)}`}>{s.fulfillRate}%</p>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -862,81 +708,6 @@ export default function StatsPage() {
           </div>
         )}
       </div>
-
-      {/* 티어 분포 (접이식) */}
-      {profiles.length > 0 && (
-        <div className="bg-white rounded-2xl border border-[#E5E8EB] overflow-hidden">
-          <button
-            onClick={() => setShowTierDist(!showTierDist)}
-            className="w-full px-5 py-4 flex items-center justify-between text-left hover:bg-[#F9FAFB] transition-colors"
-          >
-            <h2 className="text-[14px] font-semibold text-[#4E5968]">
-              티어 분포
-            </h2>
-            {showTierDist ? (
-              <ChevronUp className="w-4 h-4 text-[#8B95A1]" />
-            ) : (
-              <ChevronDown className="w-4 h-4 text-[#8B95A1]" />
-            )}
-          </button>
-
-          {showTierDist && (
-            <div className="px-5 pb-5">
-              <div className="flex gap-1 h-8 rounded-xl overflow-hidden">
-                {TIERS.map((tier) => {
-                  const count = tierCounts[tier.key] ?? 0;
-                  if (count === 0) return null;
-                  const pct = (count / profiles.length) * 100;
-                  return (
-                    <div
-                      key={tier.key}
-                      className="flex items-center justify-center text-[11px] font-semibold transition-all"
-                      style={{
-                        width: `${pct}%`,
-                        backgroundColor: tier.color,
-                        color: tier.textColor,
-                        minWidth: count > 0 ? 28 : 0,
-                      }}
-                      title={`${tier.name}: ${count}명`}
-                    >
-                      {count}
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="flex flex-wrap gap-3 mt-2">
-                {TIERS.map((tier) => {
-                  const count = tierCounts[tier.key] ?? 0;
-                  if (count === 0) return null;
-                  return (
-                    <span
-                      key={tier.key}
-                      className="flex items-center gap-1 text-[11px] text-[#4E5968]"
-                    >
-                      <span
-                        className="w-2.5 h-2.5 rounded-full inline-block"
-                        style={{ backgroundColor: tier.color }}
-                      />
-                      {tier.emoji} {tier.name} {count}명
-                    </span>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 예외 처리 바텀시트 */}
-      {adjustProfile && (
-        <InvalidateCreditSheet
-          isOpen={showAdjust}
-          profileId={adjustProfile.id}
-          profileName={adjustProfile.name}
-          onClose={() => setShowAdjust(false)}
-          onSuccess={() => mutate()}
-        />
-      )}
 
       </> /* activeTab === "stats" */
       )}

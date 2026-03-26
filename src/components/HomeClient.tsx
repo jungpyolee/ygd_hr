@@ -16,7 +16,7 @@ import {
 import dynamic from "next/dynamic";
 import OnboardingFunnel from "@/components/OnboardingFunnel";
 import AttendanceCard from "@/components/AttendanceCard";
-import TierCard from "@/components/TierCard";
+
 import { useRouter } from "next/navigation";
 import { useGeolocation } from "@/lib/hooks/useGeolocation";
 import { startOfMonth, startOfWeek, addDays, format } from "date-fns";
@@ -453,16 +453,6 @@ export default function HomeClient({
           onRetryLocation={retryLocation}
           onFetchForAttendance={fetchForAttendance}
         />
-
-        {/* 티어 카드 */}
-        {profile?.credit_score != null && (
-          <TierCard
-            creditScore={profile.credit_score}
-            currentStreak={profile.current_streak ?? 0}
-            longestStreak={profile.longest_streak ?? 0}
-            claimedMilestones={profile.streak_milestones_claimed ?? []}
-          />
-        )}
 
         {/* 오늘 스케줄 */}
         {todaySlots.length > 0 && (

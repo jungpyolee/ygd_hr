@@ -17,7 +17,7 @@ import { ko } from "date-fns/locale";
 
 import DashboardKPICards from "@/components/admin/DashboardKPICards";
 import ActionRequiredBanner from "@/components/admin/ActionRequiredBanner";
-import TeamCreditOverview from "@/components/admin/TeamCreditOverview";
+
 import WeekScheduleStrip from "@/components/admin/WeekScheduleStrip";
 import AdminQuickNav from "@/components/admin/AdminQuickNav";
 import DashboardActivityFeed from "@/components/admin/DashboardActivityFeed";
@@ -566,12 +566,7 @@ export default function AdminDashboardPage() {
         )}
       </section>
 
-      {/* 5. 팀 크레딧 현황 */}
-      <section className="mb-5">
-        <TeamCreditOverview />
-      </section>
-
-      {/* 6. 이번 주 스케줄 */}
+      {/* 이번 주 스케줄 */}
       <section className="mb-5">
         <WeekScheduleStrip />
       </section>

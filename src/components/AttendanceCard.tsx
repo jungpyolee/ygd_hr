@@ -9,9 +9,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import { sendNotification, type NotificationType } from "@/lib/notifications";
-import { processCheckinCredit } from "@/lib/credit-engine";
+
 import ConfirmDialog from "@/components/ui/confirm-dialog";
-import LocationPermissionGuide from "@/components/LocationPermissionGuide";
 import ChecklistSheet from "@/components/ChecklistSheet";
 import StoreSelectorSheet from "@/components/StoreSelectorSheet";
 import type { GeoState } from "@/lib/hooks/useGeolocation";
@@ -77,8 +76,6 @@ export default function AttendanceCard({
   const [pendingLocation, setPendingLocation] =
     useState<PendingLocation | null>(null);
 
-  // 위치 권한 안내 바텀시트
-  const [showPermissionGuide, setShowPermissionGuide] = useState(false);
   // 위치 재시도 후 재개할 출퇴근 타입
   const [pendingType, setPendingType] = useState<"IN" | "OUT" | null>(null);
 
@@ -351,26 +348,6 @@ export default function AttendanceCard({
       toast.success("출장퇴근 처리됐어요");
     }
 
-    // ── 출근 크레딧 처리 + 피드백 토스트 ──────────────────
-    if (type === "IN" && userId && todaySlots.length > 0) {
-      const slot = todaySlots[0]; // 가장 이른 슬롯 기준
-      const creditResult = await processCheckinCredit(
-        userId,
-        logData.created_at ?? new Date().toISOString(),
-        slot.slot_date,
-        slot.start_time,
-      ).catch(() => null);
-      if (creditResult) {
-        if (creditResult.event_type === "normal_attendance") {
-          toast.success("정상 출근! +3점 적립됐어요");
-        } else if (creditResult.event_type === "late_minor") {
-          toast("5~10분 지각이에요 (-3점)", { description: "다음엔 정시에 출근해봐요" });
-        } else if (creditResult.event_type === "late_major") {
-          toast("10분 이상 지각이에요 (-10점)", { description: "정시 출근을 목표로 해봐요" });
-        }
-      }
-    }
-
     // ── 출근 후 check_in 체크리스트 ──────────────────────────
     if (type === "IN") {
       const items = await fetchChecklistItems("check_in");
@@ -501,7 +478,7 @@ export default function AttendanceCard({
         return;
       }
       if (result.status === "denied") {
-        setShowPermissionGuide(true);
+        openStoreFallback("OUT");
         return;
       }
       const retryResult = await onRetryLocation();
@@ -510,12 +487,8 @@ export default function AttendanceCard({
         await proceedWithCoordinates("OUT", retryResult.lat!, retryResult.lng!);
         return;
       }
-      if (retryResult.status === "denied") {
-        setShowPermissionGuide(true);
-        return;
-      }
 
-      // GPS 재시도까지 실패 → 매장 수동 선택 fallback
+      // denied / timeout / unavailable → 매장 수동 선택 fallback
       openStoreFallback("OUT");
     } finally {
       setIsRetrying(false);
@@ -570,7 +543,7 @@ export default function AttendanceCard({
         }
 
         if (result.status === "denied") {
-          setShowPermissionGuide(true);
+          openStoreFallback(type);
           return;
         }
 
@@ -582,49 +555,13 @@ export default function AttendanceCard({
           return;
         }
 
-        if (retryResult.status === "denied") {
-          setShowPermissionGuide(true);
-          return;
-        }
-
-        // GPS 재시도까지 실패 → 매장 수동 선택 fallback
+        // denied / timeout / unavailable → 매장 수동 선택 fallback
         openStoreFallback(type);
       } finally {
         setIsRetrying(false);
       }
     } finally {
       isProcessingRef.current = false;
-    }
-  };
-
-  // ─── 권한 안내 확인 후 재시도 ──────────────────────────────────────────────
-  const handlePermissionConfirm = async () => {
-    setShowPermissionGuide(false);
-    const type = pendingType;
-    if (!type) return;
-
-    setIsRetrying(true);
-
-    try {
-      const result = await onRetryLocation();
-
-      if (result.status === "ready") {
-        setPendingType(null);
-        await proceedWithCoordinates(type, result.lat!, result.lng!);
-        return;
-      }
-
-      // 권한 안내 후에도 여전히 denied → 출근 차단
-      if (result.status === "denied") {
-        setPendingType(null);
-        toast.error("위치 권한을 허용해야 출근할 수 있어요. 설정에서 위치 권한을 켜주세요.");
-        return;
-      }
-
-      // timeout / unavailable → GPS 오류이므로 수동 선택 허용
-      openStoreFallback(type);
-    } finally {
-      setIsRetrying(false);
     }
   };
 
@@ -835,16 +772,6 @@ export default function AttendanceCard({
         }}
         onComplete={handleChecklistComplete}
         onClose={checklistTrigger === "check_in" ? handleChecklistClose : handleCheckoutChecklistClose}
-      />
-
-      {/* ── 위치 권한 안내 ───────────────────────────────────── */}
-      <LocationPermissionGuide
-        isOpen={showPermissionGuide}
-        onConfirm={handlePermissionConfirm}
-        onCancel={() => {
-          setShowPermissionGuide(false);
-          setPendingType(null);
-        }}
       />
 
       {/* ── 위치 실패 매장 수동 선택 ─────────────────────────────── */}

@@ -29,6 +29,7 @@ import {
   Megaphone,
   ClipboardList,
   BarChart2,
+  QrCode,
 } from "lucide-react";
 
 export default function AdminLayout({
@@ -255,6 +256,11 @@ export default function AdminLayout({
       name: "체크리스트 설정",
       path: "/admin/checklists",
       icon: <ClipboardList className="w-5 h-5" />,
+    },
+    {
+      name: "QR 출퇴근",
+      path: "/admin/qr",
+      icon: <QrCode className="w-5 h-5" />,
     },
     {
       name: "매장 설정",
