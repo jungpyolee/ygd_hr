@@ -148,7 +148,7 @@ export default function AdminDashboardPage() {
       const today = new Date();
       const todayStr = format(today, "yyyy-MM-dd");
 
-      const [subResult, healthResult, overtimeCount] = await Promise.all([
+      const [subResult, healthResult, overtimeCount, missedCheckoutCount] = await Promise.all([
         // 대타 미처리
         supabase
           .from("substitute_requests")
@@ -274,12 +274,42 @@ export default function AdminDashboardPage() {
 
           return count;
         })(),
+        // 미퇴근 집계 (과거 전체 날짜 중 IN만 있고 OUT 없는 건)
+        (async () => {
+          const [{ data: inLogs }, { data: outLogs }] = await Promise.all([
+            supabase
+              .from("attendance_logs")
+              .select("profile_id, created_at")
+              .eq("type", "IN")
+              .lt("created_at", `${todayStr}T00:00:00+09:00`),
+            supabase
+              .from("attendance_logs")
+              .select("profile_id, created_at")
+              .eq("type", "OUT")
+              .lt("created_at", `${todayStr}T00:00:00+09:00`),
+          ]);
+
+          const outSet = new Set<string>();
+          for (const log of outLogs ?? []) {
+            const d = format(new Date(log.created_at), "yyyy-MM-dd");
+            outSet.add(`${(log as any).profile_id}|${d}`);
+          }
+
+          const seen = new Set<string>();
+          for (const log of inLogs ?? []) {
+            const d = format(new Date(log.created_at), "yyyy-MM-dd");
+            const key = `${(log as any).profile_id}|${d}`;
+            if (!outSet.has(key)) seen.add(key);
+          }
+          return seen.size;
+        })(),
       ]);
 
       return {
         overtimeCount: overtimeCount as number,
         subCount: subResult.count ?? 0,
         healthCertCount: healthResult.count ?? 0,
+        missedCheckoutCount: missedCheckoutCount as number,
       };
     },
     { dedupingInterval: 120_000, revalidateOnFocus: true }
@@ -288,6 +318,7 @@ export default function AdminDashboardPage() {
   const overtimeCount = actionData?.overtimeCount ?? 0;
   const subCount = actionData?.subCount ?? 0;
   const healthCertCount = actionData?.healthCertCount ?? 0;
+  const missedCheckoutCount = actionData?.missedCheckoutCount ?? 0;
 
   // KPI 계산
   const attendedCount = todayAttendance.filter(
@@ -401,6 +432,7 @@ export default function AdminDashboardPage() {
           overtimeCount={overtimeCount}
           subCount={subCount}
           healthCertCount={healthCertCount}
+          missedCheckoutCount={missedCheckoutCount}
         />
       </section>
 

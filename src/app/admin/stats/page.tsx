@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
 import {
@@ -18,6 +18,8 @@ import {
   Flame,
   BarChart3,
   HelpCircle,
+  LogOut,
+  ChevronRight,
 } from "lucide-react";
 import AvatarDisplay from "@/components/AvatarDisplay";
 import InvalidateCreditSheet from "@/components/InvalidateCreditSheet";
@@ -32,6 +34,7 @@ import {
   LATE_MAJOR_THRESHOLD,
 } from "@/lib/tier-utils";
 import { toast } from "sonner";
+import { createNotification } from "@/lib/notifications";
 
 // ─────────────────────────────────────────
 // 타입
@@ -83,6 +86,16 @@ interface TodayStatus {
 
 type Period = "this_month" | "last_month" | "all";
 type SortKey = "credit" | "rate" | "name";
+type Tab = "stats" | "missed";
+
+interface MissedCheckout {
+  profile_id: string;
+  log_date: string;
+  clock_in: string;
+  name: string;
+  color_hex: string;
+  avatar_config: any;
+}
 
 // ─────────────────────────────────────────
 // 유틸
@@ -179,10 +192,54 @@ async function fetchCreditEvents(profileId: string): Promise<CreditEvent[]> {
   return (data ?? []) as CreditEvent[];
 }
 
+async function fetchMissedCheckouts(): Promise<MissedCheckout[]> {
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+
+  const [{ data: inLogs }, { data: outLogs }] = await Promise.all([
+    supabase
+      .from("attendance_logs")
+      .select("profile_id, created_at, profiles!profile_id(name, color_hex, avatar_config)")
+      .eq("type", "IN")
+      .lt("created_at", `${todayStr}T00:00:00+09:00`)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("attendance_logs")
+      .select("profile_id, created_at")
+      .eq("type", "OUT")
+      .lt("created_at", `${todayStr}T00:00:00+09:00`),
+  ]);
+
+  const outSet = new Set<string>();
+  for (const log of outLogs ?? []) {
+    const d = format(new Date(log.created_at), "yyyy-MM-dd");
+    outSet.add(`${(log as any).profile_id}|${d}`);
+  }
+
+  const seen = new Set<string>();
+  const result: MissedCheckout[] = [];
+  for (const log of (inLogs ?? []) as any[]) {
+    const d = format(new Date(log.created_at), "yyyy-MM-dd");
+    const key = `${log.profile_id}|${d}`;
+    if (!outSet.has(key) && !seen.has(key)) {
+      seen.add(key);
+      result.push({
+        profile_id: log.profile_id,
+        log_date: d,
+        clock_in: log.created_at,
+        name: log.profiles?.name ?? "",
+        color_hex: log.profiles?.color_hex ?? "#3182F6",
+        avatar_config: log.profiles?.avatar_config,
+      });
+    }
+  }
+  return result;
+}
+
 // ─────────────────────────────────────────
 // 컴포넌트
 // ─────────────────────────────────────────
 export default function StatsPage() {
+  const [activeTab, setActiveTab] = useState<Tab>("stats");
   const [period, setPeriod] = useState<Period>("this_month");
   const [sortKey, setSortKey] = useState<SortKey>("credit");
   const [expandedProfile, setExpandedProfile] = useState<string | null>(null);
@@ -193,6 +250,11 @@ export default function StatsPage() {
   } | null>(null);
   const [showTierDist, setShowTierDist] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("tab") === "missed") setActiveTab("missed");
+  }, []);
 
   const { start, end } = getDateRange(period);
   const todayStr = format(new Date(), "yyyy-MM-dd");
@@ -216,6 +278,48 @@ export default function StatsPage() {
     () => fetchCreditEvents(expandedProfile!),
     { revalidateOnFocus: false },
   );
+
+  const { data: missedCheckouts = [], isLoading: missedLoading, mutate: mutateMissed } = useSWR(
+    activeTab === "missed" ? "admin-missed-checkouts" : null,
+    fetchMissedCheckouts,
+    { revalidateOnFocus: false },
+  );
+
+  const [manualOutTarget, setManualOutTarget] = useState<MissedCheckout | null>(null);
+  const [manualOutTime, setManualOutTime] = useState("");
+  const [manualOutSubmitting, setManualOutSubmitting] = useState(false);
+
+  const handleManualOut = async () => {
+    if (!manualOutTarget || !manualOutTime) return;
+    setManualOutSubmitting(true);
+    const client = createClient();
+    const clockOutDate = new Date(`${manualOutTarget.log_date}T${manualOutTime}:00`);
+
+    const { error } = await client.from("attendance_logs").insert({
+      profile_id: manualOutTarget.profile_id,
+      type: "OUT",
+      attendance_type: "fallback_out",
+      created_at: clockOutDate.toISOString(),
+      reason: "관리자 수동 처리",
+    });
+
+    if (error) {
+      toast.error("퇴근 처리에 실패했어요. 잠시 후 다시 시도해 주세요.");
+    } else {
+      toast.success(`${manualOutTarget.name}님 퇴근 처리가 완료됐어요.`);
+      await createNotification({
+        profile_id: manualOutTarget.profile_id,
+        target_role: "employee",
+        type: "attendance_fallback_out",
+        title: "퇴근 처리 완료",
+        content: "관리자가 퇴근 처리했어요.",
+        source_id: manualOutTarget.profile_id,
+      });
+      setManualOutTarget(null);
+      mutateMissed();
+    }
+    setManualOutSubmitting(false);
+  };
 
   const isLoading = profilesLoading || statsLoading;
 
@@ -363,14 +467,109 @@ export default function StatsPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <h1 className="text-2xl font-bold text-[#191F28]">근태 통계</h1>
-          <button
-            onClick={() => setShowGuide(true)}
-            className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-[#F2F4F6] transition-colors"
-          >
-            <HelpCircle className="w-4 h-4 text-[#8B95A1]" />
-          </button>
+          {activeTab === "stats" && (
+            <button
+              onClick={() => setShowGuide(true)}
+              className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-[#F2F4F6] transition-colors"
+            >
+              <HelpCircle className="w-4 h-4 text-[#8B95A1]" />
+            </button>
+          )}
         </div>
       </div>
+
+      {/* 탭 */}
+      <div className="flex gap-2">
+        <button
+          onClick={() => setActiveTab("stats")}
+          className={`px-4 py-2 text-[13px] font-semibold rounded-xl transition-colors ${
+            activeTab === "stats"
+              ? "bg-[#191F28] text-white"
+              : "bg-white text-[#4E5968] border border-[#E5E8EB] hover:bg-[#F9FAFB]"
+          }`}
+        >
+          통계
+        </button>
+        <button
+          onClick={() => setActiveTab("missed")}
+          className={`flex items-center gap-1.5 px-4 py-2 text-[13px] font-semibold rounded-xl transition-colors ${
+            activeTab === "missed"
+              ? "bg-[#191F28] text-white"
+              : "bg-white text-[#4E5968] border border-[#E5E8EB] hover:bg-[#F9FAFB]"
+          }`}
+        >
+          <LogOut className="w-3.5 h-3.5" />
+          미퇴근
+          {missedCheckouts.length > 0 && activeTab !== "missed" && (
+            <span className="text-[11px] font-bold text-white bg-[#F04438] px-1.5 py-0.5 rounded-full leading-none">
+              {missedCheckouts.length}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* 미퇴근 탭 */}
+      {activeTab === "missed" && (
+        <div className="bg-white rounded-2xl border border-[#E5E8EB] overflow-hidden">
+          <div className="px-5 py-4 border-b border-[#E5E8EB] flex items-center gap-2">
+            <LogOut className="w-4 h-4 text-[#3182F6]" />
+            <h2 className="font-semibold text-[#191F28] text-[15px]">미퇴근 처리 필요</h2>
+            {missedCheckouts.length > 0 && (
+              <span className="text-[11px] font-bold text-white bg-[#F04438] px-2 py-0.5 rounded-full">
+                {missedCheckouts.length}건
+              </span>
+            )}
+          </div>
+
+          {missedLoading ? (
+            <div className="p-6 space-y-3">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="h-14 bg-[#F2F4F6] rounded-xl animate-pulse" />
+              ))}
+            </div>
+          ) : missedCheckouts.length === 0 ? (
+            <div className="p-12 text-center text-[#8B95A1] text-[14px]">
+              미퇴근 기록이 없어요
+            </div>
+          ) : (
+            <div className="divide-y divide-[#F2F4F6]">
+              {missedCheckouts.map((item) => (
+                <button
+                  key={`${item.profile_id}|${item.log_date}`}
+                  onClick={() => {
+                    setManualOutTarget(item);
+                    setManualOutTime(item.clock_in ? format(new Date(item.clock_in), "HH:mm") : "");
+                  }}
+                  className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-[#F9FAFB] transition-colors text-left"
+                >
+                  <div className="flex items-center gap-3">
+                    <AvatarDisplay
+                      userId={item.profile_id}
+                      avatarConfig={item.avatar_config}
+                      size={36}
+                    />
+                    <div>
+                      <p className="text-[14px] font-semibold text-[#191F28]">{item.name}</p>
+                      <p className="text-[12px] text-[#8B95A1] mt-0.5">
+                        {format(new Date(item.log_date + "T00:00:00"), "M월 d일 (EEE)", { locale: ko })}
+                        {" · "}
+                        {format(new Date(item.clock_in), "HH:mm")} 출근
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-[12px] font-semibold text-[#3182F6]">처리하기</span>
+                    <ChevronRight className="w-4 h-4 text-[#D1D6DB]" />
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === "stats" && (
+      <>
 
       {/* 기간 선택 */}
       <div className="flex gap-2">
@@ -737,6 +936,66 @@ export default function StatsPage() {
           onClose={() => setShowAdjust(false)}
           onSuccess={() => mutate()}
         />
+      )}
+
+      </> /* activeTab === "stats" */
+      )}
+
+      {/* 수동 퇴근 처리 모달 */}
+      {manualOutTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setManualOutTarget(null)}
+          />
+          <div className="relative bg-white rounded-[24px] w-full max-w-sm p-6 shadow-xl">
+            <h3 className="text-[17px] font-bold text-[#191F28] mb-5">수동 퇴근 처리</h3>
+
+            <div className="flex items-center gap-3 bg-[#F9FAFB] rounded-[16px] p-3.5 mb-5">
+              <AvatarDisplay
+                userId={manualOutTarget.profile_id}
+                avatarConfig={manualOutTarget.avatar_config}
+                size={40}
+              />
+              <div>
+                <p className="text-[15px] font-bold text-[#191F28]">{manualOutTarget.name}</p>
+                <p className="text-[12px] text-[#8B95A1]">
+                  {format(new Date(manualOutTarget.log_date + "T00:00:00"), "M월 d일 (EEE)", { locale: ko })}
+                  {" · "}
+                  {format(new Date(manualOutTarget.clock_in), "HH:mm")} 출근
+                </p>
+              </div>
+            </div>
+
+            <div className="mb-5">
+              <label className="block text-[13px] font-semibold text-[#4E5968] mb-2">
+                퇴근 시간
+              </label>
+              <input
+                type="time"
+                value={manualOutTime}
+                onChange={(e) => setManualOutTime(e.target.value)}
+                className="w-full border border-[#E5E8EB] rounded-[12px] px-4 py-3 text-[16px] font-bold text-[#191F28] focus:outline-none focus:border-[#3182F6] focus:ring-2 focus:ring-[#3182F6]/20"
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setManualOutTarget(null)}
+                className="flex-1 py-3 rounded-[12px] text-[15px] font-bold text-[#4E5968] bg-[#F2F4F6] hover:bg-[#E5E8EB] transition-colors"
+              >
+                취소하기
+              </button>
+              <button
+                onClick={handleManualOut}
+                disabled={!manualOutTime || manualOutSubmitting}
+                className="flex-1 py-3 rounded-[12px] text-[15px] font-bold text-white bg-[#3182F6] hover:bg-[#1B6EE6] disabled:opacity-50 transition-colors"
+              >
+                {manualOutSubmitting ? "처리 중..." : "처리하기"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

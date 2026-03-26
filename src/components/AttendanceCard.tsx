@@ -696,7 +696,7 @@ export default function AttendanceCard({
   // 출근 기록은 됐지만 check_in 체크리스트 미완료 상태
   // (lastLog 갱신 전에도 체크리스트 배너를 정확히 보여주기 위해)
   const hasPendingCheckIn = !!pendingLogId || pendingResume?.trigger === "check_in";
-  const isCheckedIn = lastLog?.type === "IN" || hasPendingCheckIn;
+  const isCheckedIn = (lastLog?.type === "IN" && lastLog?.isToday) || hasPendingCheckIn;
 
   return (
     <>
@@ -709,18 +709,18 @@ export default function AttendanceCard({
             <div className="flex items-center gap-2">
               <div
                 className={`w-2.5 h-2.5 rounded-full ${
-                  lastLog?.type === "IN"
+                  lastLog?.type === "IN" && lastLog?.isToday
                     ? "bg-[#3182F6] animate-pulse"
                     : "bg-[#D1D6DB]"
                 }`}
               />
               <div className="text-2xl font-bold text-[#191F28]">
-                {lastLog?.type === "IN"
+                {lastLog?.type === "IN" && lastLog?.isToday
                   ? `${lastLog.store} 근무 중`
                   : "출근 전이에요"}
               </div>
             </div>
-            {lastLog?.type === "IN" &&
+            {lastLog?.type === "IN" && lastLog?.isToday &&
               lastLog?.attendance_type === "business_trip_in" && (
                 <span className="inline-block text-[11px] font-bold bg-[#FFF3BF] text-[#E67700] px-2 py-0.5 rounded-md">
                   ✈️ 출장중

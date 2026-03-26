@@ -10,10 +10,11 @@ import {
   STREAK_MILESTONES,
 } from "@/lib/tier-utils";
 
-const adminSupabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-);
+const getAdminSupabase = () =>
+  createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
 
 // ─── 인증 헬퍼 ──────────────────────────────────────────
 async function getAuthUser() {
@@ -30,7 +31,7 @@ async function getAuthUser() {
 async function requireAdmin() {
   const user = await getAuthUser();
   if (!user) throw new Error("Unauthorized");
-  const { data } = await adminSupabase
+  const { data } = await getAdminSupabase()
     .from("profiles")
     .select("role")
     .eq("id", user.id)
@@ -48,7 +49,7 @@ async function insertCredit(params: {
   reference_id?: string;
   reference_date?: string;
 }) {
-  const { error } = await adminSupabase
+  const { error } = await getAdminSupabase()
     .from("attendance_credits")
     .insert(params);
   if (error) console.error("[CreditEngine] INSERT 실패:", error.message);
@@ -57,7 +58,7 @@ async function insertCredit(params: {
 
 // ─── 스트릭 업데이트 ─────────────────────────────────────
 async function updateStreak(profileId: string, reset: boolean) {
-  const { data: profile } = await adminSupabase
+  const { data: profile } = await getAdminSupabase()
     .from("profiles")
     .select("current_streak, longest_streak, streak_milestones_claimed")
     .eq("id", profileId)
@@ -66,7 +67,7 @@ async function updateStreak(profileId: string, reset: boolean) {
   if (!profile) return;
 
   if (reset) {
-    await adminSupabase
+    await getAdminSupabase()
       .from("profiles")
       .update({ current_streak: 0 })
       .eq("id", profileId);
@@ -77,7 +78,7 @@ async function updateStreak(profileId: string, reset: boolean) {
   const newStreak = profile.current_streak + 1;
   const newLongest = Math.max(profile.longest_streak, newStreak);
 
-  await adminSupabase
+  await getAdminSupabase()
     .from("profiles")
     .update({ current_streak: newStreak, longest_streak: newLongest })
     .eq("id", profileId);
@@ -97,7 +98,7 @@ async function updateStreak(profileId: string, reset: boolean) {
   }
 
   if (claimed.length > (profile.streak_milestones_claimed?.length ?? 0)) {
-    await adminSupabase
+    await getAdminSupabase()
       .from("profiles")
       .update({ streak_milestones_claimed: claimed })
       .eq("id", profileId);
@@ -118,7 +119,7 @@ export async function processCheckinCredit(
   if (!user) return null;
 
   // 이미 해당 슬롯에 크레딧이 있는지 중복 체크
-  const { data: existing } = await adminSupabase
+  const { data: existing } = await getAdminSupabase()
     .from("attendance_credits")
     .select("id")
     .eq("profile_id", profileId)
@@ -184,7 +185,7 @@ export async function reverseCredit(
   }
 
   // 원본 크레딧 조회
-  const { data: original } = await adminSupabase
+  const { data: original } = await getAdminSupabase()
     .from("attendance_credits")
     .select("id, profile_id, event_type, points, description, reference_date, invalidated_by")
     .eq("id", creditId)
@@ -202,7 +203,7 @@ export async function reverseCredit(
 
   // 반대 부호로 reversal 크레딧 삽입
   const reversalPoints = Math.abs(original.points);
-  const { data: reversal, error: insertError } = await adminSupabase
+  const { data: reversal, error: insertError } = await getAdminSupabase()
     .from("attendance_credits")
     .insert({
       profile_id: original.profile_id,
@@ -218,7 +219,7 @@ export async function reverseCredit(
   if (insertError || !reversal) return { error: "예외 처리에 실패했어요" };
 
   // 원본에 invalidated_by 기록
-  await adminSupabase
+  await getAdminSupabase()
     .from("attendance_credits")
     .update({ invalidated_by: reversal.id })
     .eq("id", creditId);
@@ -236,7 +237,7 @@ async function _settlementCore(
   targetDate: string,
 ): Promise<{ processed: number; error: string | null }> {
   // 해당일의 active 슬롯 조회
-  const { data: slots } = await adminSupabase
+  const { data: slots } = await getAdminSupabase()
     .from("schedule_slots")
     .select("id, profile_id, start_time, end_time")
     .eq("slot_date", targetDate)
@@ -245,7 +246,7 @@ async function _settlementCore(
   if (!slots || slots.length === 0) return { processed: 0, error: null };
 
   // 해당일 출근 로그 조회
-  const { data: logs } = await adminSupabase
+  const { data: logs } = await getAdminSupabase()
     .from("attendance_logs")
     .select("profile_id, type, created_at")
     .gte("created_at", `${targetDate}T00:00:00+09:00`)
@@ -262,7 +263,7 @@ async function _settlementCore(
 
   for (const slot of slots) {
     // 이미 출근/결근 관련 크레딧이 있는지 확인 (보너스 이벤트 제외, 무효화된 것도 제외)
-    const { data: existing } = await adminSupabase
+    const { data: existing } = await getAdminSupabase()
       .from("attendance_credits")
       .select("id")
       .eq("profile_id", slot.profile_id)

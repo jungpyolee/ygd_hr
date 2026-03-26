@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { TimerIcon, UserCheck, ShieldAlert, ChevronRight } from "lucide-react";
+import { TimerIcon, UserCheck, ShieldAlert, LogOut, ChevronRight } from "lucide-react";
 
 interface ActionItem {
   key: string;
@@ -17,12 +17,14 @@ interface ActionRequiredBannerProps {
   overtimeCount: number;
   subCount: number;
   healthCertCount: number;
+  missedCheckoutCount: number;
 }
 
 export default function ActionRequiredBanner({
   overtimeCount,
   subCount,
   healthCertCount,
+  missedCheckoutCount,
 }: ActionRequiredBannerProps) {
   const router = useRouter();
 
@@ -53,6 +55,15 @@ export default function ActionRequiredBanner({
       color: "#F04438",
       bgColor: "#FFF0F0",
       href: "/admin/employees?health=warning",
+    },
+    {
+      key: "missed_checkout",
+      label: "미퇴근 처리",
+      count: missedCheckoutCount,
+      icon: <LogOut className="w-4 h-4" />,
+      color: "#3182F6",
+      bgColor: "#E8F3FF",
+      href: "/admin/stats?tab=missed",
     },
   ].filter((item) => item.count > 0);
 

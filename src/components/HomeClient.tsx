@@ -230,6 +230,7 @@ export default function HomeClient({
     return {
       type: logData.type,
       attendance_type: logData.attendance_type,
+      isToday,
       time: createdAt.toLocaleTimeString("ko-KR", {
         hour: "2-digit",
         minute: "2-digit",
