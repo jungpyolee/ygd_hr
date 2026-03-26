@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { X, ExternalLink } from "lucide-react";
+import { X, ExternalLink, ChevronDown } from "lucide-react";
 
 interface PushPreferences {
   enabled: boolean;
@@ -45,6 +45,7 @@ export default function PushNotificationSettings() {
   const [saving, setSaving] = useState(false);
   const [cooldown, setCooldown] = useState(false);
   const [showDeniedGuide, setShowDeniedGuide] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
 
   useEffect(() => {
     if (!("Notification" in window) || !("serviceWorker" in navigator)) {
@@ -211,40 +212,38 @@ export default function PushNotificationSettings() {
       {/* 거부 상태 안내 모달 */}
       {showDeniedGuide && <DeniedGuideModal onClose={() => setShowDeniedGuide(false)} />}
 
-      {/* 세부 타입 설정 (enabled=true일 때만) */}
-      {prefs.enabled && permissionState === "granted" && (
-        <div className="space-y-4 pt-2 border-t border-[#E5E8EB]">
-          {loading ? (
-            /* 로딩 중 skeleton */
+      {/* 세부 타입 설정 (enabled=true && 로딩 완료일 때만) */}
+      {prefs.enabled && permissionState === "granted" && !loading && (
+        <div className="border-t border-[#E5E8EB] pt-2">
+          <button
+            onClick={() => setDetailOpen((v) => !v)}
+            className="w-full flex items-center justify-between py-1.5 active:opacity-70 transition-opacity"
+          >
+            <span className="text-[13px] font-medium text-[#8B95A1]">세부 알림 설정</span>
+            <ChevronDown
+              className={`w-4 h-4 text-[#8B95A1] transition-transform duration-200 ${detailOpen ? "rotate-180" : ""}`}
+            />
+          </button>
+          <div
+            className={`overflow-hidden transition-all duration-300 ease-in-out ${detailOpen ? "max-h-[500px] opacity-100 mt-2" : "max-h-0 opacity-0"}`}
+          >
             <div className="space-y-4">
-              {[4, 3, 1].map((count, gi) => (
-                <div key={gi} className="space-y-2">
-                  <div className="h-3 w-12 bg-[#E5E8EB] rounded animate-pulse" />
-                  {Array.from({ length: count }).map((_, i) => (
-                    <div key={i} className="flex items-center justify-between py-1">
-                      <div className="h-4 w-32 bg-[#E5E8EB] rounded animate-pulse" />
-                      <div className="h-6 w-11 bg-[#E5E8EB] rounded-full animate-pulse" />
+              {EMPLOYEE_SETTING_GROUPS.map((group) => (
+                <div key={group.label} className="space-y-2">
+                  <p className="text-xs font-medium text-[#8B95A1]">{group.label}</p>
+                  {group.items.map((item) => (
+                    <div key={item.key} className="flex items-center justify-between py-1">
+                      <span className="text-sm text-[#191F28]">{item.label}</span>
+                      <Toggle
+                        checked={prefs.type_settings[item.key] !== false}
+                        onChange={(v) => handleTypeToggle(item.key, v)}
+                      />
                     </div>
                   ))}
                 </div>
               ))}
             </div>
-          ) : (
-            EMPLOYEE_SETTING_GROUPS.map((group) => (
-              <div key={group.label} className="space-y-2">
-                <p className="text-xs font-medium text-[#8B95A1]">{group.label}</p>
-                {group.items.map((item) => (
-                  <div key={item.key} className="flex items-center justify-between py-1">
-                    <span className="text-sm text-[#191F28]">{item.label}</span>
-                    <Toggle
-                      checked={prefs.type_settings[item.key] !== false}
-                      onChange={(v) => handleTypeToggle(item.key, v)}
-                    />
-                  </div>
-                ))}
-              </div>
-            ))
-          )}
+          </div>
         </div>
       )}
     </div>
