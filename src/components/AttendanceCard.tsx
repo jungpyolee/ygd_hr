@@ -903,7 +903,7 @@ export default function AttendanceCard({
               value={remoteReason}
               onChange={(e) => setRemoteReason(e.target.value)}
               placeholder={
-                isBizTripOut ? "출장" : "퇴근을 늦게 누른 이유를 적어주세요"
+                isBizTripOut ? "출장" : "매장 외 퇴근 사유를 적어주세요"
               }
               readOnly={isBizTripOut}
               className="w-full h-24 rounded-2xl border border-slate-200 p-4 text-[14px] text-[#191F28] resize-none focus:outline-none focus:border-[#3182F6] mb-4 bg-white disabled:bg-[#F2F4F6]"
