@@ -112,7 +112,7 @@ export default function AttendanceCard({
       const raw = localStorage.getItem(getDraftKey(uid, trigger));
       if (!raw) return null;
       const draft: ChecklistDraft = JSON.parse(raw);
-      const today = new Date().toISOString().slice(0, 10);
+      const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date());
       if (draft.userId !== uid || draft.date !== today) {
         localStorage.removeItem(getDraftKey(uid, trigger));
         return null;
@@ -384,7 +384,7 @@ export default function AttendanceCard({
         if (userId) {
           saveDraft(userId, {
             userId,
-            date: new Date().toISOString().slice(0, 10),
+            date: new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date()),
             trigger: "check_in",
             attendanceLogId: logData.id,
             checkedIds: [],
@@ -542,7 +542,7 @@ export default function AttendanceCard({
           if (!outDraft && userId) {
             saveDraft(userId, {
               userId,
-              date: new Date().toISOString().slice(0, 10),
+              date: new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date()),
               trigger: "check_out",
               attendanceLogId: null,
               checkedIds: [],

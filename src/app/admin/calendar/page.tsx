@@ -363,9 +363,10 @@ function SlotInfoSheet({ slot, profile, attendance, onClose, onEdit, onDelete, o
         .map((k) => positionsOfStore(slot.store_id).find((p) => p.position_key === k)?.label || k)
         .join(" · ")
     : null;
-  const dateLabel = format(parseISO(slot.slot_date), "M월 d일 (EEEE)", { locale: ko });
-  const isPast = isBefore(parseISO(slot.slot_date), startOfDay(new Date()));
-  const isTodaySlot = isToday(parseISO(slot.slot_date));
+  const slotDate = new Date(slot.slot_date + "T00:00:00");
+  const dateLabel = format(slotDate, "M월 d일 (EEEE)", { locale: ko });
+  const isPast = isBefore(slotDate, startOfDay(new Date()));
+  const isTodaySlot = isToday(slotDate);
 
   // 근태 파생 값
   const isWorking = attendance?.clock_in && !attendance?.clock_out;

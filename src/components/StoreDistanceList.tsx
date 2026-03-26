@@ -11,7 +11,7 @@ interface StoreDistanceListProps {
 
 function getStoreDistanceText(store: any, locationState: any, radius: number): string {
   if (!store.is_gps_required) return "위치 무관";
-  if (locationState.status === "loading") return "";
+  if (locationState.status === "idle" || locationState.status === "loading") return "";
   if (locationState.status === "ready")
     return formatDistance(getDistance(locationState.lat, locationState.lng, store.lat, store.lng), radius);
   if (locationState.status === "denied") return "위치 권한 없음";

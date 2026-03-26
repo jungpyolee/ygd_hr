@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useCallback } from "react";
 
-export type GeoStatus = "loading" | "ready" | "denied" | "timeout" | "unavailable";
+export type GeoStatus = "idle" | "loading" | "ready" | "denied" | "timeout" | "unavailable";
 
 export interface GeoState {
   status: GeoStatus;
@@ -23,7 +23,7 @@ const GEO_ATTENDANCE_OPTIONS: PositionOptions = {
 };
 
 export function useGeolocation() {
-  const [state, setState] = useState<GeoState>({ status: "loading" });
+  const [state, setState] = useState<GeoState>({ status: "idle" });
   const inFlightRef = useRef<Promise<GeoState> | null>(null);
 
   const doFetch = useCallback((): Promise<GeoState> => {
@@ -66,33 +66,8 @@ export function useGeolocation() {
     return p;
   }, []);
 
-  useEffect(() => {
-    doFetch();
-
-    // 권한 상태 변화 감시 — 사용자가 설정에서 권한 허용 시 자동 재시도
-    let permResult: PermissionStatus | null = null;
-    const handlePermChange = () => {
-      if (permResult?.state === "granted") {
-        inFlightRef.current = null;
-        setState({ status: "loading" });
-        doFetch();
-      }
-    };
-
-    if (navigator.permissions) {
-      navigator.permissions
-        .query({ name: "geolocation" })
-        .then((result) => {
-          permResult = result;
-          result.addEventListener("change", handlePermChange);
-        })
-        .catch(() => {});
-    }
-
-    return () => {
-      permResult?.removeEventListener("change", handlePermChange);
-    };
-  }, [doFetch]);
+  // 자동 위치 요청 없음 — 출퇴근 버튼 탭 시 fetchForAttendance()가 직접 요청
+  // (페이지 로드 시 자동 요청 시 사용자가 이유 모르고 거부 → PWA 설치 후 영구 차단 문제)
 
   const retry = useCallback((): Promise<GeoState> => {
     inFlightRef.current = null;
