@@ -16,6 +16,7 @@ import {
   PackageCheck,
   CalendarDays,
   Box,
+  Download,
 } from "lucide-react";
 import { toast } from "sonner";
 import LabelPreview, {
@@ -54,6 +55,11 @@ export default function AdminOrdersPage() {
   );
   const [expiryDate, setExpiryDate] = useState("");
   const [uploadedFileName, setUploadedFileName] = useState("");
+  const [warehouse, setWarehouse] = useState<{
+    name: string;
+    address: string;
+    phone: string;
+  } | null>(null);
 
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [showProductPicker, setShowProductPicker] = useState(false);
@@ -102,6 +108,7 @@ export default function AdminOrdersPage() {
         if (data.orderCode) setOrderCode(data.orderCode);
         if (data.deliveryDate) setDeliveryDate(data.deliveryDate);
         if (data.manufactureDate) setManufactureDate(data.manufactureDate);
+        if (data.warehouse) setWarehouse(data.warehouse);
 
         const matchedItems: OrderItem[] = [];
         const unmatchedCodes: string[] = [];
@@ -249,6 +256,55 @@ export default function AdminOrdersPage() {
       return;
     }
     openLabelPrintWindow(labels);
+  };
+
+  const handleDownloadInvoice = async () => {
+    if (!warehouse) {
+      toast.error("물류센터 정보가 없어요", {
+        description: "거래명세서를 먼저 올려주세요",
+      });
+      return;
+    }
+    if (orderItems.length === 0) {
+      toast.error("제품이 없어요", {
+        description: "거래명세서를 올리거나 제품을 추가해주세요",
+      });
+      return;
+    }
+
+    const ExcelJS = (await import("exceljs")).default;
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("송장");
+
+    // 제품 1개 = 1줄, 택배수량=1, 운임 고정
+    for (const item of orderItems) {
+      const product = getProduct(item.productId);
+      if (!product || item.quantity <= 0) continue;
+
+      sheet.addRow([
+        warehouse.name,    // A: 수하인명
+        warehouse.address, // B: 수하인주소
+        null,              // C: 빈칸
+        warehouse.phone,   // D: 전화번호
+        product.name,      // E: 품목명
+        1,                 // F: 택배수량
+        2750,              // G: 택배운임
+        "030",             // H: 운임구분
+      ]);
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `송장_${orderCode || "발주"}_${format(new Date(), "yyyyMMdd")}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    toast.success("송장 엑셀을 다운로드했어요");
   };
 
   // ── 로딩 ──
@@ -552,27 +608,62 @@ export default function AdminOrdersPage() {
         </div>
       </div>
 
-      {/* ── 라벨 미리보기 + 인쇄 ── */}
-      {labels.length > 0 && (
+      {/* ── 출력 섹션 ── */}
+      {orderItems.length > 0 && orderItems.some((item) => item.quantity > 0) && (
         <div className="bg-white rounded-[28px] border border-slate-100 overflow-hidden">
-          <div className="px-5 py-4 border-b border-[#F2F4F6] flex items-center justify-between">
+          <div className="px-5 py-4 border-b border-[#F2F4F6]">
             <h3 className="text-[15px] font-bold text-[#191F28] flex items-center gap-2">
               <PackageCheck className="w-4 h-4 text-[#3182F6]" />
-              라벨 미리보기
-              <span className="text-[12px] font-bold text-[#3182F6] bg-[#E8F3FF] px-2 py-0.5 rounded-md ml-1">
-                {labels.length}장 · A4 {Math.ceil(labels.length / 4)}페이지
-              </span>
+              출력
+              {labels.length > 0 && (
+                <span className="text-[12px] font-bold text-[#3182F6] bg-[#E8F3FF] px-2 py-0.5 rounded-md ml-1">
+                  라벨 {labels.length}장 · A4 {Math.ceil(labels.length / 4)}페이지
+                </span>
+              )}
             </h3>
-            <button
-              onClick={handlePrint}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-bold text-white bg-[#3182F6] hover:bg-[#2272EB] active:bg-[#1B64DA] transition-colors"
-            >
-              <Printer className="w-4 h-4" />
-              인쇄하기
-            </button>
           </div>
-          <div className="p-5">
-            <LabelPreview labels={labels} />
+
+          <div className="p-5 space-y-4">
+            {/* 버튼 영역 */}
+            <div className="flex gap-2.5">
+              <button
+                onClick={handlePrint}
+                disabled={labels.length === 0}
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-[14px] font-bold text-white bg-[#3182F6] hover:bg-[#2272EB] active:bg-[#1B64DA] disabled:bg-[#E5E8EB] disabled:text-[#B0B8C1] transition-colors"
+              >
+                <Printer className="w-4 h-4" />
+                라벨지 인쇄하기
+              </button>
+              <button
+                onClick={handleDownloadInvoice}
+                disabled={!warehouse}
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-[14px] font-bold text-[#191F28] bg-[#F2F4F6] hover:bg-[#E5E8EB] active:bg-[#D1D6DB] disabled:text-[#B0B8C1] transition-colors"
+              >
+                <Download className="w-4 h-4" />
+                송장 엑셀 다운로드
+              </button>
+            </div>
+
+            {/* 물류센터 정보 */}
+            {warehouse && (
+              <div className="bg-[#F9FAFB] rounded-xl px-4 py-3 text-[12px] text-[#8B95A1] space-y-0.5">
+                <p>
+                  <span className="font-medium text-[#4E5968]">수하인</span>{" "}
+                  {warehouse.name}
+                </p>
+                <p>
+                  <span className="font-medium text-[#4E5968]">주소</span>{" "}
+                  {warehouse.address}
+                </p>
+                <p>
+                  <span className="font-medium text-[#4E5968]">연락처</span>{" "}
+                  {warehouse.phone}
+                </p>
+              </div>
+            )}
+
+            {/* 라벨 미리보기 */}
+            {labels.length > 0 && <LabelPreview labels={labels} />}
           </div>
         </div>
       )}

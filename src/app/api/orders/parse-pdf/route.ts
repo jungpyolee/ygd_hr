@@ -39,10 +39,17 @@ interface ParsedItem {
   perBoxQty: number;
 }
 
+interface WarehouseInfo {
+  name: string;
+  address: string;
+  phone: string;
+}
+
 interface ParsedOrder {
   orderCode: string;
   deliveryDate: string;
   manufactureDate: string;
+  warehouse: WarehouseInfo | null;
   items: ParsedItem[];
   warnings: string[];
 }
@@ -168,11 +175,44 @@ function parseOrderText(rawText: string): ParsedOrder {
     );
   }
 
+  // ── 8. 물류센터(입고지) 파싱 ──
+  const warehouse = parseWarehouse(cleanText);
+  if (!warehouse) {
+    warnings.push("물류센터 정보를 읽지 못했어요. 송장 생성 시 직접 입력해주세요.");
+  }
+
   return {
     orderCode,
     deliveryDate,
     manufactureDate: globalManufactureDate,
+    warehouse,
     items,
     warnings,
   };
+}
+
+function parseWarehouse(text: string): WarehouseInfo | null {
+  // 패턴: {센터명}({층수}) | 일반입고... | 입고지 연락처 {전화}
+  const infoMatch = text.match(
+    /(\S+?)\([^)]+\)\s*\|\s*일반입고.*?\|\s*입고지\s*연락처\s*([\d\s\-,]+)/
+  );
+
+  // 택배 주소: "택배 : {주소}"
+  const addrMatch = text.match(/택배\s*:\s*(.+)/);
+
+  if (!infoMatch) return null;
+
+  const rawName = infoMatch[1].trim(); // 평택냉장, 김포냉동
+  const rawPhone = infoMatch[2].replace(/\s+/g, "").trim(); // 010-5820-2936
+
+  // 센터명 → 수하인명 매핑
+  let name = "마켓컬리";
+  if (rawName.includes("평택")) name = "마켓컬리 평택";
+  else if (rawName.includes("김포")) name = "마켓컬리 김포";
+  else if (rawName.includes("창원")) name = "마켓컬리 창원";
+  else name = `마켓컬리 ${rawName.replace(/냉장|냉동/g, "").trim()}`;
+
+  const address = addrMatch?.[1]?.trim().replace(/\*+/g, "") || "";
+
+  return { name, address, phone: rawPhone };
 }
