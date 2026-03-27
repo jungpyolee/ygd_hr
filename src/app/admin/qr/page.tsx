@@ -232,7 +232,7 @@ export default function AdminQRPage() {
                 <QRCodeCanvas
                   value={getQRUrl(store)}
                   size={200}
-                  level="M"
+                  level="H"
                   marginSize={2}
                 />
               </div>
