@@ -30,6 +30,7 @@ import {
   ClipboardList,
   BarChart2,
   QrCode,
+  Package,
 } from "lucide-react";
 
 export default function AdminLayout({
@@ -256,6 +257,11 @@ export default function AdminLayout({
       name: "체크리스트 설정",
       path: "/admin/checklists",
       icon: <ClipboardList className="w-5 h-5" />,
+    },
+    {
+      name: "발주 관리",
+      path: "/admin/orders",
+      icon: <Package className="w-5 h-5" />,
     },
     {
       name: "QR 출퇴근",
