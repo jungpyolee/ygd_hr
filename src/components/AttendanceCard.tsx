@@ -680,9 +680,19 @@ export default function AttendanceCard({
         return;
       }
 
-      // 2. IN/OUT 자동 판별
+      // 2. IN/OUT 자동 판별 — DB에서 최신 로그 직접 조회 (prop 지연 문제 방지)
+      const todayKST = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date());
+      const { data: latestLog } = await supabase
+        .from("attendance_logs")
+        .select("type")
+        .eq("profile_id", userId!)
+        .gte("created_at", `${todayKST}T00:00:00+09:00`)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
+
       const type: "IN" | "OUT" =
-        lastLog?.type === "IN" && lastLog?.isToday ? "OUT" : "IN";
+        latestLog?.type === "IN" ? "OUT" : "IN";
 
       // 3. 퇴근 → 체크리스트 먼저 확인
       if (type === "OUT") {
