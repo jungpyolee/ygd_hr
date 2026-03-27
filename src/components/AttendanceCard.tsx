@@ -450,8 +450,21 @@ export default function AttendanceCard({
       setPendingLogId(null);
       setPendingResume(null);
       onSuccess();
+    } else if (pendingQRStore) {
+      // QR 퇴근 체크리스트 완료 → QR 퇴근 처리
+      const store = pendingQRStore;
+      setPendingQRStore(null);
+      setPendingCheckoutCheckedIds(checkedIds);
+      await processAttendance({
+        type: "OUT",
+        nearestStore: store,
+        lat: store.lat,
+        lng: store.lng,
+        attendanceType: "qr_out",
+        distanceM: 0,
+      });
     } else {
-      // 퇴근 체크리스트: 완료 후 GPS → 퇴근 처리
+      // 일반 퇴근 체크리스트: 완료 후 GPS → 퇴근 처리
       setPendingCheckoutCheckedIds(checkedIds);
       await runCheckoutFlow();
     }
@@ -642,6 +655,11 @@ export default function AttendanceCard({
   };
 
   // ─── QR 스캔 처리 ─────────────────────────────────────────────────────────
+  // QR 퇴근 시 체크리스트 완료 후 실제 퇴근 처리용
+  const [pendingQRStore, setPendingQRStore] = useState<{
+    id: string; name: string; lat: number; lng: number;
+  } | null>(null);
+
   const handleQRScan = async (storeId: string, token: string) => {
     setShowQRScanner(false);
     setLoading(true);
@@ -666,7 +684,29 @@ export default function AttendanceCard({
       const type: "IN" | "OUT" =
         lastLog?.type === "IN" && lastLog?.isToday ? "OUT" : "IN";
 
-      // 3. 출퇴근 처리 (기존 processAttendance 재사용)
+      // 3. 퇴근 → 체크리스트 먼저 확인
+      if (type === "OUT") {
+        const items = await fetchChecklistItems("check_out");
+        if (items.length > 0) {
+          setPendingQRStore(store);
+          const outDraft = userId ? loadDraft(userId, "check_out") : null;
+          setChecklistItems(items);
+          setChecklistTrigger("check_out");
+          setChecklistInitialIds(outDraft?.checkedIds ?? []);
+          setShowChecklist(true);
+          if (!outDraft && userId) {
+            saveDraft(userId, {
+              userId, trigger: "check_out", attendanceLogId: null,
+              date: new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date()),
+              checkedIds: [], totalItems: items.length,
+            });
+          }
+          setLoading(false);
+          return; // 체크리스트 완료 후 handleChecklistComplete에서 QR 퇴근 처리
+        }
+      }
+
+      // 4. 출퇴근 처리
       await processAttendance({
         type,
         nearestStore: store,
