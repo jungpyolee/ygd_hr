@@ -13,6 +13,8 @@ export default function manifest(): MetadataRoute.Manifest {
     display: "standalone",
     orientation: "portrait",
     scope: "/",
+    // @ts-expect-error handle_links is valid Web App Manifest but not in Next.js types
+    handle_links: "preferred",
     background_color: "#F2F4F6",
     theme_color: "#3182F6",
     icons: [

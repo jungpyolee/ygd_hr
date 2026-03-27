@@ -149,7 +149,10 @@ export default function QRAttendPage() {
   };
 
   const goHome = () => router.push("/");
-  const goLogin = () => router.push("/login");
+  const goLogin = () => {
+    const returnUrl = `/attend/qr?s=${storeId}&token=${token}`;
+    router.push(`/login?redirect=${encodeURIComponent(returnUrl)}`);
+  };
 
   return (
     <div className="min-h-dvh flex items-center justify-center bg-[#F2F4F6] p-5">

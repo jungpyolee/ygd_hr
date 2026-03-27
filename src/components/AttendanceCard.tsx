@@ -7,12 +7,13 @@ import { logError } from "@/lib/logError";
 import { getDistance } from "@/lib/utils/distance";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
+import { Loader2, QrCode } from "lucide-react";
 import { sendNotification, type NotificationType } from "@/lib/notifications";
 
 import ConfirmDialog from "@/components/ui/confirm-dialog";
 import ChecklistSheet from "@/components/ChecklistSheet";
 import StoreSelectorSheet from "@/components/StoreSelectorSheet";
+import QRScannerSheet from "@/components/QRScannerSheet";
 import type { GeoState } from "@/lib/hooks/useGeolocation";
 import type { ChecklistTemplate, ChecklistDraft } from "@/types/checklist";
 import { useWorkplaces } from "@/lib/hooks/useWorkplaces";
@@ -82,6 +83,9 @@ export default function AttendanceCard({
   // 위치 실패 fallback — 매장 수동 선택
   const [showStoreSelector, setShowStoreSelector] = useState(false);
   const [storeSelectorType, setStoreSelectorType] = useState<"IN" | "OUT" | null>(null);
+
+  // QR 스캐너
+  const [showQRScanner, setShowQRScanner] = useState(false);
 
   const supabase = useMemo(() => createClient(), []);
   const { user } = useAuth();
@@ -287,7 +291,13 @@ export default function AttendanceCard({
     let notifTitle: string;
     let notifContent: string;
 
-    if (attendanceType === "fallback_in" || attendanceType === "fallback_out") {
+    if (attendanceType === "qr_in" || attendanceType === "qr_out") {
+      notifType = attendanceType === "qr_in" ? "attendance_qr_in" : "attendance_qr_out";
+      notifTitle = attendanceType === "qr_in" ? "📱 QR 출근 알림" : "📱 QR 퇴근 알림";
+      notifContent = `${employeeName}님이 ${nearestStore?.name ?? "매장"}에서 QR로 ${
+        attendanceType === "qr_in" ? "출근했어요" : "퇴근했어요"
+      }`;
+    } else if (attendanceType === "fallback_in" || attendanceType === "fallback_out") {
       notifType = attendanceType === "fallback_in" ? "attendance_fallback_in" : "attendance_fallback_out";
       notifTitle = attendanceType === "fallback_in" ? "⚠️ 수동 출근 알림" : "⚠️ 수동 퇴근 알림";
       notifContent = `${employeeName}님이 위치 확인 실패로 ${nearestStore?.name ?? "매장"}을(를) 직접 선택해 ${
@@ -327,7 +337,13 @@ export default function AttendanceCard({
     }
 
     // ── 토스트 ──────────────────────────────────────────────
-    if (attendanceType === "fallback_in" || attendanceType === "fallback_out") {
+    if (attendanceType === "qr_in" || attendanceType === "qr_out") {
+      toast.success(
+        attendanceType === "qr_in"
+          ? `${nearestStore?.name ?? "매장"}에 QR 출근했어요`
+          : `${nearestStore?.name ?? "매장"}에서 QR 퇴근했어요`,
+      );
+    } else if (attendanceType === "fallback_in" || attendanceType === "fallback_out") {
       toast.success(
         attendanceType === "fallback_in"
           ? `${nearestStore?.name ?? "매장"}으로 출근했어요`
@@ -625,6 +641,48 @@ export default function AttendanceCard({
     setPendingLocation(null);
   };
 
+  // ─── QR 스캔 처리 ─────────────────────────────────────────────────────────
+  const handleQRScan = async (storeId: string, token: string) => {
+    setShowQRScanner(false);
+    setLoading(true);
+
+    try {
+      // 1. 토큰 검증
+      const { data: store, error: storeError } = await supabase
+        .from("stores")
+        .select("id, name, qr_token, lat, lng")
+        .eq("id", storeId)
+        .single();
+
+      if (storeError || !store || store.qr_token !== token) {
+        toast.error("유효하지 않은 QR 코드예요", {
+          description: "관리자에게 새 QR 코드를 요청해주세요",
+        });
+        setLoading(false);
+        return;
+      }
+
+      // 2. IN/OUT 자동 판별
+      const type: "IN" | "OUT" =
+        lastLog?.type === "IN" && lastLog?.isToday ? "OUT" : "IN";
+
+      // 3. 출퇴근 처리 (기존 processAttendance 재사용)
+      await processAttendance({
+        type,
+        nearestStore: store,
+        lat: store.lat,
+        lng: store.lng,
+        attendanceType: type === "IN" ? "qr_in" : "qr_out",
+        distanceM: 0,
+      });
+    } catch {
+      toast.error("QR 출퇴근 처리에 실패했어요", {
+        description: "다시 시도해주세요",
+      });
+      setLoading(false);
+    }
+  };
+
   const isBizTripOut =
     showRemoteOutForm && lastLog?.attendance_type === "business_trip_in";
 
@@ -704,18 +762,27 @@ export default function AttendanceCard({
 
         {/* ── 상태 기반 단일 CTA ──────────────────────────────── */}
         {!isCheckedIn ? (
-          /* 출근 전 → 출근하기 버튼만 */
-          <Button
-            onClick={() => handleAttendance("IN")}
-            disabled={isButtonBusy}
-            className="w-full h-16 rounded-2xl bg-[#3182F6] text-white font-bold text-lg hover:bg-[#1B64DA] disabled:bg-[#D1D6DB] transition-all"
-          >
-            {isButtonBusy ? (
-              <span className="flex items-center gap-2">
-                <div className="cat-spinner" /> 처리 중...
-              </span>
-            ) : "출근하기"}
-          </Button>
+          /* 출근 전 → 출근하기 + QR */
+          <div className="flex gap-2">
+            <Button
+              onClick={() => handleAttendance("IN")}
+              disabled={isButtonBusy}
+              className="flex-1 h-16 rounded-2xl bg-[#3182F6] text-white font-bold text-lg hover:bg-[#1B64DA] disabled:bg-[#D1D6DB] transition-all"
+            >
+              {isButtonBusy ? (
+                <span className="flex items-center gap-2">
+                  <div className="cat-spinner" /> 처리 중...
+                </span>
+              ) : "출근하기"}
+            </Button>
+            <Button
+              onClick={() => setShowQRScanner(true)}
+              disabled={isButtonBusy}
+              className="w-16 h-16 rounded-2xl bg-[#E8F3FF] text-[#3182F6] hover:bg-[#D6EAFF] disabled:opacity-50 transition-all shrink-0"
+            >
+              <QrCode className="w-6 h-6" />
+            </Button>
+          </div>
         ) : hasPendingCheckIn ? (
           /* 출근 후 + check_in 체크리스트 미완료 → 이어서 하기 */
           <button
@@ -744,20 +811,36 @@ export default function AttendanceCard({
             </span>
           </button>
         ) : (
-          /* 출근 후 + check_in 완료 → 퇴근하기 버튼만 */
-          <Button
-            onClick={() => handleAttendance("OUT")}
-            disabled={isButtonBusy}
-            className="w-full h-16 rounded-2xl bg-[#E8F3FF] text-[#3182F6] border-2 border-[#3182F6]/30 font-bold text-lg hover:bg-[#D6EAFF] disabled:opacity-50 transition-all"
-          >
-            {loading ? (
-              <span className="flex items-center gap-2">
-                <div className="cat-spinner" /> 처리 중...
-              </span>
-            ) : "퇴근하기"}
-          </Button>
+          /* 출근 후 + check_in 완료 → 퇴근하기 + QR */
+          <div className="flex gap-2">
+            <Button
+              onClick={() => handleAttendance("OUT")}
+              disabled={isButtonBusy}
+              className="flex-1 h-16 rounded-2xl bg-[#E8F3FF] text-[#3182F6] border-2 border-[#3182F6]/30 font-bold text-lg hover:bg-[#D6EAFF] disabled:opacity-50 transition-all"
+            >
+              {loading ? (
+                <span className="flex items-center gap-2">
+                  <div className="cat-spinner" /> 처리 중...
+                </span>
+              ) : "퇴근하기"}
+            </Button>
+            <Button
+              onClick={() => setShowQRScanner(true)}
+              disabled={isButtonBusy}
+              className="w-16 h-16 rounded-2xl bg-[#F2F4F6] text-[#4E5968] hover:bg-[#E5E8EB] disabled:opacity-50 transition-all shrink-0 border-2 border-[#E5E8EB]"
+            >
+              <QrCode className="w-6 h-6" />
+            </Button>
+          </div>
         )}
       </section>
+
+      {/* ── QR 스캐너 ────────────────────────────────────────────── */}
+      <QRScannerSheet
+        isOpen={showQRScanner}
+        onScan={handleQRScan}
+        onClose={() => setShowQRScanner(false)}
+      />
 
       {/* ── 체크리스트 바텀시트 ──────────────────────────────────── */}
       <ChecklistSheet

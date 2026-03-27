@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import IosInstallPrompt from "@/components/IosInstallPrompt";
@@ -19,6 +19,8 @@ export default function LoginPage() {
   const [errorMsg, setErrorMsg] = useState("");
 
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectUrl = searchParams.get("redirect");
   const supabase = createClient();
 
   const handleAuth = async (e: React.FormEvent) => {
@@ -38,7 +40,7 @@ export default function LoginPage() {
         setErrorMsg("아이디나 비밀번호가 맞지 않아요.");
         setLoading(false);
       } else {
-        router.push("/");
+        router.push(redirectUrl || "/");
         setLoading(false);
       }
     } else {
