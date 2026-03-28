@@ -86,7 +86,7 @@ function parseStationRow(row: any): StationArrival {
   return { buses, term: parseInt(row.term) || 10 };
 }
 
-async function fetchStationArrival(arsId: string): Promise<StationArrival | null> {
+async function fetchStationArrival(arsId: string): Promise<{ result: StationArrival | null; debug?: string }> {
   try {
     const res = await fetch(`${TOPIS_BASE}/map/getBusStn.do`, {
       method: "POST",
@@ -94,13 +94,19 @@ async function fetchStationArrival(arsId: string): Promise<StationArrival | null
       body: `url=/getStationByUidDetourAt&arsId=${arsId}`,
       cache: "no-store",
     });
-    const json = await res.json();
+    const text = await res.text();
+    let json: any;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      return { result: null, debug: `not-json:${res.status}:${text.slice(0, 200)}` };
+    }
     const rows = json?.rows ?? [];
     const row = rows.find((r: any) => r.rtNm === "종로11");
-    if (!row) return null;
-    return parseStationRow(row);
-  } catch {
-    return null;
+    if (!row) return { result: null, debug: `no-row:routes=${rows.map((r: any) => r.rtNm).join(",")}` };
+    return { result: parseStationRow(row) };
+  } catch (e: any) {
+    return { result: null, debug: `error:${e.message}` };
   }
 }
 
@@ -130,16 +136,18 @@ async function fetchBusArrivalData(): Promise<BusArrivalData> {
   }
 
   // 삼청파출소(퇴근) + 시청역(출근) 동시 조회
-  const [outboundArr, inboundArr] = await Promise.all([
+  const [outboundRes, inboundRes] = await Promise.all([
     fetchStationArrival(OUTBOUND_ARS_ID),
     fetchStationArrival(INBOUND_ARS_ID),
   ]);
 
-  const outboundBuses = outboundArr?.buses ?? [];
-  const inboundBuses = inboundArr?.buses ?? [];
-  const term = outboundArr?.term ?? inboundArr?.term ?? 10;
+  const outboundBuses = outboundRes.result?.buses ?? [];
+  const inboundBuses = inboundRes.result?.buses ?? [];
+  const term = outboundRes.result?.term ?? inboundRes.result?.term ?? 10;
 
   const isRunning = outboundBuses.length > 0 || inboundBuses.length > 0;
+
+  const debugInfo = [outboundRes.debug, inboundRes.debug].filter(Boolean);
 
   const data: BusArrivalData = {
     routeName: "종로11",
@@ -148,6 +156,7 @@ async function fetchBusArrivalData(): Promise<BusArrivalData> {
     inbound: { stationName: "시청역", buses: inboundBuses },
     isRunning,
     updatedAt: new Date().toISOString(),
+    ...(debugInfo.length > 0 && { _debug: debugInfo }),
   };
 
   cache = { data, ts: now };
