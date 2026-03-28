@@ -280,7 +280,8 @@ export default function HomeClient({
     { dedupingInterval: 60 * 60 * 1000, revalidateOnFocus: false },
   );
 
-  const showCommute = isAdmin || isCafeWorker === true;
+  // TODO: TOPIS API Vercel 연동 해결 후 원복 → isAdmin || isCafeWorker === true
+  const showCommute = isAdmin;
 
   // 버스 카드 설정 (로컬스토리지)
   // "all" = 출퇴근 모두 | "outbound-only" = 퇴근만 | "hidden" = 안 보기
