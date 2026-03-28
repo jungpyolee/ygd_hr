@@ -104,7 +104,9 @@ async function fetchStationArrival(arsId: string): Promise<{ result: StationArri
     const rows = json?.rows ?? [];
     const row = rows.find((r: any) => r.rtNm === "종로11");
     if (!row) return { result: null, debug: `no-row:routes=${rows.map((r: any) => r.rtNm).join(",")}` };
-    return { result: parseStationRow(row) };
+    const parsed = parseStationRow(row);
+    const raw = `msg1=${(row.arrmsg1 ?? "").trim()}|msg2=${(row.arrmsg2 ?? "").trim()}`;
+    return { result: parsed, debug: `ok:${arsId}:buses=${parsed.buses.length}:${raw}` };
   } catch (e: any) {
     return { result: null, debug: `error:${e.message}` };
   }
