@@ -1,48 +1,53 @@
 import { NextRequest, NextResponse } from "next/server";
 
 // Vercel Serverless에 없는 브라우저 API polyfill (pdfjs-dist 텍스트 추출에 필요)
-if (typeof globalThis.DOMMatrix === "undefined") {
-  // @ts-expect-error minimal polyfill for pdfjs-dist
-  globalThis.DOMMatrix = class DOMMatrix {
-    constructor(init?: number[]) {
-      const m = init ?? [1, 0, 0, 1, 0, 0];
-      this.a = m[0]; this.b = m[1]; this.c = m[2];
-      this.d = m[3]; this.e = m[4]; this.f = m[5];
-      this.m11 = m[0]; this.m12 = m[1]; this.m21 = m[2];
-      this.m22 = m[3]; this.m41 = m[4]; this.m42 = m[5];
-      this.is2D = true; this.isIdentity = false;
-    }
-    a=1;b=0;c=0;d=1;e=0;f=0;
-    m11=1;m12=0;m21=0;m22=1;m41=0;m42=0;
-    is2D=true;isIdentity=false;
-    inverse() { return new DOMMatrix(); }
-    multiply() { return new DOMMatrix(); }
-    translate() { return new DOMMatrix(); }
-    scale() { return new DOMMatrix(); }
-    transformPoint(p: unknown) { return p; }
-  };
+// ESM import는 호이스팅되므로 polyfill을 먼저 적용하려면 dynamic import 필수
+function ensurePolyfills() {
+  if (typeof globalThis.DOMMatrix === "undefined") {
+    // @ts-expect-error minimal polyfill for pdfjs-dist
+    globalThis.DOMMatrix = class DOMMatrix {
+      constructor(init?: number[]) {
+        const m = init ?? [1, 0, 0, 1, 0, 0];
+        this.a = m[0]; this.b = m[1]; this.c = m[2];
+        this.d = m[3]; this.e = m[4]; this.f = m[5];
+        this.m11 = m[0]; this.m12 = m[1]; this.m21 = m[2];
+        this.m22 = m[3]; this.m41 = m[4]; this.m42 = m[5];
+        this.is2D = true; this.isIdentity = false;
+      }
+      a=1;b=0;c=0;d=1;e=0;f=0;
+      m11=1;m12=0;m21=0;m22=1;m41=0;m42=0;
+      is2D=true;isIdentity=false;
+      inverse() { return new DOMMatrix(); }
+      multiply() { return new DOMMatrix(); }
+      translate() { return new DOMMatrix(); }
+      scale() { return new DOMMatrix(); }
+      transformPoint(p: unknown) { return p; }
+    };
+  }
+  if (typeof globalThis.ImageData === "undefined") {
+    // @ts-expect-error minimal polyfill
+    globalThis.ImageData = class ImageData {
+      width: number; height: number; data: Uint8ClampedArray;
+      constructor(w: number, h: number) {
+        this.width = w; this.height = h;
+        this.data = new Uint8ClampedArray(w * h * 4);
+      }
+    };
+  }
+  if (typeof globalThis.Path2D === "undefined") {
+    // @ts-expect-error minimal polyfill
+    globalThis.Path2D = class Path2D {
+      moveTo() {} lineTo() {} bezierCurveTo() {} rect() {} closePath() {}
+    };
+  }
 }
-if (typeof globalThis.ImageData === "undefined") {
-  // @ts-expect-error minimal polyfill
-  globalThis.ImageData = class ImageData {
-    width: number; height: number; data: Uint8ClampedArray;
-    constructor(w: number, h: number) {
-      this.width = w; this.height = h;
-      this.data = new Uint8ClampedArray(w * h * 4);
-    }
-  };
-}
-if (typeof globalThis.Path2D === "undefined") {
-  // @ts-expect-error minimal polyfill
-  globalThis.Path2D = class Path2D {
-    moveTo() {} lineTo() {} bezierCurveTo() {} rect() {} closePath() {}
-  };
-}
-
-import { PDFParse } from "pdf-parse";
 
 export async function POST(request: NextRequest) {
   try {
+    // polyfill 먼저 적용 후 pdf-parse를 dynamic import
+    ensurePolyfills();
+    const { PDFParse } = await import("pdf-parse");
+
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
 
