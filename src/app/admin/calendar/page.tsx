@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import AvatarDisplay from "@/components/AvatarDisplay";
 import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
@@ -1167,8 +1167,29 @@ export default function AdminCalendarPage() {
   });
   const [viewProfileId, setViewProfileId] = useState<string | null>(null);
   const [copyPreview, setCopyPreview] = useState<{ slots: ScheduleSlot[]; wsId: string } | null>(null);
+  const weekScrollRef = useRef<HTMLDivElement>(null);
 
   const { workplaces, byId, positionsOfStore } = useWorkplaces();
+
+  // ─── 주간뷰 오늘 컬럼으로 자동 스크롤 ───
+  const scrollToToday = useCallback(() => {
+    const container = weekScrollRef.current;
+    if (!container) return;
+    const todayCell = container.querySelector<HTMLElement>("[data-today-col]");
+    if (!todayCell) return;
+    const containerRect = container.getBoundingClientRect();
+    const cellRect = todayCell.getBoundingClientRect();
+    const scrollLeft = container.scrollLeft + cellRect.left - containerRect.left - containerRect.width / 2 + cellRect.width / 2;
+    container.scrollTo({ left: Math.max(0, scrollLeft), behavior: "smooth" });
+  }, []);
+
+  useEffect(() => {
+    if (viewType === "week") {
+      // 렌더 후 DOM이 준비되면 스크롤
+      const timer = setTimeout(scrollToToday, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [viewType, baseDate, scrollToToday]);
 
   // ─── 날짜 범위 계산 ───
   const { startDate, endDate, weekDates } = useMemo(() => {
@@ -1714,7 +1735,7 @@ export default function AdminCalendarPage() {
     }
 
     return (
-      <div className="overflow-x-auto rounded-[20px] border border-slate-100 bg-white shadow-sm">
+      <div ref={weekScrollRef} className="overflow-x-auto rounded-[20px] border border-slate-100 bg-white shadow-sm">
         <table className="w-full min-w-[700px]">
           <thead>
             <tr className="bg-[#F9FAFB] border-b border-slate-100">
@@ -1730,6 +1751,7 @@ export default function AdminCalendarPage() {
                 return (
                   <th
                     key={d}
+                    {...(isTodayDate ? { "data-today-col": true } : {})}
                     onClick={() => setSelectedDay(d)}
                     className={`px-2 py-3 text-center text-[12px] font-bold cursor-pointer hover:bg-[#F9FAFB] transition-colors ${
                       isTodayDate ? "bg-[#E8F3FF] hover:bg-[#DCE9FF]" : ""
@@ -1961,7 +1983,10 @@ export default function AdminCalendarPage() {
             : startDate <= today && today <= endDate;
           return (
             <button
-              onClick={() => setBaseDate(new Date())}
+              onClick={() => {
+                setBaseDate(new Date());
+                setTimeout(scrollToToday, 150);
+              }}
               disabled={isCurrentRange}
               className={`px-3 py-1.5 text-[13px] font-bold rounded-xl border transition-all ${
                 isCurrentRange
