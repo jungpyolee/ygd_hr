@@ -16,6 +16,7 @@ import {
 import dynamic from "next/dynamic";
 import OnboardingFunnel from "@/components/OnboardingFunnel";
 import AttendanceCard from "@/components/AttendanceCard";
+import CommuteCard from "@/components/CommuteCard";
 
 import { useRouter } from "next/navigation";
 import { useGeolocation } from "@/lib/hooks/useGeolocation";
@@ -254,6 +255,64 @@ export default function HomeClient({
     fetchForAttendance,
   } = useGeolocation();
 
+  // 카페 매장 여부 확인 (admin이거나 카페 스케줄이 있는 직원만 교통통제 표시)
+  const cafeStoreId = useMemo(
+    () => stores.find((s: any) => s.work_location_key === "cafe")?.id,
+    [stores],
+  );
+  const isAdmin = profile?.role === "admin";
+
+  // 카페 근무 배정 확인 (employee_store_assignments 테이블)
+  const { data: isCafeWorker } = useSWR(
+    !isAdmin && cafeStoreId && profile?.id
+      ? ["cafe-worker-check", profile.id, cafeStoreId]
+      : null,
+    async ([, profileId, storeId]) => {
+      const supabase = createClient();
+      const { count } = await supabase
+        .from("employee_store_assignments")
+        .select("id", { count: "exact", head: true })
+        .eq("profile_id", profileId)
+        .eq("store_id", storeId)
+        .limit(1);
+      return (count ?? 0) > 0;
+    },
+    { dedupingInterval: 60 * 60 * 1000, revalidateOnFocus: false },
+  );
+
+  const showCommute = isAdmin || isCafeWorker === true;
+
+  // 버스 카드 설정 (로컬스토리지)
+  // "all" = 출퇴근 모두 | "outbound-only" = 퇴근만 | "hidden" = 안 보기
+  const [busCardMode, setBusCardMode] = useState<"all" | "outbound-only" | "hidden">(() => {
+    if (typeof window === "undefined") return "all";
+    return (localStorage.getItem("bus-card-mode") as "all" | "outbound-only" | "hidden") ?? "all";
+  });
+  const busCardEnabled = showCommute && busCardMode !== "hidden";
+
+  // 교통통제 SWR (버스 카드 켜져있을 때만)
+  const { data: trafficData } = useSWR(
+    busCardEnabled ? "traffic-incidents" : null,
+    async () => {
+      const res = await fetch("/api/traffic");
+      if (!res.ok) return null;
+      const json = await res.json();
+      return { incidents: json.incidents ?? [], summary: json.summary ?? null };
+    },
+    { dedupingInterval: 10 * 60 * 1000, revalidateOnFocus: false },
+  );
+
+  // 종로11번 실시간 SWR (버스 카드 켜져있을 때만, 15초 새로고침)
+  const { data: busData, isLoading: busLoading } = useSWR(
+    busCardEnabled ? "bus-arrival" : null,
+    async () => {
+      const res = await fetch("/api/bus-arrival");
+      if (!res.ok) return null;
+      return res.json();
+    },
+    { refreshInterval: 15_000, dedupingInterval: 10_000, revalidateOnFocus: true },
+  );
+
   // 외부 클릭 시 알림창 닫기
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -453,6 +512,20 @@ export default function HomeClient({
           onRetryLocation={retryLocation}
           onFetchForAttendance={fetchForAttendance}
         />
+
+        {/* 종로11 출퇴근 안내 */}
+        {busCardEnabled && (
+          <CommuteCard
+            busData={busData ?? null}
+            busLoading={busLoading}
+            trafficData={trafficData ?? null}
+            mode={busCardMode}
+            onModeChange={(m) => {
+              setBusCardMode(m);
+              localStorage.setItem("bus-card-mode", m);
+            }}
+          />
+        )}
 
         {/* 오늘 스케줄 */}
         {todaySlots.length > 0 && (

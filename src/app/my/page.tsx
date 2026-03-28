@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import useSWR from "swr";
 import { createClient } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
@@ -12,6 +12,7 @@ import {
   LogOut,
   LayoutDashboard,
   Pencil,
+  Bus,
 } from "lucide-react";
 import MyInfoModal from "@/components/MyInfoModal";
 import PushNotificationSettings from "@/components/PushNotificationSettings";
@@ -26,6 +27,7 @@ export default function MyPage() {
   const [isAvatarEditorOpen, setIsAvatarEditorOpen] = useState(false);
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
   const [hasGuideUpdate, setHasGuideUpdate] = useState(false);
+  const [busCardMode, setBusCardMode] = useState<"all" | "outbound-only" | "hidden">("all");
 
   useEffect(() => {
     const check = () => {
@@ -33,6 +35,7 @@ export default function MyPage() {
       setHasGuideUpdate(seen !== "v1.0.5");
     };
     check();
+    setBusCardMode((localStorage.getItem("bus-card-mode") as any) ?? "all");
     window.addEventListener("guide-version-seen", check);
     return () => window.removeEventListener("guide-version-seen", check);
   }, []);
@@ -46,6 +49,37 @@ export default function MyPage() {
     },
     { dedupingInterval: 60_000 }
   );
+
+  // 카페 근무 가능 여부 (어드민이거나 최근 60일 내 카페 스케줄 있으면)
+  const { data: stores } = useSWR(
+    user ? "my-stores" : null,
+    async () => {
+      const supabase = createClient();
+      const { data } = await supabase.from("stores").select("id, work_location_key");
+      return data ?? [];
+    },
+    { dedupingInterval: 60 * 60 * 1000 },
+  );
+  const cafeStoreId = useMemo(() => stores?.find((s: any) => s.work_location_key === "cafe")?.id, [stores]);
+
+  const { data: isCafeWorker } = useSWR(
+    profile?.role !== "admin" && cafeStoreId && user?.id
+      ? ["my-cafe-check", user.id, cafeStoreId]
+      : null,
+    async ([, userId, storeId]) => {
+      const supabase = createClient();
+      const { count } = await supabase
+        .from("employee_store_assignments")
+        .select("id", { count: "exact", head: true })
+        .eq("profile_id", userId)
+        .eq("store_id", storeId)
+        .limit(1);
+      return (count ?? 0) > 0;
+    },
+    { dedupingInterval: 60 * 60 * 1000 },
+  );
+
+  const showBusSetting = profile?.role === "admin" || isCafeWorker === true;
 
   const handleLogout = async () => {
     const supabase = createClient();
@@ -127,6 +161,40 @@ export default function MyPage() {
           <PushNotificationSettings />
         </div>
       </div>
+
+      {/* 버스 정보 설정 (카페 근무 가능 직원 + 어드민만) */}
+      {showBusSetting && (
+        <div className="px-5 mb-4">
+          <div className="bg-white rounded-[24px] border border-slate-100 px-5 py-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Bus className="w-4 h-4 text-[#16A34A]" />
+              <p className="text-[13px] font-semibold text-[#8B95A1]">종로11 버스 정보</p>
+            </div>
+            <div className="space-y-1.5">
+              {([
+                { value: "all" as const, label: "출퇴근 모두 보기" },
+                { value: "outbound-only" as const, label: "퇴근 정보만 보기" },
+                { value: "hidden" as const, label: "버스 정보 안 보기" },
+              ]).map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => {
+                    setBusCardMode(opt.value);
+                    localStorage.setItem("bus-card-mode", opt.value);
+                  }}
+                  className={`w-full text-left px-3 py-2.5 rounded-xl text-[13px] transition-colors ${
+                    busCardMode === opt.value
+                      ? "bg-[#E8F3FF] font-bold text-[#3182F6]"
+                      : "text-[#4E5968] hover:bg-[#F9FAFB]"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 어드민 이동 */}
       {profile?.role === "admin" && (
