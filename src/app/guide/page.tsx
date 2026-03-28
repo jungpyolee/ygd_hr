@@ -265,10 +265,37 @@ function Badge({
 function UpdateHistory() {
   return (
     <div className="space-y-4">
-      {/* v1.0.5 */}
+      {/* v1.0.6 */}
       <div className="bg-white rounded-[24px] p-5 border border-slate-100 shadow-sm">
         <div className="flex items-center gap-3 mb-4">
           <span className="px-3 py-1 bg-[#3182F6] text-white text-[13px] font-bold rounded-full">
+            v1.0.6
+          </span>
+          <span className="text-[13px] text-[#8B95A1] font-medium">
+            2026. 3. 28. · 출퇴근 안내
+          </span>
+        </div>
+        <div className="space-y-3">
+          <UpdateItem emoji="🚌" title="종로11 버스 실시간 정보 (베타)">
+            카페 직원분들을 위해 종로11번 버스 도착 정보를 추가했어요. 출근(시청역)과
+            퇴근(삼청파출소) 도착시간을 15초마다 업데이트해요. 아직 베타 버전이라
+            정확도가 떨어질 수 있으니 참고용으로 이용해주세요.
+          </UpdateItem>
+          <UpdateItem emoji="⚠️" title="교통통제 안내">
+            삼청동 출근 경로에 마라톤이나 행사로 교통통제가 있으면 자동으로 알려드려요.
+            종로11번 운행이 어려울 때 안국역 도보 대안도 함께 안내해요.
+          </UpdateItem>
+          <UpdateItem emoji="📱" title="QR 출퇴근 추가">
+            GPS가 잘 안 잡히는 분들을 위해 QR코드로 출퇴근할 수 있어요. 매장에 비치된
+            QR코드를 스캔하면 바로 출퇴근이 기록돼요.
+          </UpdateItem>
+        </div>
+      </div>
+
+      {/* v1.0.5 */}
+      <div className="bg-white rounded-[24px] p-5 border border-slate-100 shadow-sm">
+        <div className="flex items-center gap-3 mb-4">
+          <span className="px-3 py-1 bg-[#8B95A1] text-white text-[13px] font-bold rounded-full">
             v1.0.5
           </span>
           <span className="text-[13px] text-[#8B95A1] font-medium">
@@ -313,7 +340,8 @@ function UpdateHistory() {
             </p>
             <p>앞으로 이런 것들을 준비하고 있어요.</p>
             <ul className="list-disc list-inside space-y-1 text-[13px] text-[#4E5968]">
-              <li>위치가 잘 안 잡히는 분들을 위해 QR 출퇴근 추가</li>
+              <li>✅ QR 출퇴근 — v1.0.6에서 추가했어요</li>
+              <li>✅ 종로11 버스 실시간 정보 — v1.0.6에서 추가했어요</li>
               <li>대타 요청이나 근무 교환을 앱에서 바로 할 수 있도록 개선</li>
               <li>스케줄 알림을 더 똑똑하게 개선</li>
             </ul>
@@ -638,7 +666,7 @@ const SEARCH_INDEX = [
 /* ─────────────────────────────────────────────
    메인 페이지
 ───────────────────────────────────────────── */
-const CURRENT_VERSION = "v1.0.5";
+const CURRENT_VERSION = "v1.0.6";
 
 export default function GuidePage() {
   const router = useRouter();
@@ -765,10 +793,10 @@ export default function GuidePage() {
                 연경당 HR
               </p>
               <span className="inline-block px-3 py-1 bg-[#E8F3FF] text-[#3182F6] text-[13px] font-bold rounded-full">
-                v1.0.5
+                v1.0.6
               </span>
             </div>
-            <span className="text-[12px] text-[#8B95A1]">2026. 3. 26.</span>
+            <span className="text-[12px] text-[#8B95A1]">2026. 3. 28.</span>
           </div>
           <p className="mt-3 text-[14px] text-[#4E5968] leading-relaxed">
             근무 기록부터 스케줄 확인까지,
@@ -982,6 +1010,28 @@ export default function GuidePage() {
               <Tip>
                 위치가 잡히지 않으면 '재시도'를 탭해요. 그래도 안 되면 잠시 후
                 다시 시도해요.
+              </Tip>
+              <Sub>QR코드로 출퇴근하기</Sub>
+              <p className="text-[13px] text-[#4E5968] leading-relaxed">
+                GPS가 잘 안 잡히는 경우 매장에 비치된 QR코드를 스캔해서 출퇴근할 수 있어요.
+              </p>
+              <div className="space-y-3 mt-3">
+                <Step
+                  num={1}
+                  text="출퇴근 카드 우측의 QR 아이콘을 탭해요."
+                />
+                <Step
+                  num={2}
+                  text="카메라가 열리면 매장에 비치된 QR코드를 스캔해요."
+                />
+                <Step
+                  num={3}
+                  text="위치 확인 없이 바로 출퇴근이 기록돼요."
+                />
+              </div>
+              <Tip>
+                QR코드는 매장마다 다르게 설정돼 있어요. 반드시 근무하는 매장의
+                QR코드를 스캔해주세요.
               </Tip>
             </Section>
 
