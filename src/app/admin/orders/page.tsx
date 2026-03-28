@@ -5,17 +5,13 @@ import { createClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import {
-  Plus,
-  Trash2,
   Printer,
   Settings,
-  ChevronDown,
   Upload,
   FileText,
   Loader2,
   PackageCheck,
   CalendarDays,
-  Box,
   Download,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -47,13 +43,9 @@ export default function AdminOrdersPage() {
   const [parsing, setParsing] = useState(false);
 
   const [orderCode, setOrderCode] = useState("");
-  const [deliveryDate, setDeliveryDate] = useState(
-    format(new Date(), "yyyy-MM-dd")
-  );
-  const [manufactureDate, setManufactureDate] = useState(
-    format(new Date(), "yyyy-MM-dd")
-  );
-  const [expiryDate, setExpiryDate] = useState("");
+  const [deliveryDate, setDeliveryDate] = useState("");
+  const [manufactureDate, setManufactureDate] = useState("");
+  const [expiryDate] = useState("");
   const [uploadedFileName, setUploadedFileName] = useState("");
   const [warehouse, setWarehouse] = useState<{
     name: string;
@@ -62,7 +54,6 @@ export default function AdminOrdersPage() {
   } | null>(null);
 
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
-  const [showProductPicker, setShowProductPicker] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const supabase = createClient();
@@ -180,30 +171,6 @@ export default function AdminOrdersPage() {
     [handleFileUpload]
   );
 
-  // ── 제품 조작 ──
-  const availableProducts = useMemo(
-    () =>
-      products.filter(
-        (p) => !orderItems.some((item) => item.productId === p.id)
-      ),
-    [products, orderItems]
-  );
-
-  const addProduct = (productId: string) => {
-    setOrderItems((prev) => [...prev, { productId, quantity: 0 }]);
-    setShowProductPicker(false);
-  };
-
-  const updateQuantity = (index: number, quantity: number) => {
-    setOrderItems((prev) =>
-      prev.map((item, i) => (i === index ? { ...item, quantity } : item))
-    );
-  };
-
-  const removeItem = (index: number) => {
-    setOrderItems((prev) => prev.filter((_, i) => i !== index));
-  };
-
   const getProduct = (id: string) => products.find((p) => p.id === id);
 
   const getBoxCount = (item: OrderItem) => {
@@ -251,7 +218,7 @@ export default function AdminOrdersPage() {
   const handlePrint = () => {
     if (labels.length === 0) {
       toast.error("인쇄할 라벨이 없어요", {
-        description: "발주코드와 제품 수량을 입력해주세요",
+        description: "거래명세서를 먼저 올려주세요",
       });
       return;
     }
@@ -267,7 +234,7 @@ export default function AdminOrdersPage() {
     }
     if (orderItems.length === 0) {
       toast.error("제품이 없어요", {
-        description: "거래명세서를 올리거나 제품을 추가해주세요",
+        description: "거래명세서를 올려주세요",
       });
       return;
     }
@@ -276,20 +243,19 @@ export default function AdminOrdersPage() {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("송장");
 
-    // 제품 1개 = 1줄, 택배수량=1, 운임 고정
     for (const item of orderItems) {
       const product = getProduct(item.productId);
       if (!product || item.quantity <= 0) continue;
 
       sheet.addRow([
-        warehouse.name,    // A: 수하인명
-        warehouse.address, // B: 수하인주소
-        null,              // C: 빈칸
-        warehouse.phone,   // D: 전화번호
-        product.name,      // E: 품목명
-        1,                 // F: 택배수량
-        2750,              // G: 택배운임
-        "030",             // H: 운임구분
+        warehouse.name,
+        warehouse.address,
+        null,
+        warehouse.phone,
+        product.name,
+        1,
+        2750,
+        "030",
       ]);
     }
 
@@ -313,21 +279,14 @@ export default function AdminOrdersPage() {
       <div className="space-y-5">
         <div className="h-7 w-32 bg-[#F2F4F6] rounded-xl animate-pulse" />
         <div className="h-3 w-56 bg-[#F2F4F6] rounded animate-pulse" />
-        {[1, 2].map((i) => (
-          <div
-            key={i}
-            className="bg-white rounded-[28px] border border-slate-100 p-5 animate-pulse"
-          >
-            <div className="h-3 bg-[#F2F4F6] rounded w-20 mb-4" />
-            <div className="h-10 bg-[#F2F4F6] rounded-xl mb-3" />
-            <div className="h-10 bg-[#F2F4F6] rounded-xl" />
-          </div>
-        ))}
+        <div className="bg-white rounded-[28px] border border-slate-100 p-6 animate-pulse">
+          <div className="h-16 bg-[#F2F4F6] rounded-xl" />
+        </div>
       </div>
     );
   }
 
-  const hasOutput = orderItems.length > 0 && orderItems.some((item) => item.quantity > 0);
+  const hasData = orderItems.length > 0;
 
   return (
     <div className="space-y-5">
@@ -408,217 +367,58 @@ export default function AdminOrdersPage() {
         )}
       </div>
 
-      {/* ── 2단 그리드: 좌측(입력) / 우측(출력) ── */}
-      <div className={`grid gap-5 ${hasOutput ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1"}`}>
-        {/* ── 좌측: 발주 정보 + 제품 목록 ── */}
-        <div className="space-y-5 min-w-0">
-          {/* 발주 정보 */}
-          <div className="bg-white rounded-[28px] border border-slate-100 overflow-hidden">
-            <div className="px-5 py-4 border-b border-[#F2F4F6]">
-              <h3 className="text-[15px] font-bold text-[#191F28] flex items-center gap-2">
-                <CalendarDays className="w-4 h-4 text-[#3182F6]" />
-                발주 정보
-              </h3>
-            </div>
-
-            <div className="p-5 space-y-3">
-              <div>
-                <label className="block text-[12px] font-medium text-[#8B95A1] mb-1">
-                  발주코드
-                </label>
-                <input
-                  value={orderCode}
-                  onChange={(e) => setOrderCode(e.target.value)}
-                  placeholder="거래명세서에서 자동으로 채워져요"
-                  className="w-full px-4 py-2.5 bg-[#F9FAFB] border border-slate-200 rounded-xl text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] focus:outline-none focus:border-[#3182F6] transition-all"
-                />
-              </div>
-
-              <div className="grid grid-cols-3 gap-2.5">
-                <div>
-                  <label className="block text-[12px] font-medium text-[#8B95A1] mb-1">
-                    입고일
-                  </label>
-                  <input
-                    type="date"
-                    value={deliveryDate}
-                    onChange={(e) => setDeliveryDate(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-[#F9FAFB] border border-slate-200 rounded-xl text-[14px] text-[#191F28] focus:outline-none focus:border-[#3182F6] transition-all"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[12px] font-medium text-[#8B95A1] mb-1">
-                    제조일자
-                  </label>
-                  <input
-                    type="date"
-                    value={manufactureDate}
-                    onChange={(e) => setManufactureDate(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-[#F9FAFB] border border-slate-200 rounded-xl text-[14px] text-[#191F28] focus:outline-none focus:border-[#3182F6] transition-all"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[12px] font-medium text-[#8B95A1] mb-1">
-                    유통기한 <span className="text-[11px] font-normal">(선택)</span>
-                  </label>
-                  <input
-                    type="date"
-                    value={expiryDate}
-                    onChange={(e) => setExpiryDate(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-[#F9FAFB] border border-slate-200 rounded-xl text-[14px] text-[#191F28] focus:outline-none focus:border-[#3182F6] transition-all"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* 제품 목록 */}
-          <div className="bg-white rounded-[28px] border border-slate-100 overflow-hidden">
-            <div className="px-5 py-4 border-b border-[#F2F4F6] flex items-center justify-between">
-              <h3 className="text-[15px] font-bold text-[#191F28] flex items-center gap-2">
-                <Box className="w-4 h-4 text-[#3182F6]" />
-                제품 목록
-              </h3>
-              {orderItems.length > 0 && (
-                <span className="text-[12px] font-bold text-[#3182F6] bg-[#E8F3FF] px-2.5 py-1 rounded-lg">
-                  {orderItems.length}종 · {totalBoxes}박스
-                </span>
-              )}
-            </div>
-
-            <div className="p-5 space-y-2.5">
-              {/* 제품 항목 */}
-              {orderItems.map((item, index) => {
-                const product = getProduct(item.productId);
-                if (!product) return null;
-                const boxCount = getBoxCount(item);
-
-                return (
-                  <div
-                    key={item.productId}
-                    className="bg-[#F9FAFB] rounded-2xl p-4"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[14px] font-bold text-[#191F28] truncate">
-                          {product.name}
-                        </p>
-                        <p className="text-[11px] text-[#8B95A1] mt-0.5">
-                          {product.master_code} · {product.box_capacity}개입
-                          {product.unit_weight && ` · ${product.unit_weight}`}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => removeItem(index)}
-                        aria-label="제거"
-                        className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-[#FFF0F0] active:bg-red-100 transition-colors shrink-0"
-                      >
-                        <Trash2 className="w-3.5 h-3.5 text-[#F04438]" />
-                      </button>
-                    </div>
-
-                    <div className="flex items-end gap-3 mt-3">
-                      <div className="flex-1">
-                        <label className="block text-[11px] font-medium text-[#8B95A1] mb-1">
-                          총 수량
-                        </label>
-                        <input
-                          type="number"
-                          value={item.quantity || ""}
-                          onChange={(e) =>
-                            updateQuantity(index, parseInt(e.target.value) || 0)
-                          }
-                          placeholder="수량을 입력해주세요"
-                          min={0}
-                          className="w-full bg-white px-3 py-2 rounded-xl text-[14px] text-[#191F28] placeholder:text-[#B0B8C1] border border-slate-200 focus:outline-none focus:border-[#3182F6] transition-all"
-                        />
-                      </div>
-                      {boxCount > 0 && (
-                        <div className="shrink-0 bg-[#E8F3FF] rounded-xl px-4 py-2 text-center">
-                          <p className="text-[11px] text-[#3182F6] font-medium">
-                            박스
-                          </p>
-                          <p className="text-[18px] font-bold text-[#3182F6] leading-tight">
-                            {boxCount}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-
-              {/* 제품 추가 */}
-              {availableProducts.length > 0 && (
-                <div className="relative">
-                  <button
-                    onClick={() => setShowProductPicker(!showProductPicker)}
-                    className="w-full py-3 rounded-2xl border-2 border-dashed border-[#E5E8EB] text-[13px] font-bold text-[#8B95A1] hover:border-[#3182F6] hover:text-[#3182F6] hover:bg-[#F8FBFF] active:bg-[#E8F3FF] transition-all flex items-center justify-center gap-1.5"
-                  >
-                    <Plus className="w-4 h-4" />
-                    제품 추가하기
-                    <ChevronDown
-                      className={`w-3.5 h-3.5 transition-transform ${showProductPicker ? "rotate-180" : ""}`}
-                    />
-                  </button>
-
-                  {showProductPicker && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-10"
-                        onClick={() => setShowProductPicker(false)}
-                      />
-                      <div className="absolute top-full left-0 right-0 mt-1.5 bg-white border border-[#E5E8EB] rounded-2xl shadow-lg z-20 max-h-[260px] overflow-y-auto">
-                        {availableProducts.map((p, idx) => (
-                          <button
-                            key={p.id}
-                            onClick={() => addProduct(p.id)}
-                            className={`w-full px-4 py-3 text-left hover:bg-[#F9FAFB] active:bg-[#F2F4F6] transition-colors first:rounded-t-2xl last:rounded-b-2xl ${
-                              idx !== 0 ? "border-t border-[#F2F4F6]" : ""
-                            }`}
-                          >
-                            <p className="text-[14px] font-bold text-[#191F28]">
-                              {p.name}
-                            </p>
-                            <p className="text-[11px] text-[#8B95A1] mt-0.5">
-                              {p.master_code} · {p.box_capacity}개입
-                            </p>
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-
-              {/* 빈 상태 */}
-              {products.length === 0 && (
-                <div className="py-10 text-center">
-                  <p className="text-[14px] text-[#8B95A1]">
-                    아직 등록된 제품이 없어요
-                  </p>
-                  <button
-                    onClick={() => router.push("/admin/orders/products")}
-                    className="text-[14px] font-bold text-[#3182F6] mt-2 hover:underline"
-                  >
-                    제품 등록하러 가기
-                  </button>
-                </div>
-              )}
-
-              {products.length > 0 && orderItems.length === 0 && (
-                <div className="py-8 text-center text-[14px] text-[#8B95A1]">
-                  거래명세서를 올리면 제품이 자동으로 채워져요
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* ── 우측: 출력 섹션 (sticky) ── */}
-        {hasOutput && (
+      {/* ── 파싱 결과: 발주 정보 + 출력 ── */}
+      {hasData && (
+        <div className="grid gap-5 grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+          {/* ── 좌측: 발주 정보 (읽기 전용) ── */}
           <div className="min-w-0">
-            <div className="lg:sticky lg:top-5 space-y-5">
+            <div className="bg-white rounded-[28px] border border-slate-100 overflow-hidden">
+              <div className="px-5 py-4 border-b border-[#F2F4F6]">
+                <h3 className="text-[15px] font-bold text-[#191F28] flex items-center gap-2">
+                  <CalendarDays className="w-4 h-4 text-[#3182F6]" />
+                  발주 정보
+                </h3>
+              </div>
+
+              <div className="p-5 space-y-4">
+                <InfoRow label="발주코드" value={orderCode} />
+                <InfoRow label="입고일" value={deliveryDate} />
+                <InfoRow label="제조일자" value={manufactureDate} />
+
+                <div className="pt-2 border-t border-[#F2F4F6]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[13px] text-[#8B95A1]">제품</span>
+                    <span className="text-[14px] font-bold text-[#3182F6]">
+                      {orderItems.length}종 · {totalBoxes}박스
+                    </span>
+                  </div>
+                  <div className="mt-2 space-y-1.5">
+                    {orderItems.map((item) => {
+                      const product = getProduct(item.productId);
+                      if (!product) return null;
+                      return (
+                        <div
+                          key={item.productId}
+                          className="flex items-center justify-between text-[12px] bg-[#F9FAFB] rounded-lg px-3 py-2"
+                        >
+                          <span className="text-[#191F28] font-medium truncate mr-2">
+                            {product.name}
+                          </span>
+                          <span className="text-[#8B95A1] shrink-0">
+                            {item.quantity}개 · {getBoxCount(item)}박스
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ── 우측: 출력 (sticky) ── */}
+          <div className="min-w-0">
+            <div className="lg:sticky lg:top-5">
               <div className="bg-white rounded-[28px] border border-slate-100 overflow-hidden">
                 <div className="px-5 py-4 border-b border-[#F2F4F6]">
                   <h3 className="text-[15px] font-bold text-[#191F28] flex items-center gap-2">
@@ -626,19 +426,20 @@ export default function AdminOrdersPage() {
                     출력
                     {labels.length > 0 && (
                       <span className="text-[12px] font-bold text-[#3182F6] bg-[#E8F3FF] px-2 py-0.5 rounded-md ml-1">
-                        라벨 {labels.length}장 · A4 {Math.ceil(labels.length / 4)}페이지
+                        라벨 {labels.length}장 · A4{" "}
+                        {Math.ceil(labels.length / 4)}페이지
                       </span>
                     )}
                   </h3>
                 </div>
 
                 <div className="p-5 space-y-4">
-                  {/* 버튼 영역 */}
-                  <div className="flex flex-col gap-2.5">
+                  {/* 버튼 */}
+                  <div className="flex gap-2.5">
                     <button
                       onClick={handlePrint}
                       disabled={labels.length === 0}
-                      className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-[14px] font-bold text-white bg-[#3182F6] hover:bg-[#2272EB] active:bg-[#1B64DA] disabled:bg-[#E5E8EB] disabled:text-[#B0B8C1] transition-colors"
+                      className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-[14px] font-bold text-white bg-[#3182F6] hover:bg-[#2272EB] active:bg-[#1B64DA] disabled:bg-[#E5E8EB] disabled:text-[#B0B8C1] transition-colors"
                     >
                       <Printer className="w-4 h-4" />
                       라벨지 인쇄하기
@@ -646,7 +447,7 @@ export default function AdminOrdersPage() {
                     <button
                       onClick={handleDownloadInvoice}
                       disabled={!warehouse}
-                      className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-[14px] font-bold text-[#191F28] bg-[#F2F4F6] hover:bg-[#E5E8EB] active:bg-[#D1D6DB] disabled:text-[#B0B8C1] transition-colors"
+                      className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-[14px] font-bold text-[#191F28] bg-[#F2F4F6] hover:bg-[#E5E8EB] active:bg-[#D1D6DB] disabled:text-[#B0B8C1] transition-colors"
                     >
                       <Download className="w-4 h-4" />
                       송장 엑셀 다운로드
@@ -657,15 +458,21 @@ export default function AdminOrdersPage() {
                   {warehouse && (
                     <div className="bg-[#F9FAFB] rounded-xl px-4 py-3 text-[12px] text-[#8B95A1] space-y-0.5">
                       <p>
-                        <span className="font-medium text-[#4E5968]">수하인</span>{" "}
+                        <span className="font-medium text-[#4E5968]">
+                          수하인
+                        </span>{" "}
                         {warehouse.name}
                       </p>
                       <p>
-                        <span className="font-medium text-[#4E5968]">주소</span>{" "}
+                        <span className="font-medium text-[#4E5968]">
+                          주소
+                        </span>{" "}
                         {warehouse.address}
                       </p>
                       <p>
-                        <span className="font-medium text-[#4E5968]">연락처</span>{" "}
+                        <span className="font-medium text-[#4E5968]">
+                          연락처
+                        </span>{" "}
                         {warehouse.phone}
                       </p>
                     </div>
@@ -673,12 +480,29 @@ export default function AdminOrdersPage() {
 
                   {/* 라벨 미리보기 */}
                   {labels.length > 0 && <LabelPreview labels={labels} />}
+
+                  {labels.length === 0 && (
+                    <div className="py-4 text-center text-[13px] text-[#8B95A1]">
+                      발주코드와 제조일자가 있어야 라벨이 생성돼요
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-[13px] text-[#8B95A1]">{label}</span>
+      <span className="text-[14px] font-bold text-[#191F28]">
+        {value || "-"}
+      </span>
     </div>
   );
 }
