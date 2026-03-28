@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 
-export const runtime = "edge";
 export const preferredRegion = "icn1";
 
 /**
@@ -15,11 +14,18 @@ const INBOUND_ARS_ID = "02507";   // 시청역1호선 (삼청동 방향) — 출
 const STATION_ORD = 4;            // 삼청파출소 순번 (하행)
 const TOTAL_STATIONS = 11;
 
-const TOPIS_BASE = "https://topis.seoul.go.kr";
-const HEADERS = {
-  "Content-Type": "application/x-www-form-urlencoded",
-  Referer: "https://topis.seoul.go.kr/map/openBusMap.do",
-};
+// Supabase Edge Function 프록시 경유 (Vercel→TOPIS 직접 호출 차단 대응)
+const TOPIS_PROXY = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/topis-proxy`;
+
+async function callTopis(endpoint: string, body: string): Promise<any> {
+  const res = await fetch(TOPIS_PROXY, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ endpoint, body }),
+    cache: "no-store",
+  });
+  return res.json();
+}
 
 export interface BusArrivalData {
   routeName: string;
@@ -87,29 +93,18 @@ function parseStationRow(row: any): StationArrival {
   return { buses, term: parseInt(row.term) || 10 };
 }
 
-async function fetchStationArrival(arsId: string): Promise<{ result: StationArrival | null; debug?: string }> {
+async function fetchStationArrival(arsId: string): Promise<StationArrival | null> {
   try {
-    const res = await fetch(`${TOPIS_BASE}/map/getBusStn.do`, {
-      method: "POST",
-      headers: HEADERS,
-      body: `url=/getStationByUidDetourAt&arsId=${arsId}`,
-      cache: "no-store",
-    });
-    const text = await res.text();
-    let json: any;
-    try {
-      json = JSON.parse(text);
-    } catch {
-      return { result: null, debug: `not-json:${res.status}:${text.slice(0, 200)}` };
-    }
+    const json = await callTopis(
+      "/map/getBusStn.do",
+      `url=/getStationByUidDetourAt&arsId=${arsId}`,
+    );
     const rows = json?.rows ?? [];
     const row = rows.find((r: any) => r.rtNm === "종로11");
-    if (!row) return { result: null, debug: `no-row:routes=${rows.map((r: any) => r.rtNm).join(",")}` };
-    const parsed = parseStationRow(row);
-    const raw = `msg1=${(row.arrmsg1 ?? "").trim()}|msg2=${(row.arrmsg2 ?? "").trim()}`;
-    return { result: parsed, debug: `ok:${arsId}:buses=${parsed.buses.length}:${raw}` };
-  } catch (e: any) {
-    return { result: null, debug: `error:${e.message}` };
+    if (!row) return null;
+    return parseStationRow(row);
+  } catch {
+    return null;
   }
 }
 
@@ -139,18 +134,16 @@ async function fetchBusArrivalData(): Promise<BusArrivalData> {
   }
 
   // 삼청파출소(퇴근) + 시청역(출근) 동시 조회
-  const [outboundRes, inboundRes] = await Promise.all([
+  const [outboundArr, inboundArr] = await Promise.all([
     fetchStationArrival(OUTBOUND_ARS_ID),
     fetchStationArrival(INBOUND_ARS_ID),
   ]);
 
-  const outboundBuses = outboundRes.result?.buses ?? [];
-  const inboundBuses = inboundRes.result?.buses ?? [];
-  const term = outboundRes.result?.term ?? inboundRes.result?.term ?? 10;
+  const outboundBuses = outboundArr?.buses ?? [];
+  const inboundBuses = inboundArr?.buses ?? [];
+  const term = outboundArr?.term ?? inboundArr?.term ?? 10;
 
   const isRunning = outboundBuses.length > 0 || inboundBuses.length > 0;
-
-  const debugInfo = [outboundRes.debug, inboundRes.debug].filter(Boolean);
 
   const data: BusArrivalData = {
     routeName: "종로11",
@@ -159,7 +152,6 @@ async function fetchBusArrivalData(): Promise<BusArrivalData> {
     inbound: { stationName: "시청역", buses: inboundBuses },
     isRunning,
     updatedAt: new Date().toISOString(),
-    ...(debugInfo.length > 0 && { _debug: debugInfo }),
   };
 
   cache = { data, ts: now };

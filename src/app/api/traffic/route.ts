@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 
-export const runtime = "edge";
 export const preferredRegion = "icn1";
 
 /**
@@ -199,18 +198,16 @@ async function fetchTrafficData(): Promise<TrafficIncident[]> {
     const today = new Date();
     const dateStr = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}${String(today.getDate()).padStart(2, "0")}`;
 
-    const res = await fetch(
-      "https://topis.seoul.go.kr/map/accMap/selectAccAllListASC.do",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          Referer: "https://topis.seoul.go.kr/map/openControlMap.do",
-        },
+    const TOPIS_PROXY = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/topis-proxy`;
+    const res = await fetch(TOPIS_PROXY, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        endpoint: "/map/accMap/selectAccAllListASC.do",
         body: `accDate=${dateStr}&trafficdataAppyYn=Y`,
-        cache: "no-store",
-      },
-    );
+      }),
+      cache: "no-store",
+    });
 
     const json = await res.json();
     const rows = json?.rows ?? (Array.isArray(json) ? json : []);
