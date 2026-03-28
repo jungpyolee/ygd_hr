@@ -10,7 +10,7 @@ const withSerwist = withSerwistInit({
 const nextConfig: NextConfig = {
   /* 기존 설정 유지 */
   reactCompiler: true,
-  serverExternalPackages: ["pdf-parse"],
+  serverExternalPackages: ["pdf-parse", "pdfjs-dist"],
   webpack: (config) => {
     return config;
   },
