@@ -11,6 +11,9 @@ const nextConfig: NextConfig = {
   /* 기존 설정 유지 */
   reactCompiler: true,
   serverExternalPackages: ["pdf-parse", "pdfjs-dist"],
+  outputFileTracingIncludes: {
+    "/api/orders/parse-pdf": ["./node_modules/pdfjs-dist/**/*"],
+  },
   webpack: (config) => {
     return config;
   },
