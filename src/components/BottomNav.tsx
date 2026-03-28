@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { Home, Calendar, Store, User } from "lucide-react";
 
-const GUIDE_VERSION = "v1.0.5";
+const GUIDE_VERSION = "v1.0.6";
 
 const tabs = [
   { href: "/", label: "홈", icon: Home },

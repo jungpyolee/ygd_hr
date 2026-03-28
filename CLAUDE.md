@@ -133,13 +133,14 @@ DB 이슈는 `docs/db-issues/NNN-제목.md`에 동일한 형식으로 작성.
 
 ## 5-1. 이용가이드 버전 업데이트 플로우 (반드시 준수)
 
-이용가이드 버전을 올릴 때 **두 파일을 반드시 동시에** 수정한다.
+이용가이드 버전을 올릴 때 **세 파일을 반드시 동시에** 수정한다.
 하나라도 빠지면 레드닷이 잘못 동작한다.
 
 | 파일 | 수정 내용 |
 |------|-----------|
 | `src/app/guide/page.tsx` | `CURRENT_VERSION` 상수를 새 버전으로 변경 |
-| `src/components/HomeClient.tsx` | `seen !== "vX.X.X"` 비교 문자열을 새 버전으로 변경 |
+| `src/app/my/page.tsx` | `seen !== "vX.X.X"` 비교 문자열을 새 버전으로 변경 |
+| `src/components/BottomNav.tsx` | `GUIDE_VERSION` 상수를 새 버전으로 변경 |
 
 ---
 

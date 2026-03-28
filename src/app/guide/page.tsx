@@ -666,7 +666,7 @@ const SEARCH_INDEX = [
 /* ─────────────────────────────────────────────
    메인 페이지
 ───────────────────────────────────────────── */
-const CURRENT_VERSION = "v1.0.5";
+const CURRENT_VERSION = "v1.0.6";
 
 export default function GuidePage() {
   const router = useRouter();
