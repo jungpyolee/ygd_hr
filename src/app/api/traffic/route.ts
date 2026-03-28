@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+export const preferredRegion = "icn1";
+
 /**
  * 삼청동 출근길 교통통제 API
  * TOPIS 내부 API에서 전체 교통통제 데이터를 가져와 출근 경로 관련만 필터링

@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 
+export const preferredRegion = "icn1";
+
 /**
- * 종로11 버스 도착���보 API
+ * 종로11 버스 도착정보 API
  * TOPIS 내부 프록시를 통해 서울시 버스정보시스템 데이터를 조회
  * API 키 불필요 (TOPIS가 서버측에서 ServiceKey 처리)
  */
