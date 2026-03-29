@@ -110,9 +110,10 @@ async function fetchStationArrival(arsId: string): Promise<StationArrival | null
 
 function isOperatingHours(): boolean {
   const now = new Date();
-  const h = now.getHours();
+  // Vercel 서버는 UTC 기준 → KST(UTC+9)로 변환
+  const kstHour = (now.getUTCHours() + 9) % 24;
   // 종로11: 첫차 06:00 ~ 막차 23:00
-  return h >= 6 && h < 23;
+  return kstHour >= 6 && kstHour < 23;
 }
 
 async function fetchBusArrivalData(): Promise<BusArrivalData> {
