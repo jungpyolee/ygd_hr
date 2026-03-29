@@ -3,18 +3,30 @@ import { createClient } from "@supabase/supabase-js";
 import type { NotificationType } from "@/lib/notifications";
 import { getNotificationUrl } from "@/lib/notificationUrls";
 
-// VAPID 설정 (서버 전용 — 클라이언트에 노출 금지)
-webpush.setVapidDetails(
-  process.env.VAPID_SUBJECT!,
-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
-  process.env.VAPID_PRIVATE_KEY!
-);
+// VAPID 설정 — lazy 초기화 (빌드 타임에 env 없을 수 있음)
+let vapidConfigured = false;
+function ensureVapid() {
+  if (vapidConfigured) return;
+  webpush.setVapidDetails(
+    process.env.VAPID_SUBJECT!,
+    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
+    process.env.VAPID_PRIVATE_KEY!
+  );
+  vapidConfigured = true;
+}
 
-// RLS 우회 admin client (서버 전용)
-const adminSupabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// RLS 우회 admin client — lazy 초기화
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _adminSupabase: any;
+function getAdminSupabase() {
+  if (!_adminSupabase) {
+    _adminSupabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+  }
+  return _adminSupabase;
+}
 
 export interface PushPayload {
   title: string;
@@ -34,6 +46,7 @@ export async function sendPushToProfile(
   profileId: string,
   payload: PushPayload
 ): Promise<void> {
+  ensureVapid();
   // ✅ 두 쿼리 병렬 실행
   const [prefs, subs] = await Promise.all([
     getPreferences(profileId),
@@ -67,21 +80,21 @@ export async function sendPushToRole(
   payload: PushPayload
 ): Promise<void> {
   // 1. 해당 role의 유저 목록
-  let profileQuery = adminSupabase.from("profiles").select("id, role");
+  let profileQuery = getAdminSupabase().from("profiles").select("id, role");
   if (role !== "all") profileQuery = profileQuery.eq("role", role);
   const { data: profiles } = await profileQuery;
   if (!profiles?.length) return;
 
-  const profileIds = profiles.map((p) => p.id);
+  const profileIds = profiles.map((p: any) => p.id);
 
   // ✅ preferences + subscriptions 배치 조회 (2쿼리로 N+1 해소)
   const [{ data: allPrefs }, { data: allSubs }] = await Promise.all([
-    adminSupabase
+    getAdminSupabase()
       .from("push_preferences")
       .select("profile_id, enabled, type_settings")
       .in("profile_id", profileIds)
       .eq("enabled", true),
-    adminSupabase
+    getAdminSupabase()
       .from("push_subscriptions")
       .select("profile_id, endpoint, p256dh, auth_key")
       .in("profile_id", profileIds),
@@ -92,8 +105,8 @@ export async function sendPushToRole(
   // 수신 가능한 profile만 필터링
   const enabledProfileIds = new Set(
     allPrefs
-      .filter((p) => isTypeEnabled(p.type_settings ?? {}, payload.type))
-      .map((p) => p.profile_id)
+      .filter((p: any) => isTypeEnabled(p.type_settings ?? {}, payload.type))
+      .map((p: any) => p.profile_id)
   );
 
   // profile별 구독 목록 그룹화
@@ -106,7 +119,7 @@ export async function sendPushToRole(
   }
 
   // ✅ 각 profile에 병렬 발송
-  const roleMap = new Map(profiles.map((p) => [p.id, p.role]));
+  const roleMap = new Map(profiles.map((p: any) => [p.id, p.role]));
   await Promise.allSettled(
     [...subsByProfile.entries()].map(([profileId, subs]) =>
       deliverPush(subs, {
@@ -120,7 +133,7 @@ export async function sendPushToRole(
 // ── helpers ────────────────────────────────────────────────
 
 async function getPreferences(profileId: string) {
-  const { data } = await adminSupabase
+  const { data } = await getAdminSupabase()
     .from("push_preferences")
     .select("enabled, type_settings")
     .eq("profile_id", profileId)
@@ -129,7 +142,7 @@ async function getPreferences(profileId: string) {
 }
 
 async function getSubscriptions(profileId: string) {
-  const { data } = await adminSupabase
+  const { data } = await getAdminSupabase()
     .from("push_subscriptions")
     .select("endpoint, p256dh, auth_key")
     .eq("profile_id", profileId);
@@ -177,7 +190,7 @@ async function deliverPush(
         )
         .catch(async (err: { statusCode?: number; body?: string }) => {
           if (err?.statusCode === 410 || err?.statusCode === 404) {
-            await adminSupabase
+            await getAdminSupabase()
               .from("push_subscriptions")
               .delete()
               .eq("endpoint", sub.endpoint);
