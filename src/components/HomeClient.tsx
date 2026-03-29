@@ -12,6 +12,7 @@ import {
   Info,
   ChevronRight,
   CalendarDays,
+  AlertTriangle,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import OnboardingFunnel from "@/components/OnboardingFunnel";
@@ -20,9 +21,11 @@ import CommuteCard from "@/components/CommuteCard";
 
 import { useRouter } from "next/navigation";
 import { useGeolocation } from "@/lib/hooks/useGeolocation";
-import { startOfMonth, startOfWeek, addDays, format } from "date-fns";
+import { startOfMonth, startOfWeek, addDays, subDays, format } from "date-fns";
+import { ko } from "date-fns/locale";
 import type { TodaySlot, RawLogData } from "@/app/page";
 import PushPromptModal from "@/components/PushPromptModal";
+import AdjustmentModal from "@/components/AdjustmentModal";
 import { useWorkplaces } from "@/lib/hooks/useWorkplaces";
 
 const DynamicClock = dynamic(() => import("@/components/Clock"), {
@@ -102,6 +105,19 @@ export default function HomeClient({
       const workedDays = new Set<string>(
         (logs ?? []).map((l: any) => format(new Date(l.created_at), "yyyy-MM-dd"))
       );
+
+      // 승인된 missed_checkin 조정 → 출근한 것으로 취급
+      const { data: approvedAdjs } = await supabase
+        .from("attendance_adjustments")
+        .select("target_date, adjustment_type")
+        .eq("profile_id", profileId)
+        .eq("status", "approved")
+        .in("adjustment_type", ["missed_checkin"])
+        .gte("target_date", monthStartStr)
+        .lte("target_date", monthEndStr);
+      for (const adj of approvedAdjs ?? []) {
+        workedDays.add(adj.target_date);
+      }
 
       // 이번 달 확정된 스케줄 슬롯
       const { data: wsData } = await supabase
@@ -214,6 +230,139 @@ export default function HomeClient({
     },
     { dedupingInterval: 60_000 },
   );
+
+  // 조정 필요 근태 SWR (최근 7일)
+  interface AdjustmentIssue {
+    type: string;
+    label: string;
+  }
+  interface AdjustmentItem {
+    date: string;
+    scheduleStart: string;
+    scheduleEnd: string;
+    actualIn: string | null;
+    actualOut: string | null;
+    issues: AdjustmentIssue[];
+  }
+  const { data: adjustmentNeeded, mutate: mutateAdjustments } = useSWR(
+    profile?.id ? ["adj-needed", profile.id] : null,
+    async ([, profileId]) => {
+      const supabase = createClient();
+      const now = new Date();
+      const todayStr = format(now, "yyyy-MM-dd");
+      const rawWeekAgo = format(subDays(now, 7), "yyyy-MM-dd");
+      // 4월부터 적용 — 3월 기록은 감지하지 않음
+      const weekAgoStr = rawWeekAgo < "2026-04-01" ? "2026-04-01" : rawWeekAgo;
+      if (todayStr < "2026-04-01") return [];
+
+      // 최근 7일 스케줄
+      const { data: wsData } = await supabase
+        .from("weekly_schedules")
+        .select("id")
+        .eq("status", "confirmed");
+      if (!wsData?.length) return [];
+
+      const { data: slots } = await supabase
+        .from("schedule_slots")
+        .select("slot_date, start_time, end_time")
+        .eq("profile_id", profileId)
+        .eq("status", "active")
+        .in("weekly_schedule_id", wsData.map((w: any) => w.id))
+        .gte("slot_date", weekAgoStr)
+        .lt("slot_date", todayStr); // 오늘 제외 (아직 진행 중)
+
+      if (!slots?.length) return [];
+
+      // 해당 기간 출퇴근 기록
+      const logStart = new Date(`${weekAgoStr}T00:00:00+09:00`).toISOString();
+      const logEnd = new Date(`${todayStr}T00:00:00+09:00`).toISOString();
+      const { data: inLogs } = await supabase
+        .from("attendance_logs")
+        .select("created_at")
+        .eq("profile_id", profileId)
+        .eq("type", "IN")
+        .gte("created_at", logStart)
+        .lt("created_at", logEnd)
+        .order("created_at", { ascending: true });
+      const { data: outLogs } = await supabase
+        .from("attendance_logs")
+        .select("created_at")
+        .eq("profile_id", profileId)
+        .eq("type", "OUT")
+        .gte("created_at", logStart)
+        .lt("created_at", logEnd)
+        .order("created_at", { ascending: true });
+
+      const inByDate = new Map<string, Date>();
+      const outByDate = new Map<string, Date>();
+      (inLogs ?? []).forEach((l: any) => {
+        const d = format(new Date(l.created_at), "yyyy-MM-dd");
+        if (!inByDate.has(d)) inByDate.set(d, new Date(l.created_at));
+      });
+      (outLogs ?? []).forEach((l: any) => {
+        const d = format(new Date(l.created_at), "yyyy-MM-dd");
+        outByDate.set(d, new Date(l.created_at));
+      });
+
+      // 이미 조정 신청한 날짜+유형 제외
+      const { data: adjs } = await supabase
+        .from("attendance_adjustments")
+        .select("target_date, adjustment_type")
+        .eq("profile_id", profileId)
+        .in("status", ["pending", "approved", "dismissed"])
+        .gte("target_date", weekAgoStr);
+      const adjKeys = new Set((adjs ?? []).map((a: any) => `${a.target_date}_${a.adjustment_type}`));
+
+      const items: AdjustmentItem[] = [];
+      for (const slot of slots as any[]) {
+        const schedStart = slot.start_time.slice(0, 5);
+        const schedEnd = slot.end_time.slice(0, 5);
+        const actualInDate = inByDate.get(slot.slot_date);
+        const actualOutDate = outByDate.get(slot.slot_date);
+        const actualIn = actualInDate ? format(actualInDate, "HH:mm") : null;
+        const actualOut = actualOutDate ? format(actualOutDate, "HH:mm") : null;
+
+        const issues: AdjustmentIssue[] = [];
+
+        // 출근 체크
+        if (!actualInDate) {
+          if (!adjKeys.has(`${slot.slot_date}_missed_checkin`))
+            issues.push({ type: "missed_checkin", label: "출근 미체크" });
+        } else {
+          const schedStartMs = new Date(`${slot.slot_date}T${slot.start_time}+09:00`).getTime();
+          const lateMins = Math.floor((actualInDate.getTime() - schedStartMs) / 60000);
+          if (lateMins > 10 && !adjKeys.has(`${slot.slot_date}_late_checkin`)) {
+            const h = Math.floor(lateMins / 60);
+            const m = lateMins % 60;
+            issues.push({ type: "late_checkin", label: `출근 ${h > 0 ? `${h}시간 ` : ""}${m}분 지연` });
+          }
+        }
+
+        // 퇴근 체크
+        if (!actualOutDate) {
+          if (!adjKeys.has(`${slot.slot_date}_missed_checkout`))
+            issues.push({ type: "missed_checkout", label: "퇴근 미체크" });
+        } else {
+          const schedEndMs = new Date(`${slot.slot_date}T${slot.end_time}+09:00`).getTime();
+          const earlyMins = Math.floor((schedEndMs - actualOutDate.getTime()) / 60000);
+          if (earlyMins > 10 && !adjKeys.has(`${slot.slot_date}_early_checkout`)) {
+            const h = Math.floor(earlyMins / 60);
+            const m = earlyMins % 60;
+            issues.push({ type: "early_checkout", label: `퇴근 ${h > 0 ? `${h}시간 ` : ""}${m}분 일찍` });
+          }
+        }
+
+        if (issues.length > 0) {
+          items.push({ date: slot.slot_date, scheduleStart: schedStart, scheduleEnd: schedEnd, actualIn, actualOut, issues });
+        }
+      }
+
+      return items.sort((a, b) => b.date.localeCompare(a.date));
+    },
+    { dedupingInterval: 60_000 },
+  );
+
+  const [adjustTarget, setAdjustTarget] = useState<AdjustmentItem | null>(null);
 
   // SWR 결과로 알림 state 초기화
   useEffect(() => {
@@ -512,6 +661,67 @@ export default function HomeClient({
           onRetryLocation={retryLocation}
           onFetchForAttendance={fetchForAttendance}
         />
+
+        {/* 근태 조정 필요 카드 */}
+        {adjustmentNeeded && adjustmentNeeded.length > 0 && (
+          <div className="bg-white rounded-[28px] p-5 border border-[#FFF7E6] shadow-sm">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-7 h-7 bg-[#FFF7E6] rounded-full flex items-center justify-center">
+                <AlertTriangle className="w-4 h-4 text-[#F59E0B]" />
+              </div>
+              <h3 className="text-[15px] font-bold text-[#191F28]">
+                근태 조정이 필요해요
+              </h3>
+              <span className="ml-auto px-2 py-0.5 bg-[#FFF7E6] text-[#F59E0B] rounded-full text-[12px] font-bold">
+                {adjustmentNeeded.length}건
+              </span>
+            </div>
+            <div className="space-y-2">
+              {adjustmentNeeded.slice(0, 3).map((item) => (
+                <button
+                  key={item.date}
+                  onClick={() => setAdjustTarget(item)}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-[#FFFBF0] rounded-2xl active:scale-[0.99] transition-transform"
+                >
+                  <div className="text-left">
+                    <p className="text-[13px] font-bold text-[#191F28]">
+                      {format(new Date(item.date + "T00:00:00"), "M/d (EEE)", { locale: ko })}
+                    </p>
+                    <p className="text-[12px] text-[#F59E0B] font-medium mt-0.5">
+                      {item.issues.map((i) => i.label).join(" · ")}
+                    </p>
+                  </div>
+                  <span className="text-[12px] font-bold text-[#3182F6]">
+                    조정 신청
+                  </span>
+                </button>
+              ))}
+              {adjustmentNeeded.length > 3 && (
+                <button
+                  onClick={() => router.push("/attendances")}
+                  className="w-full text-center text-[12px] font-bold text-[#8B95A1] py-2"
+                >
+                  +{adjustmentNeeded.length - 3}건 더보기
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 조정 신청 모달 */}
+        {adjustTarget && profile && (
+          <AdjustmentModal
+            targetDate={adjustTarget.date}
+            profileId={profile.id}
+            scheduleStart={adjustTarget.scheduleStart}
+            scheduleEnd={adjustTarget.scheduleEnd}
+            actualIn={adjustTarget.actualIn}
+            actualOut={adjustTarget.actualOut}
+            issues={adjustTarget.issues}
+            onClose={() => setAdjustTarget(null)}
+            onSuccess={() => mutateAdjustments()}
+          />
+        )}
 
         {/* 종로11 출퇴근 안내 */}
         {busCardEnabled && (

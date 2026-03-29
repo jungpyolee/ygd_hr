@@ -148,7 +148,7 @@ export default function AdminDashboardPage() {
       const today = new Date();
       const todayStr = format(today, "yyyy-MM-dd");
 
-      const [subResult, healthResult, overtimeCount, missedCheckoutCount] = await Promise.all([
+      const [subResult, healthResult, overtimeCount, missedCheckoutCount, adjustmentResult] = await Promise.all([
         // 대타 미처리
         supabase
           .from("substitute_requests")
@@ -303,6 +303,11 @@ export default function AdminDashboardPage() {
           }
           return seen.size;
         })(),
+        // 근태 조정 신청 미처리
+        supabase
+          .from("attendance_adjustments")
+          .select("*", { count: "exact", head: true })
+          .eq("status", "pending"),
       ]);
 
       return {
@@ -310,6 +315,7 @@ export default function AdminDashboardPage() {
         subCount: subResult.count ?? 0,
         healthCertCount: healthResult.count ?? 0,
         missedCheckoutCount: missedCheckoutCount as number,
+        adjustmentCount: adjustmentResult.count ?? 0,
       };
     },
     { dedupingInterval: 120_000, revalidateOnFocus: true }
@@ -319,6 +325,7 @@ export default function AdminDashboardPage() {
   const subCount = actionData?.subCount ?? 0;
   const healthCertCount = actionData?.healthCertCount ?? 0;
   const missedCheckoutCount = actionData?.missedCheckoutCount ?? 0;
+  const adjustmentCount = actionData?.adjustmentCount ?? 0;
 
   // KPI 계산
   const attendedCount = todayAttendance.filter(
@@ -433,6 +440,7 @@ export default function AdminDashboardPage() {
           subCount={subCount}
           healthCertCount={healthCertCount}
           missedCheckoutCount={missedCheckoutCount}
+          adjustmentCount={adjustmentCount}
         />
       </section>
 

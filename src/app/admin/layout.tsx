@@ -28,6 +28,7 @@ import {
   CalendarDays,
   Megaphone,
   ClipboardList,
+  ClipboardEdit,
   BarChart2,
   QrCode,
   Package,
@@ -247,6 +248,11 @@ export default function AdminLayout({
       name: "공지사항 관리",
       path: "/admin/announcements",
       icon: <Megaphone className="w-5 h-5" />,
+    },
+    {
+      name: "근태 조정",
+      path: "/admin/adjustments",
+      icon: <ClipboardEdit className="w-5 h-5" />,
     },
     {
       name: "근태 통계",

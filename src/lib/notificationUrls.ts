@@ -28,6 +28,8 @@ export function getNotificationUrl(
         return "/admin/attendance";
       case "substitute_requested":
         return "/admin/schedules/substitutes";
+      case "adjustment_requested":
+        return "/admin/adjustments";
       case "announcement":
         return "/admin/announcements";
       default:
@@ -52,6 +54,12 @@ export function getNotificationUrl(
       return sourceId ? `/recipes/${sourceId}` : "/recipes";
     case "announcement":
       return sourceId ? `/announcements/${sourceId}` : "/announcements";
+    case "adjustment_approved":
+    case "adjustment_rejected":
+      return "/attendances";
+    case "checkin_reminder":
+    case "checkout_reminder":
+      return "/";
     default:
       return "/";
   }

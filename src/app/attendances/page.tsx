@@ -13,17 +13,20 @@ import {
   parseISO,
 } from "date-fns";
 import { ko } from "date-fns/locale";
-import { ChevronLeft, Clock, Timer, CalendarDays } from "lucide-react";
+import { ChevronLeft, Clock, Timer, CalendarDays, AlertCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
+import AdjustmentModal from "@/components/AdjustmentModal";
 
 interface DayRecord {
   date: string; // "yyyy-MM-dd"
-  actualIn: Date;
+  actualIn: Date | null;
   actualOut: Date | null;
   scheduledMinutes: number; // 인정 시간 (스케줄 기준)
   overtimeMinutes: number;  // 승인된 추가근무
   scheduleStart: string | null; // "HH:mm"
   scheduleEnd: string | null;   // "HH:mm"
+  needsAdjustment: boolean;
+  adjustmentStatus: "pending" | "approved" | null;
 }
 
 type ViewType = "weekly" | "monthly" | "custom";
@@ -101,8 +104,6 @@ export default function AttendancesPage() {
         outByDate.set(d, new Date(l.created_at)); // 마지막으로 덮어쓰기
       });
 
-      if (inByDate.size === 0) return { records: [], summary: { days: 0, totalMinutes: 0, overtimeMinutes: 0 } };
-
       // 3. 스케줄 슬롯 조회
       // week_start는 최대 6일 일찍 시작할 수 있으므로 버퍼 적용
       const schedStartDate = new Date(periodStart);
@@ -164,34 +165,120 @@ export default function AttendancesPage() {
         overtimeByDate.set(ot.date, (overtimeByDate.get(ot.date) ?? 0) + ot.minutes);
       });
 
-      // 5. 날짜별 레코드 생성 (출근한 날만)
+      // 5. 조정 요청 조회
+      const { data: adjustments } = await supabase
+        .from("attendance_adjustments")
+        .select("target_date, adjustment_type, status, requested_time")
+        .eq("profile_id", userId)
+        .gte("target_date", startStr)
+        .lte("target_date", endStr);
+
+      const adjustmentsByDate = new Map<string, { type: string; status: string; requested_time: string | null }[]>();
+      (adjustments ?? []).forEach((adj: any) => {
+        const list = adjustmentsByDate.get(adj.target_date) ?? [];
+        list.push({ type: adj.adjustment_type, status: adj.status, requested_time: adj.requested_time });
+        adjustmentsByDate.set(adj.target_date, list);
+      });
+
+      // 5. 날짜별 레코드 생성 (출근한 날 + 스케줄은 있지만 미출근인 날 포함)
       const records: DayRecord[] = [];
       let totalMinutes = 0;
       let totalOvertimeMinutes = 0;
 
-      Array.from(inByDate.entries())
-        .sort(([a], [b]) => b.localeCompare(a)) // 최신순
-        .forEach(([date, actualIn]) => {
+      // 출근한 날 + 스케줄만 있고 미출근인 날 합산
+      const allDates = new Set([...inByDate.keys(), ...slotsByDate.keys()]);
+      const today = format(new Date(), "yyyy-MM-dd");
+
+      Array.from(allDates)
+        .filter((d) => d <= today)
+        .sort((a, b) => b.localeCompare(a)) // 최신순
+        .forEach((date) => {
+          const actualIn = inByDate.get(date);
           const slot = slotsByDate.get(date);
-          const scheduledMins = slot?.minutes ?? 0;
+
+          // 승인된 조정 반영: missed_checkin 승인 시 출근한 것으로 취급
+          const dateAdjs = adjustmentsByDate.get(date) ?? [];
+          const hasApprovedCheckin = dateAdjs.some(
+            (a) => a.type === "missed_checkin" && a.status === "approved",
+          );
+          const effectiveIn = actualIn || hasApprovedCheckin;
+          const scheduledMins = effectiveIn ? (slot?.minutes ?? 0) : 0;
           const overtimeMins = overtimeByDate.get(date) ?? 0;
           totalMinutes += scheduledMins + overtimeMins;
           totalOvertimeMinutes += overtimeMins;
+
+          // 조정 필요 여부 판단 (타입별로 이미 처리된 건 제외, 4월부터 적용)
+          if (date < "2026-04-01") {
+            records.push({
+              date,
+              actualIn: actualIn ?? null as any,
+              actualOut: outByDate.get(date) ?? null,
+              scheduledMinutes: scheduledMins,
+              overtimeMinutes: overtimeMins,
+              scheduleStart: slot?.start ?? null,
+              scheduleEnd: slot?.end ?? null,
+              needsAdjustment: false,
+              adjustmentStatus: null,
+            });
+            return;
+          }
+          let needsAdjustment = false;
+          const adjs = adjustmentsByDate.get(date) ?? [];
+          const adjTypes = new Set(
+            adjs.filter((a) => a.status === "pending" || a.status === "approved" || a.status === "dismissed")
+              .map((a) => a.type),
+          );
+          const hasPendingOrApproved = adjs.some(
+            (a) => a.status === "pending" || a.status === "approved",
+          );
+
+          if (slot) {
+            if (!actualIn && !adjTypes.has("missed_checkin")) {
+              needsAdjustment = true;
+            } else if (actualIn) {
+              const schedStartMs = new Date(`${date}T${slot.start}:00+09:00`).getTime();
+              const actualInMs = actualIn.getTime();
+              if (actualInMs - schedStartMs > 10 * 60 * 1000 && !adjTypes.has("late_checkin")) {
+                needsAdjustment = true;
+              }
+            }
+            const actualOut = outByDate.get(date);
+            if (actualIn && !actualOut && !adjTypes.has("missed_checkout")) {
+              needsAdjustment = true;
+            } else if (actualOut && slot.end) {
+              const schedEndMs = new Date(`${date}T${slot.end}:00+09:00`).getTime();
+              if (schedEndMs - actualOut.getTime() > 10 * 60 * 1000 && !adjTypes.has("early_checkout")) {
+                needsAdjustment = true;
+              }
+            }
+          }
+
           records.push({
             date,
-            actualIn,
+            actualIn: actualIn ?? null as any,
             actualOut: outByDate.get(date) ?? null,
             scheduledMinutes: scheduledMins,
             overtimeMinutes: overtimeMins,
             scheduleStart: slot?.start ?? null,
             scheduleEnd: slot?.end ?? null,
+            needsAdjustment,
+            adjustmentStatus: hasPendingOrApproved
+              ? adjs.find((a) => a.status === "pending")
+                ? "pending"
+                : "approved"
+              : null,
           });
         });
 
       return {
         records,
         summary: {
-          days: records.length,
+          days: new Set([
+            ...inByDate.keys(),
+            ...(adjustments ?? [])
+              .filter((a: any) => a.adjustment_type === "missed_checkin" && a.status === "approved")
+              .map((a: any) => a.target_date),
+          ]).size,
           totalMinutes,
           overtimeMinutes: totalOvertimeMinutes,
         },
@@ -199,6 +286,39 @@ export default function AttendancesPage() {
     },
     { dedupingInterval: 30_000, revalidateOnFocus: true }
   );
+
+  const { mutate } = useSWR(swrKey ? swrKey : null, { revalidateOnFocus: false });
+  const [adjustTarget, setAdjustTarget] = useState<DayRecord | null>(null);
+
+  function buildIssues(rec: DayRecord) {
+    const issues: { type: string; label: string }[] = [];
+    if (!rec.actualIn && rec.scheduleStart) {
+      issues.push({ type: "missed_checkin", label: "출근 미체크" });
+    } else if (rec.actualIn && rec.scheduleStart) {
+      const schedMs = new Date(`${rec.date}T${rec.scheduleStart}:00+09:00`).getTime();
+      const lateMins = Math.floor((rec.actualIn.getTime() - schedMs) / 60000);
+      if (lateMins > 10) {
+        const h = Math.floor(lateMins / 60);
+        const m = lateMins % 60;
+        issues.push({ type: "late_checkin", label: `출근 ${h > 0 ? `${h}시간 ` : ""}${m}분 지연` });
+      }
+    }
+    if (!rec.actualOut && rec.scheduleEnd) {
+      issues.push({ type: "missed_checkout", label: "퇴근 미체크" });
+    } else if (rec.actualOut && rec.scheduleEnd) {
+      const schedMs = new Date(`${rec.date}T${rec.scheduleEnd}:00+09:00`).getTime();
+      const earlyMins = Math.floor((schedMs - rec.actualOut.getTime()) / 60000);
+      if (earlyMins > 10) {
+        const h = Math.floor(earlyMins / 60);
+        const m = earlyMins % 60;
+        issues.push({ type: "early_checkout", label: `퇴근 ${h > 0 ? `${h}시간 ` : ""}${m}분 일찍` });
+      }
+    }
+    if (issues.length === 0) {
+      issues.push({ type: "other", label: "기타" });
+    }
+    return issues;
+  }
 
   const records = data?.records ?? [];
   const summary = data?.summary ?? { days: 0, totalMinutes: 0, overtimeMinutes: 0 };
@@ -358,8 +478,9 @@ export default function AttendancesPage() {
             const recognizedMins = rec.scheduledMinutes + rec.overtimeMinutes;
             const recH = Math.floor(recognizedMins / 60);
             const recM = recognizedMins % 60;
-            const isWorking = !rec.actualOut;
+            const isWorking = rec.actualIn && !rec.actualOut && rec.date === format(new Date(), "yyyy-MM-dd");
             const hasSchedule = rec.scheduleStart && rec.scheduleEnd;
+            const noRecord = !rec.actualIn;
 
             return (
               <div
@@ -369,15 +490,17 @@ export default function AttendancesPage() {
                 {/* 날짜 + 인정시간 */}
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div className="flex items-center gap-2">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${isWorking ? "bg-[#E8F3FF]" : "bg-[#F2F4F6]"}`}>
-                      <Clock className={`w-4 h-4 ${isWorking ? "text-[#3182F6]" : "text-[#B0B8C1]"}`} />
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${noRecord ? "bg-[#FFF0F0]" : isWorking ? "bg-[#E8F3FF]" : "bg-[#F2F4F6]"}`}>
+                      <Clock className={`w-4 h-4 ${noRecord ? "text-[#F04438]" : isWorking ? "text-[#3182F6]" : "text-[#B0B8C1]"}`} />
                     </div>
                     <p className="text-[14px] font-bold text-[#191F28]">
-                      {format(new Date(rec.date), "M월 d일 (eeee)", { locale: ko })}
+                      {format(new Date(rec.date + "T00:00:00"), "M월 d일 (eeee)", { locale: ko })}
                     </p>
                   </div>
                   <div className="text-right shrink-0">
-                    {isWorking ? (
+                    {noRecord ? (
+                      <span className="text-[13px] font-bold text-[#F04438]">미체크</span>
+                    ) : isWorking ? (
                       <span className="text-[13px] font-bold text-[#3182F6]">진행 중</span>
                     ) : recognizedMins > 0 ? (
                       <div>
@@ -406,12 +529,38 @@ export default function AttendancesPage() {
                       </span>
                     </div>
                   )}
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-semibold text-[#8B95A1] w-10 shrink-0">실제</span>
-                    <span className={`text-[13px] font-bold ${isWorking ? "text-[#3182F6]" : "text-[#191F28]"}`}>
-                      {format(rec.actualIn, "HH:mm")} — {rec.actualOut ? format(rec.actualOut, "HH:mm") : "근무 중"}
-                    </span>
-                  </div>
+                  {rec.actualIn && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-semibold text-[#8B95A1] w-10 shrink-0">실제</span>
+                      <span className={`text-[13px] font-bold ${isWorking ? "text-[#3182F6]" : "text-[#191F28]"}`}>
+                        {format(rec.actualIn, "HH:mm")} — {rec.actualOut ? format(rec.actualOut, "HH:mm") : "근무 중"}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* 조정 상태 — 복수 상태 동시 표시 가능 */}
+                <div className="mt-3 ml-10 flex flex-wrap items-center gap-2">
+                  {rec.adjustmentStatus === "pending" && (
+                    <div className="flex items-center gap-1.5 text-[12px] font-bold text-[#F59E0B]">
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      심사 중
+                    </div>
+                  )}
+                  {!rec.needsAdjustment && rec.adjustmentStatus === "approved" && (
+                    <div className="flex items-center gap-1.5 text-[12px] font-bold text-[#22C55E]">
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      조정 완료
+                    </div>
+                  )}
+                  {rec.needsAdjustment && (
+                    <button
+                      onClick={() => setAdjustTarget(rec)}
+                      className="px-3.5 py-1.5 bg-[#FFF7E6] text-[#F59E0B] rounded-full text-[12px] font-bold active:scale-95 transition-transform"
+                    >
+                      조정 신청하기
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -422,6 +571,21 @@ export default function AttendancesPage() {
           </div>
         )}
       </div>
+
+      {/* 조정 신청 모달 */}
+      {adjustTarget && user && (
+        <AdjustmentModal
+          targetDate={adjustTarget.date}
+          profileId={user.id}
+          scheduleStart={adjustTarget.scheduleStart}
+          scheduleEnd={adjustTarget.scheduleEnd}
+          actualIn={adjustTarget.actualIn ? format(adjustTarget.actualIn, "HH:mm") : null}
+          actualOut={adjustTarget.actualOut ? format(adjustTarget.actualOut, "HH:mm") : null}
+          issues={buildIssues(adjustTarget)}
+          onClose={() => setAdjustTarget(null)}
+          onSuccess={() => mutate()}
+        />
+      )}
     </div>
   );
 }

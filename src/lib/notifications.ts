@@ -31,7 +31,12 @@ export type NotificationType =
   | "attendance_qr_in"
   | "attendance_qr_out"
   | "overtime_approved"
-  | "overtime_cancelled";
+  | "overtime_cancelled"
+  | "checkin_reminder"
+  | "checkout_reminder"
+  | "adjustment_requested"
+  | "adjustment_approved"
+  | "adjustment_rejected";
 
 const adminSupabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,

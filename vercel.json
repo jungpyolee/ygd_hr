@@ -1,9 +1,3 @@
 {
-  "regions": ["icn1"],
-  "crons": [
-    {
-      "path": "/api/cron/daily-settlement",
-      "schedule": "0 0 * * *"
-    }
-  ]
+  "regions": ["icn1"]
 }

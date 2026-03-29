@@ -11,6 +11,14 @@ interface PushPreferences {
 
 const EMPLOYEE_SETTING_GROUPS = [
   {
+    label: "근태",
+    items: [
+      { key: "checkin_reminder", label: "출근 미체크 알림" },
+      { key: "checkout_reminder", label: "퇴근 미체크 알림" },
+      { key: "adjustment_approved", label: "근태 조정 승인/반려" },
+    ],
+  },
+  {
     label: "스케줄",
     items: [
       { key: "substitute_approved", label: "대타 요청 승인/거절" },

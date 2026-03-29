@@ -32,7 +32,7 @@ export default function MyPage() {
   useEffect(() => {
     const check = () => {
       const seen = localStorage.getItem("guide_seen_version");
-      setHasGuideUpdate(seen !== "v1.0.6");
+      setHasGuideUpdate(seen !== "v1.1.0");
     };
     check();
     setBusCardMode((localStorage.getItem("bus-card-mode") as any) ?? "all");

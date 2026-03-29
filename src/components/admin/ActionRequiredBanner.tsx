@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { TimerIcon, UserCheck, ShieldAlert, LogOut, ChevronRight } from "lucide-react";
+import { TimerIcon, UserCheck, ShieldAlert, LogOut, ClipboardEdit, ChevronRight } from "lucide-react";
 
 interface ActionItem {
   key: string;
@@ -18,6 +18,7 @@ interface ActionRequiredBannerProps {
   subCount: number;
   healthCertCount: number;
   missedCheckoutCount: number;
+  adjustmentCount?: number;
 }
 
 export default function ActionRequiredBanner({
@@ -25,6 +26,7 @@ export default function ActionRequiredBanner({
   subCount,
   healthCertCount,
   missedCheckoutCount,
+  adjustmentCount = 0,
 }: ActionRequiredBannerProps) {
   const router = useRouter();
 
@@ -55,6 +57,15 @@ export default function ActionRequiredBanner({
       color: "#F04438",
       bgColor: "#FFF0F0",
       href: "/admin/employees?health=warning",
+    },
+    {
+      key: "adjustment",
+      label: "근태 조정 신청",
+      count: adjustmentCount,
+      icon: <ClipboardEdit className="w-4 h-4" />,
+      color: "#06B6D4",
+      bgColor: "#ECFEFF",
+      href: "/admin/adjustments",
     },
     {
       key: "missed_checkout",

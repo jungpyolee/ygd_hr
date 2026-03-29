@@ -1042,10 +1042,14 @@ function DaySheet({
             const att = attByProfile[slot.profile_id];
             const profile = profileById[slot.profile_id];
             return (
-              <button
+              <div
                 key={slot.id}
-                onClick={() => onEditSlot(slot)}
-                className="w-full text-left rounded-[18px] overflow-hidden hover:ring-2 hover:ring-[#3182F6] transition-all active:scale-[0.98]"
+                onClick={(e) => {
+                  // 내부 button 클릭은 전파 차단되므로 여기선 슬롯 편집만
+                  if ((e.target as HTMLElement).closest("button")) return;
+                  onEditSlot(slot);
+                }}
+                className="w-full text-left rounded-[18px] overflow-hidden hover:ring-2 hover:ring-[#3182F6] transition-all active:scale-[0.98] cursor-pointer"
               >
                 {renderAttCard(att, slot) ?? (
                   <div className="bg-white p-4 border border-slate-100 rounded-[18px] flex items-center justify-between">
@@ -1061,7 +1065,7 @@ function DaySheet({
                     </div>
                   </div>
                 )}
-              </button>
+              </div>
             );
           })}
 
@@ -1363,6 +1367,48 @@ export default function AdminCalendarPage() {
           const schedEnd = new Date(`${dateKey}T${String(eh).padStart(2, "0")}:${String(em).padStart(2, "0")}:00`);
           const diff = Math.floor((schedEnd.getTime() - new Date(entry.clock_out).getTime()) / 60000);
           if (diff > 10) entry.early_leave_minutes = diff;
+        }
+      });
+
+      // [4] 승인된 근태 조정 반영
+      const { data: adjData } = await supabase
+        .from("attendance_adjustments")
+        .select("profile_id, target_date, adjustment_type, requested_time")
+        .eq("status", "approved")
+        .gte("target_date", start)
+        .lte("target_date", end);
+
+      (adjData ?? []).forEach((adj: any) => {
+        const key = `${adj.profile_id}_${adj.target_date}`;
+        const entry = attMap[key];
+        if (!entry) return;
+
+        switch (adj.adjustment_type) {
+          case "missed_checkin":
+            entry.is_absent = false;
+            if (adj.requested_time) {
+              entry.clock_in = `${adj.target_date}T${adj.requested_time}+09:00`;
+            }
+            entry.late_minutes = null;
+            break;
+          case "late_checkin":
+            entry.late_minutes = null;
+            if (adj.requested_time) {
+              entry.clock_in = `${adj.target_date}T${adj.requested_time}+09:00`;
+            }
+            break;
+          case "missed_checkout":
+            if (adj.requested_time) {
+              entry.clock_out = `${adj.target_date}T${adj.requested_time}+09:00`;
+            }
+            entry.early_leave_minutes = null;
+            break;
+          case "early_checkout":
+            entry.early_leave_minutes = null;
+            if (adj.requested_time) {
+              entry.clock_out = `${adj.target_date}T${adj.requested_time}+09:00`;
+            }
+            break;
         }
       });
 

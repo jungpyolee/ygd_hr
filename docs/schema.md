@@ -27,7 +27,7 @@
 | `substitute_requests` | 대타 요청 (pending→approved/rejected→filled) |
 | `substitute_responses` | 대타 수락/거절 응답 |
 | `company_events` | 회사 공지 일정 (어드민 등록, 직원 캘린더 표시) |
-| `attendance_credits` | 근태 크레딧 이벤트 로그 (이벤트 소싱, 티어 시스템) |
+| `attendance_adjustments` | 근태 조정 신청 (직원 신청 → 관리자 승인/반려) |
 | `kurly_products` | 컬리 납품 제품 마스터 (라벨지 자동생성용) |
 
 ---
@@ -59,10 +59,6 @@
 | `position_keys` | text[] | YES | `'{}'` | `'hall'` / `'kitchen'` / `'showroom'` 복수 선택 |
 | `hourly_wage` | integer | YES | - | 시급 (원, 알바만) |
 | `insurance_type` | text | YES | - | `'national'` (2대보험) / `'3.3'` (원천징수) |
-| `credit_score` | integer | NO | `500` | 근태 크레딧 점수 (비정규화) |
-| `current_streak` | integer | NO | `0` | 현재 연속 정상 출근 |
-| `longest_streak` | integer | NO | `0` | 최장 연속 정상 출근 |
-| `streak_milestones_claimed` | integer[] | NO | `'{}'` | 달성한 스트릭 마일스톤 목록 |
 | `created_at` | timestamptz | YES | `now()` | 생성일 |
 | `updated_at` | timestamptz | YES | `now()` | 수정일 |
 
@@ -600,28 +596,29 @@ DELETE FROM auth.users WHERE id = target_user_id
 
 ---
 
-## attendance_credits
+## attendance_adjustments (근태 조정 신청)
 
-근태 크레딧 이벤트 로그. 이벤트 소싱 방식으로 모든 점수 변동을 기록.
-INSERT/DELETE 시 트리거(`sync_credit_score`)가 `profiles.credit_score`를 자동 동기화.
+> **마이그레이션**: 045_attendance_adjustments.sql
+> 직원이 스케줄 범위 밖 출퇴근 기록에 대해 조정을 신청하고 관리자가 승인/반려
 
 | 컬럼 | 타입 | NULL | 기본값 | 설명 |
 |------|------|------|--------|------|
 | `id` | uuid | NO | `gen_random_uuid()` | PK |
 | `profile_id` | uuid | NO | - | FK → profiles.id (CASCADE) |
-| `event_type` | text | NO | - | 이벤트 유형 (아래 참고) |
-| `points` | integer | NO | - | 양수(가점) 또는 음수(감점) |
-| `description` | text | YES | - | 이벤트 설명 |
-| `reference_id` | uuid | YES | - | 관련 schedule_slot.id 등 |
-| `reference_date` | date | YES | - | 해당 근무일 |
-| `invalidated_by` | uuid | YES | - | 이 이벤트를 무효화한 reversal 크레딧 ID (FK → attendance_credits.id) |
-| `created_at` | timestamptz | NO | `now()` | 생성일 |
+| `target_date` | date | NO | - | 조정 대상 날짜 |
+| `adjustment_type` | text | NO | - | `late_checkin` / `early_checkout` / `missed_checkin` / `missed_checkout` / `wrong_store` / `other` |
+| `requested_time` | time | YES | - | 실제 출퇴근 시각 |
+| `reason` | text | NO | - | 사유 |
+| `status` | text | NO | `'pending'` | `pending` / `approved` / `rejected` |
+| `reviewed_by` | uuid | YES | - | FK → profiles.id |
+| `reviewed_at` | timestamptz | YES | - | 처리 시각 |
+| `reject_reason` | text | YES | - | 반려 사유 |
+| `created_at` | timestamptz | YES | `now()` | 생성일 |
+| `updated_at` | timestamptz | YES | `now()` | 수정일 (트리거 자동 갱신) |
 
-**event_type 값**: `normal_attendance` (+3), `late_minor` (-3), `late_major` (-10), `no_show` (-50), `early_leave` (-8), `missing_checkout` (-5), `same_day_cancel` (-20), `advance_cancel` (-5), `substitute_bonus` (+10), `substitute_regular` (+3), `streak_bonus_10` (+15), `streak_bonus_30` (+50), `streak_bonus_60` (+80), `streak_bonus_100` (+150), `admin_cancel_compensation` (+5), `exception_reversal` (감점 무효화, 양수)
-
-**RLS**: 직원=본인 SELECT, 관리자=ALL
-**인덱스**: `(profile_id)`, `(profile_id, reference_date DESC)`, `(event_type)`
-**Realtime**: 활성화
+**제약조건**: UNIQUE `(profile_id, target_date, adjustment_type)`
+**RLS**: 관리자=ALL, 직원=본인 SELECT/INSERT
+**인덱스**: `(profile_id)`, `(status)`, `(target_date DESC)`
 
 ---
 

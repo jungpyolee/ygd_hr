@@ -265,10 +265,71 @@ function Badge({
 function UpdateHistory() {
   return (
     <div className="space-y-4">
-      {/* v1.0.6 */}
+      {/* v1.1.0 */}
       <div className="bg-white rounded-[24px] p-5 border border-slate-100 shadow-sm">
         <div className="flex items-center gap-3 mb-4">
           <span className="px-3 py-1 bg-[#3182F6] text-white text-[13px] font-bold rounded-full">
+            v1.1.0
+          </span>
+          <span className="text-[13px] text-[#8B95A1] font-medium">
+            2026. 3. 30. &middot; 근태 조정 시스템
+          </span>
+        </div>
+        <div className="space-y-3">
+          <UpdateItem emoji="🔧" title="근태 조정 신청 (4월부터)">
+            출퇴근을 깜빡하거나 늦게 찍었을 때, 직접 조정을 신청할 수 있어요.
+            홈 화면에 &quot;근태 조정이 필요해요&quot; 카드가 자동으로 떠요.
+          </UpdateItem>
+          <UpdateItem emoji="🔔" title="출퇴근 리마인더 알림">
+            스케줄 시작/종료 시간이 지났는데 출퇴근을 안 찍으면 알림을 보내드려요.
+            설정에서 끌 수도 있어요.
+          </UpdateItem>
+          <UpdateItem emoji="🛡️" title="빠른 연속 클릭 방지">
+            출퇴근 버튼을 실수로 빠르게 연속 탭하는 걸 방지해요.
+            기록 후 60초간 다시 탭할 수 없어요.
+          </UpdateItem>
+        </div>
+
+        {/* 예시 UI 카드 */}
+        <div className="mt-4 p-4 bg-[#F9FAFB] rounded-[16px] border border-[#E5E8EB]">
+          <p className="text-[13px] font-bold text-[#191F28] mb-3">
+            홈 화면에 이렇게 보여요
+          </p>
+          <div className="bg-white rounded-2xl p-3.5 shadow-sm border border-[#FFF7E6]">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[14px]">&#9888;&#65039;</span>
+              <p className="text-[13px] font-bold text-[#191F28]">근태 조정이 필요해요</p>
+              <span className="ml-auto px-2 py-0.5 bg-[#FFF7E6] text-[#F59E0B] rounded-full text-[11px] font-bold">2건</span>
+            </div>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between px-3 py-2 bg-[#FFFBF0] rounded-xl">
+                <div>
+                  <p className="text-[11px] font-bold text-[#191F28]">4/2 (수)</p>
+                  <p className="text-[10px] text-[#F59E0B]">출근 25분 지연 &middot; 퇴근 미체크</p>
+                </div>
+                <span className="text-[10px] font-bold text-[#3182F6]">조정 신청</span>
+              </div>
+              <div className="flex items-center justify-between px-3 py-2 bg-[#FFFBF0] rounded-xl">
+                <div>
+                  <p className="text-[11px] font-bold text-[#191F28]">4/1 (화)</p>
+                  <p className="text-[10px] text-[#F59E0B]">출퇴근 미체크</p>
+                </div>
+                <span className="text-[10px] font-bold text-[#3182F6]">조정 신청</span>
+              </div>
+            </div>
+          </div>
+          <p className="text-[12px] text-[#8B95A1] mt-3 leading-relaxed">
+            탭하면 조정 신청 화면이 열려요. 실제 출퇴근 시각과 사유를 입력하고
+            신청하면 관리자가 확인 후 승인해줘요.
+            진짜 지각이 맞으면 &quot;문제 없어요&quot;를 눌러 넘길 수도 있어요.
+          </p>
+        </div>
+      </div>
+
+      {/* v1.0.6 */}
+      <div className="bg-white rounded-[24px] p-5 border border-slate-100 shadow-sm">
+        <div className="flex items-center gap-3 mb-4">
+          <span className="px-3 py-1 bg-[#8B95A1] text-white text-[13px] font-bold rounded-full">
             v1.0.6
           </span>
           <span className="text-[13px] text-[#8B95A1] font-medium">
@@ -622,6 +683,12 @@ const SEARCH_INDEX = [
     keywords: ["출퇴근 기록", "기록", "이력", "수정"],
   },
   {
+    id: "adjustment",
+    emoji: "🔧",
+    title: "근태 조정 신청",
+    keywords: ["근태 조정", "조정", "지각", "미체크", "조퇴", "문제 없어요", "조정 신청"],
+  },
+  {
     id: "profile",
     emoji: "⚙️",
     title: "내 정보 수정",
@@ -666,7 +733,7 @@ const SEARCH_INDEX = [
 /* ─────────────────────────────────────────────
    메인 페이지
 ───────────────────────────────────────────── */
-const CURRENT_VERSION = "v1.0.6";
+const CURRENT_VERSION = "v1.1.0";
 
 export default function GuidePage() {
   const router = useRouter();
@@ -793,10 +860,10 @@ export default function GuidePage() {
                 연경당 HR
               </p>
               <span className="inline-block px-3 py-1 bg-[#E8F3FF] text-[#3182F6] text-[13px] font-bold rounded-full">
-                v1.0.6
+                v1.1.0
               </span>
             </div>
-            <span className="text-[12px] text-[#8B95A1]">2026. 3. 28.</span>
+            <span className="text-[12px] text-[#8B95A1]">2026. 3. 30.</span>
           </div>
           <p className="mt-3 text-[14px] text-[#4E5968] leading-relaxed">
             근무 기록부터 스케줄 확인까지,
@@ -1358,8 +1425,117 @@ export default function GuidePage() {
                 </div>
               </div>
               <Tip>
-                기록이 잘못됐으면 앱에서 직접 수정이 안 돼요. 날짜와 시간을
-                관리자에게 알리면 수정해줘요.
+                기록이 잘못됐으면 근태 조정 신청으로 직접 수정 요청할 수 있어요.
+              </Tip>
+            </Section>
+
+            {/* 근태 조정 신청 */}
+            <Section
+              id="adjustment"
+              emoji="🔧"
+              title="근태 조정 신청"
+              open={open === "adjustment"}
+              highlighted={highlighted === "adjustment"}
+              onToggle={toggle}
+            >
+              <p className="text-[14px] text-[#4E5968] leading-relaxed mt-3">
+                출퇴근을 깜빡하거나 늦게 찍었을 때, 직접 조정을 신청할 수 있어요.
+                관리자가 확인 후 승인하면 반영돼요.
+              </p>
+
+              <Sub>이런 경우에 조정 카드가 나와요</Sub>
+              <div className="space-y-2 mt-1">
+                <div className="p-3 bg-[#F9FAFB] rounded-[16px]">
+                  <p className="text-[13px] font-bold text-[#191F28] mb-1">출근 지연</p>
+                  <p className="text-[13px] text-[#4E5968]">
+                    스케줄 시작시간보다 10분 이상 늦게 출근을 찍은 경우
+                  </p>
+                </div>
+                <div className="p-3 bg-[#F9FAFB] rounded-[16px]">
+                  <p className="text-[13px] font-bold text-[#191F28] mb-1">조기 퇴근</p>
+                  <p className="text-[13px] text-[#4E5968]">
+                    스케줄 종료시간보다 10분 이상 일찍 퇴근을 찍은 경우
+                  </p>
+                </div>
+                <div className="p-3 bg-[#F9FAFB] rounded-[16px]">
+                  <p className="text-[13px] font-bold text-[#191F28] mb-1">출퇴근 미체크</p>
+                  <p className="text-[13px] text-[#4E5968]">
+                    스케줄이 있는데 출근 또는 퇴근 기록이 없는 경우
+                  </p>
+                </div>
+              </div>
+
+              <Sub>신청 방법</Sub>
+              <div className="space-y-3">
+                <Step num={1} text="홈 화면에 '근태 조정이 필요해요' 카드가 뜨면 해당 날짜를 탭해요." />
+                <Step num={2} text="조정 항목을 확인하고, 실제 출퇴근 시각과 사유를 입력해요." />
+                <Step num={3} text="'신청하기'를 탭하면 관리자에게 전달돼요." />
+              </div>
+
+              <Sub>&quot;문제 없어요&quot; 버튼</Sub>
+              <p className="text-[13px] text-[#4E5968] leading-relaxed">
+                출근 지연이나 조기 퇴근이 실제로 맞는 경우 (깜빡한 게 아닌 경우),
+                &quot;문제 없어요&quot;를 탭하면 조정 없이 확인 처리돼요.
+                출퇴근 미체크는 반드시 실제 시각을 입력해야 해요.
+              </p>
+
+              {/* 예시 UI */}
+              <Sub>이렇게 보여요</Sub>
+              <div className="mt-2 border border-[#E5E8EB] rounded-[20px] overflow-hidden">
+                {/* 홈 카드 예시 */}
+                <div className="p-4 bg-white">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-6 h-6 bg-[#FFF7E6] rounded-full flex items-center justify-center">
+                      <span className="text-[12px]">&#9888;&#65039;</span>
+                    </div>
+                    <p className="text-[14px] font-bold text-[#191F28]">근태 조정이 필요해요</p>
+                    <span className="ml-auto px-2 py-0.5 bg-[#FFF7E6] text-[#F59E0B] rounded-full text-[11px] font-bold">2건</span>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between px-3 py-2.5 bg-[#FFFBF0] rounded-xl">
+                      <div>
+                        <p className="text-[12px] font-bold text-[#191F28]">4/2 (수)</p>
+                        <p className="text-[11px] text-[#F59E0B] font-medium">출근 25분 지연 &middot; 퇴근 미체크</p>
+                      </div>
+                      <span className="text-[11px] font-bold text-[#3182F6]">조정 신청</span>
+                    </div>
+                    <div className="flex items-center justify-between px-3 py-2.5 bg-[#FFFBF0] rounded-xl">
+                      <div>
+                        <p className="text-[12px] font-bold text-[#191F28]">4/1 (화)</p>
+                        <p className="text-[11px] text-[#F59E0B] font-medium">출퇴근 미체크</p>
+                      </div>
+                      <span className="text-[11px] font-bold text-[#3182F6]">조정 신청</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="h-px bg-[#E5E8EB]" />
+
+                {/* 모달 예시 */}
+                <div className="p-4 bg-[#F9FAFB]">
+                  <p className="text-[12px] font-bold text-[#8B95A1] mb-2">탭하면 조정 신청 화면이 열려요</p>
+                  <div className="bg-white rounded-2xl p-3.5 shadow-sm border border-[#E5E8EB]">
+                    <p className="text-[13px] font-bold text-[#191F28] mb-2">4월 2일 (수)</p>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between px-3 py-2 rounded-xl border border-[#3182F6] bg-[#E8F3FF]">
+                        <div>
+                          <p className="text-[12px] font-bold text-[#3182F6]">출근을 늦게 찍었어요</p>
+                          <p className="text-[10px] text-[#3182F6]/70">출근 25분 지연</p>
+                        </div>
+                        <span className="text-[10px] font-bold text-[#3182F6] px-2 py-1 bg-white/60 rounded-full">문제 없어요</span>
+                      </div>
+                      <div className="px-3 py-2 rounded-xl border border-[#3182F6] bg-[#E8F3FF]">
+                        <p className="text-[12px] font-bold text-[#3182F6]">퇴근을 안 찍었어요</p>
+                        <p className="text-[10px] text-[#3182F6]/70">퇴근 미체크</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <Tip>
+                출퇴근 예정시간이 지났는데 아직 안 찍었으면 알림이 와요.
+                알림을 받으면 바로 출퇴근 버튼을 눌러주세요.
               </Tip>
             </Section>
 

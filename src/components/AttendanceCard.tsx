@@ -91,6 +91,7 @@ export default function AttendanceCard({
   const { user } = useAuth();
   const userId = user?.id ?? null;
   const isProcessingRef = useRef(false);
+  const [cooldown, setCooldown] = useState(false);
 
   // 체크리스트 재개 상태
   const [pendingResume, setPendingResume] = useState<{
@@ -276,6 +277,10 @@ export default function AttendanceCard({
         toast.error("출근 기록이 없어요", {
           description: "먼저 출근 버튼을 눌러주세요",
         });
+      } else if (msg.includes("TOO_FREQUENT_ATTENDANCE")) {
+        toast.error("잠시 후 다시 시도해주세요", {
+          description: "출퇴근 기록은 1분 간격으로만 가능해요",
+        });
       } else {
         logError({ message: "출퇴근 기록 실패", error, source: "AttendanceCard/processAttendance", context: { type, attendanceType } });
         toast.error("기록에 실패했어요. 다시 시도해주세요.");
@@ -398,6 +403,9 @@ export default function AttendanceCard({
 
     onSuccess();
     setLoading(false);
+    // 60초 쿨다운
+    setCooldown(true);
+    setTimeout(() => setCooldown(false), 60_000);
   };
 
   // ─── 좌표 확정 후 출퇴근 진행 ─────────────────────────────────────────────
@@ -526,7 +534,11 @@ export default function AttendanceCard({
 
   // ─── 출퇴근 버튼 탭 ────────────────────────────────────────────────────────
   const handleAttendance = async (type: "IN" | "OUT") => {
-    if (isProcessingRef.current) return; // 중복 클릭 방지
+    if (cooldown) {
+      toast("잠시 후 다시 시도해주세요.", { description: "출퇴근 기록은 1분 간격으로만 가능해요." });
+      return;
+    }
+    if (isProcessingRef.current) return;
     isProcessingRef.current = true;
     try {
       // 퇴근: 체크리스트 먼저 확인
