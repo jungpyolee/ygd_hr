@@ -233,7 +233,7 @@ export default function PushNotificationSettings() {
             />
           </button>
           <div
-            className={`overflow-hidden transition-all duration-300 ease-in-out ${detailOpen ? "max-h-[500px] opacity-100 mt-2" : "max-h-0 opacity-0"}`}
+            className={`overflow-hidden transition-all duration-300 ease-in-out ${detailOpen ? "max-h-[700px] opacity-100 mt-2" : "max-h-0 opacity-0"}`}
           >
             <div className="space-y-4">
               {EMPLOYEE_SETTING_GROUPS.map((group) => (
