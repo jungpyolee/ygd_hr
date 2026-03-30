@@ -1,49 +1,110 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 연경당 HR
 
-## Git 계정 (jungpyolee 전용)
+> 직원 10명 규모 한식 외식 브랜드의 근태 관리를 위해 만든 사내 PWA.
+> GPS 기반 출퇴근, 스케줄 캘린더, 관리자 대시보드까지 — 실제 매장에서 매일 사용 중입니다.
+>
+> **개발 기간: 2주** (2026.03.16 ~ 03.30)
 
-이 프로젝트는 **jungpyolee** GitHub 계정으로만 커밋합니다.  
-새로 클론했거나 다른 머신에서 작업할 때 한 번만 실행하세요:
+<br/>
 
-```bash
-git config user.name jungpyolee
-git config user.email jungpyo5789@gmail.com
-git config core.hooksPath .githooks
+## 스크린샷
+
+### 직원용 (모바일)
+
+<p>
+  <img src="docs/screenshots/home.png" width="200" />
+  <img src="docs/screenshots/business-trip.png" width="200" />
+  <img src="docs/screenshots/calendar.png" width="200" />
+  <img src="docs/screenshots/calendar-detail.png" width="200" />
+</p>
+<p>
+  <img src="docs/screenshots/recipe-detail.png" width="200" />
+  <img src="docs/screenshots/avatar-editor.png" width="200" />
+  <img src="docs/screenshots/profile-edit.png" width="200" />
+  <img src="docs/screenshots/guide.png" width="200" />
+</p>
+
+### 관리자용 (데스크톱)
+
+<p>
+  <img src="docs/screenshots/admin-calendar.png" width="800" />
+</p>
+<p>
+  <img src="docs/screenshots/admin-stats.png" width="800" />
+</p>
+<p>
+  <img src="docs/screenshots/admin-recipe.png" width="800" />
+</p>
+<p>
+  <img src="docs/screenshots/admin-settings.png" width="800" />
+</p>
+
+<br/>
+
+## 주요 기능
+
+### 출퇴근
+
+- GPS 기반 자동 매장 감지 (반경 100m)
+- 출장 출근 / 원격 퇴근 모드
+- QR 코드 체크인
+- 60초 이내 중복 타이밍 방지
+- 근태 조정 요청 (지각, 조퇴, 미체크 자동 감지 → 사유 제출 → 관리자 승인)
+
+### 스케줄 & 캘린더
+
+- 내 스케줄 / 근무 기록 / 팀 스케줄 / 회사 일정 레이어 토글
+- 월간 근무일수, 총 근무시간 자동 집계
+- 대타 요청 → 승인 → 수락 워크플로우
+
+### 관리자 대시보드
+
+- 통합 캘린더 (전 직원 주간 스케줄 한눈에)
+- 근태 통계 (출근율, 지각, 초과근무)
+- 매장별 컬러 코딩, 인정 단위, 최소 표시 기준 설정
+- 레시피 관리, 공지사항, 체크리스트 설정
+
+### 기타
+
+- 푸시 알림 (출퇴근 리마인더, 대타, 공지)
+- 종로11번 버스 실시간 도착 정보
+- 교통 통제 자동 알림
+- 인앱 이용가이드 & 업데이트 내역
+
+<br/>
+
+## 기술 스택
+
+| 영역 | 기술 |
+|------|------|
+| Framework | Next.js 16 (App Router) |
+| Language | TypeScript |
+| UI | React 19 + Tailwind CSS v4 + shadcn/ui |
+| Backend | Supabase (Auth, PostgreSQL, RLS, Realtime) |
+| Data Fetching | SWR |
+| PWA | Serwist (Service Worker, Offline, Push) |
+| Deployment | Vercel |
+| Font | Pretendard |
+
+<br/>
+
+## 아키텍처
+
+```
+[모바일 PWA]          [관리자 웹]
+     │                    │
+     └──── Next.js App Router ────┘
+                  │
+            Supabase (BaaS)
+           ┌──────┼──────┐
+         Auth   Postgres  Storage
+                  │
+              RLS 정책
+         (행 단위 접근 제어)
 ```
 
-다른 계정으로 커밋을 시도하면 pre-commit 훅에서 막힙니다.
-
-## Getting Started
-
-First, run the development server:
-
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **인증**: Supabase Auth (SSR 쿠키 기반 세션)
+- **권한**: 모든 테이블 RLS 활성화, `is_admin()` 함수로 관리자 권한 분기
+- **실시간**: Supabase Realtime으로 알림 구독
+- **PWA**: Serwist 기반 Service Worker — 오프라인 캐싱, Web Push 알림
+- **위치**: Geolocation API + Haversine 거리 계산으로 매장 자동 감지
