@@ -3,6 +3,9 @@
 # claude
 .claude/
 
+# private memo
+docs/memo.md
+
 # dependencies
 /node_modules
 /.pnp
