@@ -584,7 +584,10 @@ export default function AttendanceCard({
         }
 
         if (result.status === "denied") {
-          openStoreFallback(type);
+          setPendingType(null);
+          toast.error("위치를 확인할 수 없어요", {
+            description: "QR 코드로 출근해 주세요",
+          });
           return;
         }
 
@@ -596,8 +599,11 @@ export default function AttendanceCard({
           return;
         }
 
-        // denied / timeout / unavailable → 매장 수동 선택 fallback
-        openStoreFallback(type);
+        // denied / timeout / unavailable → QR 출근 안내
+        setPendingType(null);
+        toast.error("위치를 확인할 수 없어요", {
+          description: "QR 코드로 출근해 주세요",
+        });
       } finally {
         setIsRetrying(false);
       }
