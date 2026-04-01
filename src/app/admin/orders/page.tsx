@@ -33,6 +33,7 @@ interface KurlyProduct {
 interface OrderItem {
   productId: string;
   quantity: number;
+  manufactureDate?: string;
 }
 
 const SUPPLIER_NAME = "(주)연경당 (VD6235)";
@@ -111,6 +112,7 @@ export default function AdminOrdersPage() {
             matchedItems.push({
               productId: product.id,
               quantity: item.totalQuantity,
+              manufactureDate: item.manufactureDate,
             });
           } else {
             unmatchedCodes.push(item.masterCode);
@@ -199,7 +201,7 @@ export default function AdminOrdersPage() {
           productName: product.name,
           productCode: product.master_code,
           expiryDate: expiryDate || "-",
-          manufactureDate: manufactureDate || "-",
+          manufactureDate: item.manufactureDate || manufactureDate || "-",
           boxQuantity: boxQty,
           totalQuantity: item.quantity,
           boxNumber: box,
