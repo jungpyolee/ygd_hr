@@ -84,7 +84,7 @@ interface SlotDetail {
   slot_date: string;
   start_time: string;
   end_time: string;
-  work_location: string;
+  store_name: string;
   minutes: number;
 }
 
@@ -111,12 +111,6 @@ function minutesToHours(mins: number): string {
 function won(n: number): string {
   return n.toLocaleString("ko-KR") + "원";
 }
-
-const LOCATION_LABELS: Record<string, string> = {
-  cafe: "매장",
-  factory: "공장",
-  catering: "케이터링",
-};
 
 function settingsToRates(s: PayrollSettings): PayrollRates {
   return {
@@ -230,7 +224,7 @@ export default function AdminPayrollPage() {
       // schedule_slots
       const { data: slots } = await supabase
         .from("schedule_slots")
-        .select("slot_date, start_time, end_time, work_location, weekly_schedules!inner(status)")
+        .select("slot_date, start_time, end_time, store_id, stores!store_id(name), weekly_schedules!inner(status)")
         .eq("profile_id", profileId)
         .eq("status", "active")
         .eq("weekly_schedules.status", "confirmed")
@@ -252,7 +246,7 @@ export default function AdminPayrollPage() {
         slot_date: s.slot_date,
         start_time: s.start_time,
         end_time: s.end_time,
-        work_location: s.work_location,
+        store_name: s.stores?.name ?? "",
         minutes: calcSlotMinutes(s.start_time, s.end_time),
       }));
 
@@ -1083,7 +1077,7 @@ export default function AdminPayrollPage() {
                             {minutesToLabel(slot.minutes)}
                           </span>
                           <span className="text-[#8B95A1] w-12 text-right text-[11px]">
-                            {LOCATION_LABELS[slot.work_location] ?? slot.work_location}
+                            {slot.store_name}
                           </span>
                         </div>
                       ))}
