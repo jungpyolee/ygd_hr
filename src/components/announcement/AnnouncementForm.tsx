@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { Pin } from "lucide-react";
 import { toast } from "sonner";
+import { useWorkplaces } from "@/lib/hooks/useWorkplaces";
 import type { Announcement, AnnouncementTargetRole } from "@/types/announcement";
 
 interface AnnouncementFormProps {
@@ -27,7 +28,19 @@ export default function AnnouncementForm({ initialData }: AnnouncementFormProps)
   const [targetRole, setTargetRole] = useState<AnnouncementTargetRole>(
     initialData?.target_roles?.[0] ?? "all"
   );
+  const [targetStoreIds, setTargetStoreIds] = useState<string[]>(
+    initialData?.target_store_ids ?? []
+  );
   const [submitting, setSubmitting] = useState(false);
+  const { workplaces } = useWorkplaces();
+
+  const allStoresSelected = targetStoreIds.length === 0;
+
+  const toggleStore = (storeId: string) => {
+    setTargetStoreIds((prev) =>
+      prev.includes(storeId) ? prev.filter((id) => id !== storeId) : [...prev, storeId]
+    );
+  };
 
   const isEdit = !!initialData;
 
@@ -55,6 +68,7 @@ export default function AnnouncementForm({ initialData }: AnnouncementFormProps)
           content: content.trim(),
           is_pinned: isPinned,
           target_roles: [targetRole],
+          target_store_ids: targetStoreIds,
         })
         .eq("id", initialData.id);
 
@@ -72,6 +86,7 @@ export default function AnnouncementForm({ initialData }: AnnouncementFormProps)
           content: content.trim(),
           is_pinned: isPinned,
           target_roles: [targetRole],
+          target_store_ids: targetStoreIds,
           created_by: user.id,
         })
         .select()
@@ -84,7 +99,7 @@ export default function AnnouncementForm({ initialData }: AnnouncementFormProps)
       }
 
       // 대상 직원들에게 알림 발송
-      await sendAnnouncementNotifications(newItem.id, title.trim(), targetRole);
+      await sendAnnouncementNotifications(newItem.id, title.trim(), targetRole, targetStoreIds);
       toast.success("공지를 등록했어요");
     }
 
@@ -95,12 +110,24 @@ export default function AnnouncementForm({ initialData }: AnnouncementFormProps)
   const sendAnnouncementNotifications = async (
     announcementId: string,
     announcementTitle: string,
-    role: AnnouncementTargetRole
+    role: AnnouncementTargetRole,
+    storeIds: string[]
   ) => {
     // 대상 직원 조회
     let query = supabase.from("profiles").select("id").eq("role", "employee");
     if (role === "full_time") query = query.eq("employment_type", "full_time");
-    if (role === "part_time") query = query.eq("employment_type", "part_time");
+    if (role === "part_time") query = query.like("employment_type", "part_time%");
+
+    // 근무지 필터
+    if (storeIds.length > 0) {
+      const { data: assigned } = await supabase
+        .from("employee_store_assignments")
+        .select("profile_id")
+        .in("store_id", storeIds);
+      const profileIds = assigned?.map((a) => a.profile_id) ?? [];
+      if (!profileIds.length) return;
+      query = query.in("id", profileIds);
+    }
 
     const { data: targets } = await query;
     if (!targets?.length) return;
@@ -159,6 +186,48 @@ export default function AnnouncementForm({ initialData }: AnnouncementFormProps)
                 }`}
               >
                 {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 근무지 대상 */}
+        <div className="space-y-2">
+          <label className="text-[13px] font-bold text-[#4E5968]">근무지</label>
+          <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={() => setTargetStoreIds([])}
+              className={`px-4 py-2 rounded-full text-[13px] font-semibold transition-colors ${
+                allStoresSelected
+                  ? "bg-[#3182F6] text-white"
+                  : "bg-[#F2F4F6] text-[#4E5968]"
+              }`}
+            >
+              전체 근무지
+            </button>
+            {workplaces.map((w) => (
+              <button
+                key={w.id}
+                onClick={() => {
+                  if (allStoresSelected) {
+                    // 전체→개별: 클릭한 근무지만 선택
+                    setTargetStoreIds([w.id]);
+                  } else {
+                    toggleStore(w.id);
+                  }
+                }}
+                className={`px-4 py-2 rounded-full text-[13px] font-semibold transition-colors ${
+                  !allStoresSelected && targetStoreIds.includes(w.id)
+                    ? "text-white"
+                    : "bg-[#F2F4F6] text-[#4E5968]"
+                }`}
+                style={
+                  !allStoresSelected && targetStoreIds.includes(w.id)
+                    ? { backgroundColor: w.color }
+                    : undefined
+                }
+              >
+                {w.label}
               </button>
             ))}
           </div>
