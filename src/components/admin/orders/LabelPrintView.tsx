@@ -31,8 +31,8 @@ function LabelCard({ label }: { label: LabelData }) {
         <Row label="상품명" value={label.productName} bold />
         <Row label="상품코드" value={label.productCode} />
         <Row
-          label={label.expiryDate && label.expiryDate !== "-" ? "유통기한(소비기한) /제조일자" : "제조일자"}
-          value={label.expiryDate && label.expiryDate !== "-" ? `${label.expiryDate} / ${label.manufactureDate}` : label.manufactureDate}
+          label="유통기한(소비기한)/제조일자"
+          value={label.manufactureDate}
         />
         <Row
           label="수량/총수량"
@@ -226,7 +226,7 @@ export function openLabelPrintWindow(labels: LabelData[]) {
             <tr><td class="field-name">공급사명</td><td class="field-value">${l.supplierName}</td></tr>
             <tr><td class="field-name">상품명</td><td class="field-value bold">${l.productName}</td></tr>
             <tr><td class="field-name">상품코드</td><td class="field-value">${l.productCode}</td></tr>
-            <tr><td class="field-name">${l.expiryDate && l.expiryDate !== "-" ? "유통기한(소비기한) /제조일자" : "제조일자"}</td><td class="field-value">${l.expiryDate && l.expiryDate !== "-" ? `${l.expiryDate} / ${l.manufactureDate}` : l.manufactureDate}</td></tr>
+            <tr><td class="field-name">유통기한(소비기한)/제조일자</td><td class="field-value">${l.manufactureDate}</td></tr>
             <tr><td class="field-name">수량/총수량</td><td class="field-value">박스 내 입수량 ( ${l.boxQuantity} )  /  총 입고수량 ( ${l.totalQuantity} )</td></tr>
             <tr><td class="field-name">C/T</td><td class="field-value">박스 번호 ( ${l.boxNumber} )  /  전체 박스 수 ( ${l.totalBoxes} )</td></tr>
           </table>
