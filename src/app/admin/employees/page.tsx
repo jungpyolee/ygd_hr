@@ -53,6 +53,7 @@ interface Profile {
   position_keys: string[] | null;
   hourly_wage: number | null;
   insurance_type: string | null;
+  resident_registration_number: string | null;
   avatar_config?: any;
 }
 
@@ -1030,6 +1031,20 @@ export default function AdminEmployeesPage() {
                       onChange={(e) =>
                         handleFormChange("account_number", e.target.value)
                       }
+                      className="w-full px-4 py-2.5 bg-[#F9FAFB] border border-slate-200 rounded-xl text-[14px] text-[#191F28] focus:outline-none focus:border-[#3182F6] transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[12px] font-medium text-[#8B95A1] mb-1">
+                      주민등록번호
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.resident_registration_number || ""}
+                      onChange={(e) =>
+                        handleFormChange("resident_registration_number", e.target.value)
+                      }
+                      placeholder="000000-0000000"
                       className="w-full px-4 py-2.5 bg-[#F9FAFB] border border-slate-200 rounded-xl text-[14px] text-[#191F28] focus:outline-none focus:border-[#3182F6] transition-all"
                     />
                   </div>
