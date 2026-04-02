@@ -334,7 +334,7 @@ export default function AdminLayout({
       case "attendance_in":
       case "attendance_out":
         // 근태 조회 페이지로 이동
-        router.push("/admin/attendance");
+        router.push("/admin/calendar");
         break;
       case "substitute_requested":
         router.push("/admin/schedules/substitutes");

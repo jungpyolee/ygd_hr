@@ -25,7 +25,7 @@ export function getNotificationUrl(
       case "attendance_fallback_out":
       case "attendance_qr_in":
       case "attendance_qr_out":
-        return "/admin/attendance";
+        return "/admin/calendar";
       case "substitute_requested":
         return "/admin/schedules/substitutes";
       case "adjustment_requested":

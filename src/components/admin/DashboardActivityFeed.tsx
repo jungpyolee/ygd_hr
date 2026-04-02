@@ -42,7 +42,7 @@ function getNotiRoute(type: string): string {
       return "/admin/employees";
     case "attendance_in":
     case "attendance_out":
-      return "/admin/attendance";
+      return "/admin/calendar";
     case "substitute_requested":
       return "/admin/schedules/substitutes";
     case "announcement":

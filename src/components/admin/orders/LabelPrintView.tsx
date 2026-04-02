@@ -1,5 +1,7 @@
 "use client";
 
+import { toast } from "sonner";
+
 export interface LabelData {
   orderCode: string;
   supplierName: string;
@@ -92,7 +94,7 @@ function Row({
 export function openLabelPrintWindow(labels: LabelData[]) {
   const printWindow = window.open("", "_blank", "width=800,height=1000");
   if (!printWindow) {
-    alert("팝업이 차단되었어요. 팝업 허용 후 다시 시도해주세요.");
+    toast.error("팝업이 차단되었어요. 브라우저 설정에서 팝업을 허용한 후 다시 시도해주세요.");
     return;
   }
 
