@@ -32,6 +32,7 @@ import {
   BarChart2,
   QrCode,
   Package,
+  Banknote,
 } from "lucide-react";
 
 export default function AdminLayout({
@@ -263,6 +264,11 @@ export default function AdminLayout({
       name: "체크리스트 설정",
       path: "/admin/checklists",
       icon: <ClipboardList className="w-5 h-5" />,
+    },
+    {
+      name: "급여 정산",
+      path: "/admin/payroll",
+      icon: <Banknote className="w-5 h-5" />,
     },
     {
       name: "발주 관리",

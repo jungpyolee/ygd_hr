@@ -79,6 +79,7 @@ export async function sendPushToRole(
   role: "admin" | "employee" | "all",
   payload: PushPayload
 ): Promise<void> {
+  ensureVapid();
   // 1. 해당 role의 유저 목록
   let profileQuery = getAdminSupabase().from("profiles").select("id, role");
   if (role !== "all") profileQuery = profileQuery.eq("role", role);

@@ -6,6 +6,7 @@ export interface Announcement {
   content: string;
   is_pinned: boolean;
   target_roles: AnnouncementTargetRole[];
+  target_store_ids: string[];
   created_by: string;
   created_at: string;
   updated_at: string;

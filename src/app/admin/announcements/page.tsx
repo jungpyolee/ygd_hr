@@ -8,6 +8,7 @@ import { Pin, PinOff, Pencil, Trash2, Plus, Megaphone } from "lucide-react";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { toast } from "sonner";
+import { useWorkplaces } from "@/lib/hooks/useWorkplaces";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
 import type { Announcement } from "@/types/announcement";
 
@@ -20,6 +21,7 @@ const TARGET_LABEL: Record<string, string> = {
 export default function AdminAnnouncementsPage() {
   const router = useRouter();
   const [deleteTarget, setDeleteTarget] = useState<Announcement | null>(null);
+  const { byId: storeById } = useWorkplaces();
 
   const { data: announcements = [], isLoading: loading, mutate } = useSWR(
     "admin-announcements-list",
@@ -106,6 +108,25 @@ export default function AdminAnnouncementsPage() {
                   <span className="text-[11px] text-[#8B95A1] bg-[#F2F4F6] px-2 py-0.5 rounded-full">
                     {item.target_roles.map((r) => TARGET_LABEL[r] ?? r).join(", ")}
                   </span>
+                  {item.target_store_ids?.length > 0 ? (
+                    item.target_store_ids.map((sid) => {
+                      const store = storeById[sid];
+                      if (!store) return null;
+                      return (
+                        <span
+                          key={sid}
+                          className="text-[11px] font-medium px-2 py-0.5 rounded-full"
+                          style={{ color: store.color, backgroundColor: store.bg_color }}
+                        >
+                          {store.label}
+                        </span>
+                      );
+                    })
+                  ) : (
+                    <span className="text-[11px] text-[#8B95A1] bg-[#F2F4F6] px-2 py-0.5 rounded-full">
+                      전체 근무지
+                    </span>
+                  )}
                 </div>
                 <p className="text-[14px] font-bold text-[#191F28] truncate">{item.title}</p>
                 <p className="text-[12px] text-[#8B95A1] mt-0.5">
