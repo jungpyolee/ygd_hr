@@ -481,8 +481,8 @@ export default function AdminLayout({
             className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in duration-300"
             onClick={() => setIsMobileMenuOpen(false)}
           />
-          <div className="relative bg-white rounded-t-[32px] p-6 pt-8 pb-10 animate-in slide-in-from-bottom-full duration-300 shadow-2xl">
-            <div className="flex justify-between items-center mb-6 px-1">
+          <div className="relative bg-white rounded-t-[32px] p-6 pt-8 pb-10 animate-in slide-in-from-bottom-full duration-300 shadow-2xl max-h-[85vh] flex flex-col">
+            <div className="flex justify-between items-center mb-6 px-1 shrink-0">
               <h2 className="text-xl font-bold text-[#191F28]">메뉴</h2>
               <button
                 onClick={() => setIsMobileMenuOpen(false)}
@@ -491,7 +491,7 @@ export default function AdminLayout({
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <nav className="space-y-3">
+            <nav className="space-y-3 overflow-y-auto overscroll-contain">
               {menus.map((menu) => {
                 const isMobileActive =
                   menu.path === "/admin"
