@@ -53,6 +53,7 @@ interface Profile {
   position_keys: string[] | null;
   hourly_wage: number | null;
   insurance_type: string | null;
+  tax_category: "business" | "daily" | "regular" | null;
   resident_registration_number: string | null;
   avatar_config?: any;
 }
@@ -966,29 +967,34 @@ export default function AdminEmployeesPage() {
                     </div>
                     <div>
                       <label className="block text-[12px] font-medium text-[#8B95A1] mb-2">
-                        보험 유형
+                        세금 유형
                       </label>
-                      <div className="flex gap-3">
+                      <div className="flex flex-wrap gap-3">
                         {[
-                          { value: "national", label: "2대보험" },
-                          { value: "3.3", label: "3.3% 원천징수" },
+                          { value: "business", label: "사업 (3.3%)" },
+                          { value: "daily", label: "일용 (고용보험)" },
+                          { value: "regular", label: "근로 (4대보험)" },
                         ].map((opt) => (
                           <button
                             key={opt.value}
                             type="button"
-                            onClick={() =>
-                              handleFormChange("insurance_type", opt.value)
-                            }
+                            onClick={() => {
+                              handleFormChange("tax_category", opt.value);
+                              handleFormChange(
+                                "insurance_type",
+                                opt.value === "business" ? "3.3" : "national",
+                              );
+                            }}
                             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold transition-all border ${
-                              editForm.insurance_type === opt.value
+                              editForm.tax_category === opt.value
                                 ? "bg-[#E8F3FF] text-[#3182F6] border-[#3182F6]"
                                 : "bg-[#F2F4F6] text-[#4E5968] border-transparent"
                             }`}
                           >
                             <span
-                              className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${editForm.insurance_type === opt.value ? "border-[#3182F6]" : "border-[#8B95A1]"}`}
+                              className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${editForm.tax_category === opt.value ? "border-[#3182F6]" : "border-[#8B95A1]"}`}
                             >
-                              {editForm.insurance_type === opt.value && (
+                              {editForm.tax_category === opt.value && (
                                 <span className="w-2 h-2 bg-[#3182F6] rounded-full" />
                               )}
                             </span>

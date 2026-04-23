@@ -24,10 +24,12 @@ import {
 import {
   calcSlotMinutes,
   calcGrossSalary,
-  calcDeductions,
+  calcDeductionsByCategory,
   calcNetSalary,
   deductionToEntryFields,
+  taxCategoryToInsuranceType,
   type PayrollRates,
+  type TaxCategory,
 } from "@/lib/payroll-calc";
 import { MINIMUM_WAGE } from "@/lib/payroll-constants";
 
@@ -40,6 +42,7 @@ interface PayrollSettings {
   employment_insurance_rate: number;
   income_tax_rate: number;
   local_income_tax_multiplier: number;
+  long_term_care_rate: number;
 }
 
 interface PayrollPeriod {
@@ -59,9 +62,12 @@ interface PayrollEntry {
   total_minutes: number;
   hourly_wage: number;
   insurance_type: string;
+  tax_category: TaxCategory | null;
+  reported_salary: number | null;
   gross_salary: number;
   deduction_national_pension: number;
   deduction_health_insurance: number;
+  deduction_long_term_care: number;
   deduction_employment_insurance: number;
   deduction_income_tax: number;
   deduction_local_income_tax: number;
@@ -119,8 +125,21 @@ function settingsToRates(s: PayrollSettings): PayrollRates {
     employmentInsuranceRate: Number(s.employment_insurance_rate),
     incomeTaxRate: Number(s.income_tax_rate),
     localIncomeTaxMultiplier: Number(s.local_income_tax_multiplier),
+    longTermCareRate: Number(s.long_term_care_rate),
   };
 }
+
+const TAX_CATEGORY_LABEL: Record<TaxCategory, string> = {
+  business: "사업",
+  daily: "일용",
+  regular: "근로",
+};
+
+const TAX_CATEGORY_BADGE: Record<TaxCategory, string> = {
+  business: "bg-[#FEF3C7] text-[#F59E0B]",
+  daily: "bg-[#DCFCE7] text-[#16A34A]",
+  regular: "bg-[#E8F3FF] text-[#3182F6]",
+};
 
 // ── 메인 컴포넌트 ────────────────────────────────────────────────────
 
@@ -144,6 +163,8 @@ export default function AdminPayrollPage() {
     overtime_minutes?: number;
     manual_adjustment?: number;
     adjustment_reason?: string;
+    tax_category?: TaxCategory;
+    reported_salary?: number;
   }>({});
   // 월 이동
   const goPrev = () => {
@@ -334,13 +355,13 @@ export default function AdminPayrollPage() {
       // 1. 시급이 있는 활성 직원 목록
       const { data: members } = await supabase
         .from("profiles")
-        .select("id, hourly_wage, insurance_type")
+        .select("id, hourly_wage, insurance_type, tax_category")
         .not("hourly_wage", "is", null)
         .eq("role", "employee");
       // admin도 포함 (사장님이 본인 급여도 계산할 수 있음)
       const { data: admins } = await supabase
         .from("profiles")
-        .select("id, hourly_wage, insurance_type")
+        .select("id, hourly_wage, insurance_type, tax_category")
         .not("hourly_wage", "is", null)
         .eq("role", "admin");
       const allMembers = [...(members ?? []), ...(admins ?? [])];
@@ -395,12 +416,13 @@ export default function AdminPayrollPage() {
         periodId = newPeriod.id;
       }
 
-      // 7. 기존 entries의 수동 조정 보존
+      // 7. 기존 entries의 수동 조정 + 근로소득 신고월액 보존
       const { data: existingEntries } = await supabase
         .from("payroll_entries")
-        .select("profile_id, manual_adjustment, adjustment_reason")
+        .select("profile_id, manual_adjustment, adjustment_reason, reported_salary")
         .eq("payroll_period_id", periodId);
       const adjMap = new Map<string, { manual_adjustment: number; adjustment_reason: string | null }>();
+      const reportedMap = new Map<string, number>();
       (existingEntries ?? []).forEach((e: any) => {
         if (e.manual_adjustment !== 0) {
           adjMap.set(e.profile_id, {
@@ -408,6 +430,7 @@ export default function AdminPayrollPage() {
             adjustment_reason: e.adjustment_reason,
           });
         }
+        if (e.reported_salary != null) reportedMap.set(e.profile_id, e.reported_salary);
       });
 
       // 8. 기존 entries 삭제
@@ -419,8 +442,17 @@ export default function AdminPayrollPage() {
         const overtimeMinutes = otMinMap.get(m.id) ?? 0;
         const totalMinutes = scheduledMinutes + overtimeMinutes;
         const grossSalary = calcGrossSalary(totalMinutes, m.hourly_wage);
-        const insuranceType = m.insurance_type ?? "3.3";
-        const { deductions, total: deductionTotal } = calcDeductions(grossSalary, insuranceType, rates);
+        const taxCategory: TaxCategory = (m.tax_category as TaxCategory | null)
+          ?? (m.insurance_type === "national" ? "regular" : "business");
+        const reportedSalary = taxCategory === "regular"
+          ? (reportedMap.get(m.id) ?? grossSalary)
+          : 0;
+        const { deductions, total: deductionTotal } = calcDeductionsByCategory(
+          taxCategory,
+          grossSalary,
+          reportedSalary,
+          rates,
+        );
         const adj = adjMap.get(m.id);
         const manualAdj = adj?.manual_adjustment ?? 0;
         const netSalary = calcNetSalary(grossSalary, deductionTotal, manualAdj);
@@ -432,9 +464,11 @@ export default function AdminPayrollPage() {
           overtime_minutes: overtimeMinutes,
           total_minutes: totalMinutes,
           hourly_wage: m.hourly_wage,
-          insurance_type: insuranceType,
+          insurance_type: taxCategoryToInsuranceType(taxCategory),
+          tax_category: taxCategory,
+          reported_salary: taxCategory === "regular" ? reportedSalary : null,
           gross_salary: grossSalary,
-          ...deductionToEntryFields(insuranceType, deductions),
+          ...deductionToEntryFields(taxCategory, deductions),
           deduction_amount: deductionTotal,
           net_salary: netSalary,
           manual_adjustment: manualAdj,
@@ -471,9 +505,15 @@ export default function AdminPayrollPage() {
       const hw = editValues.hourly_wage ?? entry.hourly_wage;
       const sm = editValues.scheduled_minutes ?? entry.scheduled_minutes;
       const om = editValues.overtime_minutes ?? entry.overtime_minutes;
+      const cat: TaxCategory = editValues.tax_category ?? entry.tax_category ?? "business";
       const totalMin = sm + om;
       const gross = calcGrossSalary(totalMin, hw);
-      const { deductions, total: deductionTotal } = calcDeductions(gross, entry.insurance_type, rates);
+      const reported = cat === "regular"
+        ? (editValues.reported_salary ?? entry.reported_salary ?? gross)
+        : 0;
+      const { deductions, total: deductionTotal } = calcDeductionsByCategory(
+        cat, gross, reported, rates,
+      );
       const manualAdj = editValues.manual_adjustment ?? entry.manual_adjustment;
       const net = calcNetSalary(gross, deductionTotal, manualAdj);
 
@@ -484,8 +524,11 @@ export default function AdminPayrollPage() {
           scheduled_minutes: sm,
           overtime_minutes: om,
           total_minutes: totalMin,
+          tax_category: cat,
+          insurance_type: taxCategoryToInsuranceType(cat),
+          reported_salary: cat === "regular" ? reported : null,
           gross_salary: gross,
-          ...deductionToEntryFields(entry.insurance_type, deductions),
+          ...deductionToEntryFields(cat, deductions),
           deduction_amount: deductionTotal,
           net_salary: net,
           manual_adjustment: manualAdj,
@@ -521,6 +564,7 @@ export default function AdminPayrollPage() {
           employment_insurance_rate: rateForm.employment_insurance_rate ?? settings.employment_insurance_rate,
           income_tax_rate: rateForm.income_tax_rate ?? settings.income_tax_rate,
           local_income_tax_multiplier: rateForm.local_income_tax_multiplier ?? settings.local_income_tax_multiplier,
+          long_term_care_rate: rateForm.long_term_care_rate ?? settings.long_term_care_rate,
         })
         .eq("id", settings.id);
       if (error) throw error;
@@ -542,77 +586,130 @@ export default function AdminPayrollPage() {
     try {
       const ExcelJS = (await import("exceljs")).default;
       const workbook = new ExcelJS.Workbook();
-      const sheet = workbook.addWorksheet(`${year}년 ${month}월 급여`);
 
-      // 제목 행
-      sheet.mergeCells("A1:I1");
-      const titleCell = sheet.getCell("A1");
-      titleCell.value = `시급계산기 — ${year}년 ${month}월`;
-      titleCell.font = { bold: true, size: 14 };
-      titleCell.alignment = { horizontal: "center" };
+      const visible = entries.filter(e => e.net_salary !== 0);
+      const fmtHours = (mins: number) => {
+        const h = mins / 60;
+        return Number(h % 1 === 0 ? h : h.toFixed(1));
+      };
 
-      // 헤더 행
-      const headers = [
-        "순번", "성명", "주민등록번호",
-        "일한 시간", "시간당 시급", "총 시급",
-        "공제 유형", "공제액", "실제 지불 급여",
-      ];
-      const headerRow = sheet.addRow(headers);
-      headerRow.font = { bold: true };
-      headerRow.eachCell(cell => {
-        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE8F3FF" } };
-        cell.border = {
-          bottom: { style: "thin", color: { argb: "FFD1D6DB" } },
-        };
-      });
-
-      // 데이터 행 (0원 직원 제외)
-      entries.filter(e => e.net_salary !== 0).forEach((entry, idx) => {
-        const hours = entry.total_minutes / 60;
-        const insuranceLabel = entry.insurance_type === "national" ? "2대보험" : "3.3%";
-        const row = sheet.addRow([
-          idx + 1,
-          entry.name,
-          entry.resident_registration_number ?? "",
-          Number(hours % 1 === 0 ? hours : hours.toFixed(1)),
-          entry.hourly_wage,
-          entry.gross_salary,
-          insuranceLabel + (entry.manual_adjustment !== 0 ? " (조정)" : ""),
-          entry.deduction_amount - entry.manual_adjustment,
-          entry.net_salary,
-        ]);
-        // 숫자 포맷
-        [5, 6, 8, 9].forEach(col => {
-          row.getCell(col).numFmt = "#,##0";
+      const addTitle = (sheet: any, colCount: number) => {
+        sheet.mergeCells(1, 1, 1, colCount);
+        const t = sheet.getCell("A1");
+        t.value = "시급계산기";
+        t.font = { bold: true, size: 14 };
+        t.alignment = { horizontal: "center" };
+      };
+      const styleHeader = (row: any) => {
+        row.font = { bold: true };
+        row.eachCell((c: any) => {
+          c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE8F3FF" } };
+          c.border = { bottom: { style: "thin", color: { argb: "FFD1D6DB" } } };
+          c.alignment = { horizontal: "center" };
         });
-      });
+      };
+      const setNumFmt = (row: any, cols: number[]) => {
+        cols.forEach(c => { row.getCell(c).numFmt = "#,##0"; });
+      };
 
-      // 합계 행
-      sheet.addRow([]);
-      const totalRow = sheet.addRow([
-        "", "합계", "",
-        Number((totals.totalMinutes / 60).toFixed(1)),
-        "",
-        totals.grossSalary,
-        "",
-        totals.deductionAmount,
-        totals.netSalary,
-      ]);
-      totalRow.font = { bold: true };
-      [6, 8, 9].forEach(col => {
-        totalRow.getCell(col).numFmt = "#,##0";
-      });
+      // ───── 시트 1: 사업소득(3.3%) ─────
+      const business = visible.filter(e => e.tax_category === "business");
+      {
+        const sheet = workbook.addWorksheet("사업소득(3.3%)");
+        addTitle(sheet, 9);
+        const headers = ["순번", "성명", "주민등록번호", "근무 시간", "시간당 시급", "총 시급", "국세", "지방세", "차인지급액"];
+        styleHeader(sheet.addRow(headers));
+        business.forEach((e, i) => {
+          const net = e.gross_salary - e.deduction_income_tax - e.deduction_local_income_tax;
+          const row = sheet.addRow([
+            i + 1, e.name, e.resident_registration_number ?? "",
+            fmtHours(e.total_minutes), e.hourly_wage, e.gross_salary,
+            e.deduction_income_tax, e.deduction_local_income_tax, net,
+          ]);
+          setNumFmt(row, [5, 6, 7, 8, 9]);
+        });
+        sheet.addRow([]);
+        const totalMin = business.reduce((s, e) => s + e.total_minutes, 0);
+        const totalGross = business.reduce((s, e) => s + e.gross_salary, 0);
+        const totalNet = business.reduce((s, e) => s + (e.gross_salary - e.deduction_income_tax - e.deduction_local_income_tax), 0);
+        sheet.addRow(["총 근무시간", "", "", fmtHours(totalMin)]);
+        const r1 = sheet.addRow(["신고 총 금액", "", "", totalGross]); setNumFmt(r1, [4]);
+        const r2 = sheet.addRow(["차인지급 총 금액", "", "", totalNet]); setNumFmt(r2, [4]);
+        sheet.addRow([]);
+        sheet.addRow(["* 근무시간, 시간당 시급, 총 시급만 작성하시면 나머지는 자동으로 입력됩니다."]);
+        [6, 12, 18, 12, 12, 14, 12, 12, 16].forEach((w, i) => { sheet.getColumn(i + 1).width = w; });
+      }
 
-      // 열 너비
-      sheet.getColumn(1).width = 6;
-      sheet.getColumn(2).width = 12;
-      sheet.getColumn(3).width = 18;
-      sheet.getColumn(4).width = 12;
-      sheet.getColumn(5).width = 12;
-      sheet.getColumn(6).width = 14;
-      sheet.getColumn(7).width = 14;
-      sheet.getColumn(8).width = 12;
-      sheet.getColumn(9).width = 16;
+      // ───── 시트 2: 일용소득(2대보험) ─────
+      const daily = visible.filter(e => e.tax_category === "daily");
+      {
+        const sheet = workbook.addWorksheet("일용소득(2대보험)");
+        addTitle(sheet, 8);
+        const headers = ["순번", "성명", "주민등록번호", "일한 시간", "시간당 시급", "총 시급", "고용보험", "차인지급액"];
+        styleHeader(sheet.addRow(headers));
+        daily.forEach((e, i) => {
+          const net = e.gross_salary - e.deduction_employment_insurance;
+          const row = sheet.addRow([
+            i + 1, e.name, e.resident_registration_number ?? "",
+            fmtHours(e.total_minutes), e.hourly_wage, e.gross_salary,
+            e.deduction_employment_insurance, net,
+          ]);
+          setNumFmt(row, [5, 6, 7, 8]);
+        });
+        sheet.addRow([]);
+        const totalMin = daily.reduce((s, e) => s + e.total_minutes, 0);
+        const totalGross = daily.reduce((s, e) => s + e.gross_salary, 0);
+        const totalNet = daily.reduce((s, e) => s + (e.gross_salary - e.deduction_employment_insurance), 0);
+        sheet.addRow(["총 근무시간", "", "", fmtHours(totalMin)]);
+        const r1 = sheet.addRow(["신고 총 금액", "", "", totalGross]); setNumFmt(r1, [4]);
+        const r2 = sheet.addRow(["차인지급 총 금액", "", "", totalNet]); setNumFmt(r2, [4]);
+        sheet.addRow([]);
+        sheet.addRow(["* 근무시간, 시간당 시급, 총 시급만 작성하시면 나머지는 자동으로 입력됩니다."]);
+        [6, 12, 18, 12, 12, 14, 12, 16].forEach((w, i) => { sheet.getColumn(i + 1).width = w; });
+      }
+
+      // ───── 시트 3: 근로소득(4대보험) ─────
+      const regular = visible.filter(e => e.tax_category === "regular");
+      {
+        const sheet = workbook.addWorksheet("근로소득(4대보험)");
+        addTitle(sheet, 14);
+        const headers = [
+          "순번", "성명", "주민등록번호", "일한 시간", "시간당 시급", "총 시급",
+          "신고월액", "건강보험", "요양보험", "국민연금", "고용보험", "소득세", "지방소득세", "차인지급액",
+        ];
+        styleHeader(sheet.addRow(headers));
+        regular.forEach((e, i) => {
+          const deduct = e.deduction_health_insurance + e.deduction_long_term_care
+            + e.deduction_national_pension + e.deduction_employment_insurance
+            + e.deduction_income_tax + e.deduction_local_income_tax;
+          const net = e.gross_salary - deduct;
+          const row = sheet.addRow([
+            i + 1, e.name, e.resident_registration_number ?? "",
+            fmtHours(e.total_minutes), e.hourly_wage, e.gross_salary,
+            e.reported_salary ?? "",
+            e.deduction_health_insurance, e.deduction_long_term_care,
+            e.deduction_national_pension, e.deduction_employment_insurance,
+            e.deduction_income_tax, e.deduction_local_income_tax, net,
+          ]);
+          setNumFmt(row, [5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
+        });
+        sheet.addRow([]);
+        const totalMin = regular.reduce((s, e) => s + e.total_minutes, 0);
+        const totalGross = regular.reduce((s, e) => s + e.gross_salary, 0);
+        const totalNet = regular.reduce((s, e) => {
+          const d = e.deduction_health_insurance + e.deduction_long_term_care
+            + e.deduction_national_pension + e.deduction_employment_insurance
+            + e.deduction_income_tax + e.deduction_local_income_tax;
+          return s + (e.gross_salary - d);
+        }, 0);
+        sheet.addRow(["총 근무시간", "", "", fmtHours(totalMin)]);
+        const r1 = sheet.addRow(["신고 총 금액", "", "", totalGross]); setNumFmt(r1, [4]);
+        const r2 = sheet.addRow(["차인지급 총 금액", "", "", totalNet]); setNumFmt(r2, [4]);
+        sheet.addRow([]);
+        sheet.addRow(["* 근무시간, 시간당 시급, 총 시급만 작성하시면 나머지는 자동으로 입력됩니다."]);
+        sheet.addRow(["근로소득 같은 경우에는 급여명세서를 작성해서 드리오니, 엑셀은 임시 계산이라고 생각해주시고 급여명세서대로 지급해주시면 됩니다."]);
+        [6, 12, 18, 12, 12, 14, 14, 12, 12, 12, 12, 10, 12, 16].forEach((w, i) => { sheet.getColumn(i + 1).width = w; });
+      }
 
       const buffer = await workbook.xlsx.writeBuffer();
       const blob = new Blob([buffer], {
@@ -621,7 +718,7 @@ export default function AdminPayrollPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `급여_${year}년${String(month).padStart(2, "0")}월.xlsx`;
+      a.download = `${year}.${String(month).padStart(2, "0")}. 시급계산기 연경당.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success("엑셀을 다운로드했어요");
@@ -727,13 +824,11 @@ export default function AdminPayrollPage() {
                           <span className="text-[14px] font-semibold text-[#191F28]">
                             {entry.name}
                           </span>
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                            entry.insurance_type === "national"
-                              ? "bg-[#E8F3FF] text-[#3182F6]"
-                              : "bg-[#FEF3C7] text-[#F59E0B]"
-                          }`}>
-                            {entry.insurance_type === "national" ? "2대보험" : "3.3%"}
-                          </span>
+                          {entry.tax_category && (
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${TAX_CATEGORY_BADGE[entry.tax_category]}`}>
+                              {TAX_CATEGORY_LABEL[entry.tax_category]}
+                            </span>
+                          )}
                           {belowMinWage && (
                             <AlertTriangle className="w-3.5 h-3.5 text-[#F59E0B]" />
                           )}
@@ -845,8 +940,14 @@ export default function AdminPayrollPage() {
                             <span className="text-[#4E5968]">세전급여</span>
                             <span className="font-semibold">{won(entry.gross_salary)}</span>
                           </div>
-                          {entry.insurance_type === "national" ? (
+                          {entry.tax_category === "regular" && (
                             <>
+                              {entry.reported_salary != null && (
+                                <div className="flex justify-between text-[#8B95A1]">
+                                  <span className="pl-3">신고월액</span>
+                                  <span>{won(entry.reported_salary)}</span>
+                                </div>
+                              )}
                               <div className="flex justify-between text-[#8B95A1]">
                                 <span className="pl-3">국민연금</span>
                                 <span>-{won(entry.deduction_national_pension)}</span>
@@ -856,11 +957,22 @@ export default function AdminPayrollPage() {
                                 <span>-{won(entry.deduction_health_insurance)}</span>
                               </div>
                               <div className="flex justify-between text-[#8B95A1]">
+                                <span className="pl-3">요양보험</span>
+                                <span>-{won(entry.deduction_long_term_care)}</span>
+                              </div>
+                              <div className="flex justify-between text-[#8B95A1]">
                                 <span className="pl-3">고용보험</span>
                                 <span>-{won(entry.deduction_employment_insurance)}</span>
                               </div>
                             </>
-                          ) : (
+                          )}
+                          {entry.tax_category === "daily" && (
+                            <div className="flex justify-between text-[#8B95A1]">
+                              <span className="pl-3">고용보험</span>
+                              <span>-{won(entry.deduction_employment_insurance)}</span>
+                            </div>
+                          )}
+                          {entry.tax_category === "business" && (
                             <>
                               <div className="flex justify-between text-[#8B95A1]">
                                 <span className="pl-3">소득세</span>
@@ -888,6 +1000,37 @@ export default function AdminPayrollPage() {
                           </div>
                         </div>
                       </div>
+
+                      {/* 세금 유형 / 신고월액 (편집모드) */}
+                      {isEditing && (
+                        <div>
+                          <p className="text-[12px] font-semibold text-[#4E5968] mb-2">세금 유형</p>
+                          <div className="flex items-center gap-2">
+                            <select
+                              defaultValue={entry.tax_category ?? "business"}
+                              onChange={e => setEditValues(v => ({ ...v, tax_category: e.target.value as TaxCategory }))}
+                              className="px-2 py-1 text-[13px] border border-[#E5E8EB] rounded-lg"
+                            >
+                              <option value="business">사업 (3.3%)</option>
+                              <option value="daily">일용 (2대보험)</option>
+                              <option value="regular">근로 (4대보험)</option>
+                            </select>
+                          </div>
+                          {(editValues.tax_category ?? entry.tax_category) === "regular" && (
+                            <div className="mt-2 flex items-center gap-2">
+                              <span className="text-[11px] text-[#8B95A1] w-14">신고월액</span>
+                              <input
+                                type="number"
+                                defaultValue={entry.reported_salary ?? entry.gross_salary}
+                                onChange={e => setEditValues(v => ({ ...v, reported_salary: Number(e.target.value) }))}
+                                className="w-32 px-2 py-1 text-[13px] border border-[#E5E8EB] rounded-lg"
+                                placeholder="1,000,000"
+                              />
+                              <span className="text-[11px] text-[#8B95A1]">원</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {/* 수동 조정 (편집모드) */}
                       {isEditing && (
@@ -1044,19 +1187,23 @@ export default function AdminPayrollPage() {
 
             <div className="space-y-4">
               <div>
-                <p className="text-[13px] font-semibold text-[#4E5968] mb-2">2대보험</p>
+                <p className="text-[13px] font-semibold text-[#4E5968] mb-2">4대보험</p>
                 <div className="space-y-2">
                   {([
                     ["national_pension_rate", "국민연금"] as const,
                     ["health_insurance_rate", "건강보험"] as const,
+                    ["long_term_care_rate", "요양보험"] as const,
                     ["employment_insurance_rate", "고용보험"] as const,
                   ]).map(([key, label]) => (
                     <div key={key} className="flex items-center gap-2">
                       <span className="text-[13px] text-[#4E5968] w-16">{label}</span>
+                      {key === "long_term_care_rate" && (
+                        <span className="text-[11px] text-[#8B95A1]">건강보험의</span>
+                      )}
                       <input
                         type="number"
                         step="0.001"
-                        defaultValue={Number(Number(settings[key]) * 100).toFixed(3)}
+                        defaultValue={Number(Number(settings[key] ?? 0) * 100).toFixed(3)}
                         onChange={e => setRateForm(f => ({ ...f, [key]: Number(e.target.value) / 100 }))}
                         className="w-24 px-2 py-1.5 text-[13px] border border-[#E5E8EB] rounded-lg text-right"
                       />
@@ -1067,7 +1214,7 @@ export default function AdminPayrollPage() {
               </div>
 
               <div>
-                <p className="text-[13px] font-semibold text-[#4E5968] mb-2">3.3% 원천징수</p>
+                <p className="text-[13px] font-semibold text-[#4E5968] mb-2">사업소득(3.3%)</p>
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <span className="text-[13px] text-[#4E5968] w-16">소득세</span>

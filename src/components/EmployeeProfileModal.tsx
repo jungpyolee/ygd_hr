@@ -31,6 +31,7 @@ interface FullProfile {
   health_cert_verified: boolean | null;
   color_hex: string;
   insurance_type: string | null;
+  tax_category: "business" | "daily" | "regular" | null;
   avatar_config?: any;
 }
 
@@ -59,7 +60,7 @@ export default function EmployeeProfileModal({ profileId, onClose }: Props) {
       const { data } = await supabase
         .from("profiles")
         .select(
-          "id, name, email, phone, department, position, role, join_date, employment_type, hourly_wage, bank_name, account_number, health_cert_date, health_cert_verified, color_hex, insurance_type, avatar_config",
+          "id, name, email, phone, department, position, role, join_date, employment_type, hourly_wage, bank_name, account_number, health_cert_date, health_cert_verified, color_hex, insurance_type, tax_category, avatar_config",
         )
         .eq("id", profileId)
         .single();
@@ -96,7 +97,10 @@ export default function EmployeeProfileModal({ profileId, onClose }: Props) {
         bank_name: form.bank_name || null,
         account_number: form.account_number || null,
         health_cert_date: form.health_cert_date || null,
-        insurance_type: form.insurance_type || null,
+        tax_category: form.tax_category || null,
+        insurance_type: form.tax_category
+          ? (form.tax_category === "business" ? "3.3" : "national")
+          : (form.insurance_type || null),
       })
       .eq("id", profile.id);
     setSaving(false);
@@ -245,11 +249,13 @@ function ViewBody({
               : null
           }
           sub={
-            profile.insurance_type === "national"
-              ? "4대보험"
-              : profile.insurance_type === "3.3"
-                ? "3.3%"
-                : null
+            profile.tax_category === "regular"
+              ? "근로소득 (4대보험)"
+              : profile.tax_category === "daily"
+                ? "일용소득 (고용보험)"
+                : profile.tax_category === "business"
+                  ? "사업소득 (3.3%)"
+                  : null
           }
         />
         <div className="flex items-start gap-3 py-3">
@@ -417,15 +423,16 @@ function EditForm({
             className={inputCls}
           />
         </Field>
-        <Field label="보험형태">
+        <Field label="세금 유형">
           <select
-            value={form.insurance_type ?? ""}
-            onChange={(e) => set("insurance_type", e.target.value)}
+            value={form.tax_category ?? ""}
+            onChange={(e) => set("tax_category", e.target.value || null)}
             className={inputCls}
           >
             <option value="">선택 안 함</option>
-            <option value="national">4대보험</option>
-            <option value="3.3">3.3%</option>
+            <option value="business">사업소득 (3.3%)</option>
+            <option value="daily">일용소득 (고용보험)</option>
+            <option value="regular">근로소득 (4대보험)</option>
           </select>
         </Field>
       </div>
