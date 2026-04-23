@@ -53,7 +53,7 @@ interface Profile {
   position_keys: string[] | null;
   hourly_wage: number | null;
   insurance_type: string | null;
-  tax_category: "business" | "daily" | "regular" | null;
+  tax_category: "3.3%" | "2대보험" | "4대보험" | null;
   resident_registration_number: string | null;
   avatar_config?: any;
 }
@@ -967,13 +967,13 @@ export default function AdminEmployeesPage() {
                     </div>
                     <div>
                       <label className="block text-[12px] font-medium text-[#8B95A1] mb-2">
-                        세금 유형
+                        공제 유형
                       </label>
                       <div className="flex flex-wrap gap-3">
                         {[
-                          { value: "business", label: "사업 (3.3%)" },
-                          { value: "daily", label: "일용 (고용보험)" },
-                          { value: "regular", label: "근로 (4대보험)" },
+                          { value: "3.3%", label: "3.3%" },
+                          { value: "2대보험", label: "2대보험" },
+                          { value: "4대보험", label: "4대보험" },
                         ].map((opt) => (
                           <button
                             key={opt.value}
@@ -982,7 +982,7 @@ export default function AdminEmployeesPage() {
                               handleFormChange("tax_category", opt.value);
                               handleFormChange(
                                 "insurance_type",
-                                opt.value === "business" ? "3.3" : "national",
+                                opt.value === "3.3%" ? "3.3" : "national",
                               );
                             }}
                             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold transition-all border ${

@@ -1,5 +1,5 @@
-/** 세금 유형 — 세무사 신고 구분 */
-export type TaxCategory = "business" | "daily" | "regular";
+/** 공제 유형 — 공제 방식 기준 구분 */
+export type TaxCategory = "3.3%" | "2대보험" | "4대보험";
 
 /** 공제 요율 (payroll_settings 테이블에서 조회) */
 export interface PayrollRates {
@@ -93,11 +93,11 @@ export function calcDeductionsByCategory(
   reportedSalary: number,
   rates: PayrollRates,
 ): { deductions: Deductions; total: number } {
-  if (category === "business") {
+  if (category === "3.3%") {
     const d = calcBusinessDeductions(gross, rates);
     return { deductions: d, total: d.total };
   }
-  if (category === "daily") {
+  if (category === "2대보험") {
     const d = calcDailyDeductions(gross, rates);
     return { deductions: d, total: d.total };
   }
@@ -120,11 +120,11 @@ export function deductionToEntryFields(category: TaxCategory, d: Deductions) {
     deduction_income_tax: 0,
     deduction_local_income_tax: 0,
   };
-  if (category === "business") {
+  if (category === "3.3%") {
     const x = d as BusinessDeductions;
     return { ...base, deduction_income_tax: x.incomeTax, deduction_local_income_tax: x.localIncomeTax };
   }
-  if (category === "daily") {
+  if (category === "2대보험") {
     const x = d as DailyDeductions;
     return { ...base, deduction_employment_insurance: x.employmentInsurance };
   }
@@ -140,5 +140,5 @@ export function deductionToEntryFields(category: TaxCategory, d: Deductions) {
 
 /** insurance_type 하위 호환용 매핑 */
 export function taxCategoryToInsuranceType(category: TaxCategory): string {
-  return category === "business" ? "3.3" : "national";
+  return category === "3.3%" ? "3.3" : "national";
 }

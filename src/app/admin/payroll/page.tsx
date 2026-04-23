@@ -129,16 +129,10 @@ function settingsToRates(s: PayrollSettings): PayrollRates {
   };
 }
 
-const TAX_CATEGORY_LABEL: Record<TaxCategory, string> = {
-  business: "사업",
-  daily: "일용",
-  regular: "근로",
-};
-
 const TAX_CATEGORY_BADGE: Record<TaxCategory, string> = {
-  business: "bg-[#FEF3C7] text-[#F59E0B]",
-  daily: "bg-[#DCFCE7] text-[#16A34A]",
-  regular: "bg-[#E8F3FF] text-[#3182F6]",
+  "3.3%": "bg-[#FEF3C7] text-[#F59E0B]",
+  "2대보험": "bg-[#DCFCE7] text-[#16A34A]",
+  "4대보험": "bg-[#E8F3FF] text-[#3182F6]",
 };
 
 // ── 메인 컴포넌트 ────────────────────────────────────────────────────
@@ -443,8 +437,8 @@ export default function AdminPayrollPage() {
         const totalMinutes = scheduledMinutes + overtimeMinutes;
         const grossSalary = calcGrossSalary(totalMinutes, m.hourly_wage);
         const taxCategory: TaxCategory = (m.tax_category as TaxCategory | null)
-          ?? (m.insurance_type === "national" ? "regular" : "business");
-        const reportedSalary = taxCategory === "regular"
+          ?? (m.insurance_type === "national" ? "4대보험" : "3.3%");
+        const reportedSalary = taxCategory === "4대보험"
           ? (reportedMap.get(m.id) ?? grossSalary)
           : 0;
         const { deductions, total: deductionTotal } = calcDeductionsByCategory(
@@ -466,7 +460,7 @@ export default function AdminPayrollPage() {
           hourly_wage: m.hourly_wage,
           insurance_type: taxCategoryToInsuranceType(taxCategory),
           tax_category: taxCategory,
-          reported_salary: taxCategory === "regular" ? reportedSalary : null,
+          reported_salary: taxCategory === "4대보험" ? reportedSalary : null,
           gross_salary: grossSalary,
           ...deductionToEntryFields(taxCategory, deductions),
           deduction_amount: deductionTotal,
@@ -505,10 +499,10 @@ export default function AdminPayrollPage() {
       const hw = editValues.hourly_wage ?? entry.hourly_wage;
       const sm = editValues.scheduled_minutes ?? entry.scheduled_minutes;
       const om = editValues.overtime_minutes ?? entry.overtime_minutes;
-      const cat: TaxCategory = editValues.tax_category ?? entry.tax_category ?? "business";
+      const cat: TaxCategory = editValues.tax_category ?? entry.tax_category ?? "3.3%";
       const totalMin = sm + om;
       const gross = calcGrossSalary(totalMin, hw);
-      const reported = cat === "regular"
+      const reported = cat === "4대보험"
         ? (editValues.reported_salary ?? entry.reported_salary ?? gross)
         : 0;
       const { deductions, total: deductionTotal } = calcDeductionsByCategory(
@@ -526,7 +520,7 @@ export default function AdminPayrollPage() {
           total_minutes: totalMin,
           tax_category: cat,
           insurance_type: taxCategoryToInsuranceType(cat),
-          reported_salary: cat === "regular" ? reported : null,
+          reported_salary: cat === "4대보험" ? reported : null,
           gross_salary: gross,
           ...deductionToEntryFields(cat, deductions),
           deduction_amount: deductionTotal,
@@ -613,7 +607,7 @@ export default function AdminPayrollPage() {
       };
 
       // ───── 시트 1: 사업소득(3.3%) ─────
-      const business = visible.filter(e => e.tax_category === "business");
+      const business = visible.filter(e => e.tax_category === "3.3%");
       {
         const sheet = workbook.addWorksheet("사업소득(3.3%)");
         addTitle(sheet, 9);
@@ -641,7 +635,7 @@ export default function AdminPayrollPage() {
       }
 
       // ───── 시트 2: 일용소득(2대보험) ─────
-      const daily = visible.filter(e => e.tax_category === "daily");
+      const daily = visible.filter(e => e.tax_category === "2대보험");
       {
         const sheet = workbook.addWorksheet("일용소득(2대보험)");
         addTitle(sheet, 8);
@@ -669,7 +663,7 @@ export default function AdminPayrollPage() {
       }
 
       // ───── 시트 3: 근로소득(4대보험) ─────
-      const regular = visible.filter(e => e.tax_category === "regular");
+      const regular = visible.filter(e => e.tax_category === "4대보험");
       {
         const sheet = workbook.addWorksheet("근로소득(4대보험)");
         addTitle(sheet, 14);
@@ -826,7 +820,7 @@ export default function AdminPayrollPage() {
                           </span>
                           {entry.tax_category && (
                             <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${TAX_CATEGORY_BADGE[entry.tax_category]}`}>
-                              {TAX_CATEGORY_LABEL[entry.tax_category]}
+                              {entry.tax_category}
                             </span>
                           )}
                           {belowMinWage && (
@@ -940,7 +934,7 @@ export default function AdminPayrollPage() {
                             <span className="text-[#4E5968]">세전급여</span>
                             <span className="font-semibold">{won(entry.gross_salary)}</span>
                           </div>
-                          {entry.tax_category === "regular" && (
+                          {entry.tax_category === "4대보험" && (
                             <>
                               {entry.reported_salary != null && (
                                 <div className="flex justify-between text-[#8B95A1]">
@@ -966,13 +960,13 @@ export default function AdminPayrollPage() {
                               </div>
                             </>
                           )}
-                          {entry.tax_category === "daily" && (
+                          {entry.tax_category === "2대보험" && (
                             <div className="flex justify-between text-[#8B95A1]">
                               <span className="pl-3">고용보험</span>
                               <span>-{won(entry.deduction_employment_insurance)}</span>
                             </div>
                           )}
-                          {entry.tax_category === "business" && (
+                          {entry.tax_category === "3.3%" && (
                             <>
                               <div className="flex justify-between text-[#8B95A1]">
                                 <span className="pl-3">소득세</span>
@@ -1007,16 +1001,16 @@ export default function AdminPayrollPage() {
                           <p className="text-[12px] font-semibold text-[#4E5968] mb-2">세금 유형</p>
                           <div className="flex items-center gap-2">
                             <select
-                              defaultValue={entry.tax_category ?? "business"}
+                              defaultValue={entry.tax_category ?? "3.3%"}
                               onChange={e => setEditValues(v => ({ ...v, tax_category: e.target.value as TaxCategory }))}
                               className="px-2 py-1 text-[13px] border border-[#E5E8EB] rounded-lg"
                             >
-                              <option value="business">사업 (3.3%)</option>
-                              <option value="daily">일용 (2대보험)</option>
-                              <option value="regular">근로 (4대보험)</option>
+                              <option value="3.3%">3.3%</option>
+                              <option value="2대보험">2대보험</option>
+                              <option value="4대보험">4대보험</option>
                             </select>
                           </div>
-                          {(editValues.tax_category ?? entry.tax_category) === "regular" && (
+                          {(editValues.tax_category ?? entry.tax_category) === "4대보험" && (
                             <div className="mt-2 flex items-center gap-2">
                               <span className="text-[11px] text-[#8B95A1] w-14">신고월액</span>
                               <input

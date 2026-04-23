@@ -59,7 +59,7 @@
 | `position_keys` | text[] | YES | `'{}'` | `'hall'` / `'kitchen'` / `'showroom'` 복수 선택 |
 | `hourly_wage` | integer | YES | - | 시급 (원, 알바만) |
 | `insurance_type` | text | YES | - | deprecated. `'national'`/`'3.3'`. `tax_category`로 대체 중 |
-| `tax_category` | text | YES | - | `'business'`(3.3% 사업) / `'daily'`(일용, 고용만) / `'regular'`(근로, 4대보험) |
+| `tax_category` | text | YES | - | 공제 유형: `'3.3%'` / `'2대보험'` / `'4대보험'` |
 | `created_at` | timestamptz | YES | `now()` | 생성일 |
 | `updated_at` | timestamptz | YES | `now()` | 수정일 |
 

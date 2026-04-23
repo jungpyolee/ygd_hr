@@ -120,16 +120,16 @@ describe("calcRegularDeductions — 근로소득 4대보험", () => {
 
 describe("calcDeductionsByCategory 분기", () => {
   it("business는 calcBusiness 결과", () => {
-    const { deductions, total } = calcDeductionsByCategory("business", 264000, 0, rates);
+    const { deductions, total } = calcDeductionsByCategory("3.3%", 264000, 0, rates);
     expect((deductions as any).incomeTax).toBe(7920);
     expect(total).toBe(8710);
   });
   it("daily는 calcDaily 결과", () => {
-    const { total } = calcDeductionsByCategory("daily", 528000, 0, rates);
+    const { total } = calcDeductionsByCategory("2대보험", 528000, 0, rates);
     expect(total).toBe(4750);
   });
   it("regular는 reported_salary 기준", () => {
-    const { total } = calcDeductionsByCategory("regular", 1034540, 1000000, rates);
+    const { total } = calcDeductionsByCategory("4대보험", 1034540, 1000000, rates);
     // 1,000,000 × 0.045 + 0.03545 + 0.009 계산 기반 (요양 별도)
     const pension = floor10(1000000 * 0.045);
     const health = floor10(1000000 * 0.03545);
@@ -150,7 +150,7 @@ describe("calcNetSalary", () => {
 describe("deductionToEntryFields", () => {
   it("business는 income/local만 채움", () => {
     const d = calcBusinessDeductions(264000, rates);
-    const f = deductionToEntryFields("business", d);
+    const f = deductionToEntryFields("3.3%", d);
     expect(f.deduction_income_tax).toBe(7920);
     expect(f.deduction_local_income_tax).toBe(790);
     expect(f.deduction_national_pension).toBe(0);
@@ -160,14 +160,14 @@ describe("deductionToEntryFields", () => {
   });
   it("daily는 employment만 채움", () => {
     const d = calcDailyDeductions(528000, rates);
-    const f = deductionToEntryFields("daily", d);
+    const f = deductionToEntryFields("2대보험", d);
     expect(f.deduction_employment_insurance).toBe(4750);
     expect(f.deduction_income_tax).toBe(0);
     expect(f.deduction_national_pension).toBe(0);
   });
   it("regular는 4대보험 채움, 세금 0", () => {
     const d = calcRegularDeductions(1000000, rates);
-    const f = deductionToEntryFields("regular", d);
+    const f = deductionToEntryFields("4대보험", d);
     expect(f.deduction_national_pension).toBeGreaterThan(0);
     expect(f.deduction_health_insurance).toBeGreaterThan(0);
     expect(f.deduction_long_term_care).toBeGreaterThan(0);
@@ -179,12 +179,12 @@ describe("deductionToEntryFields", () => {
 
 describe("taxCategoryToInsuranceType (하위 호환 매핑)", () => {
   it("business → '3.3'", () => {
-    expect(taxCategoryToInsuranceType("business")).toBe("3.3");
+    expect(taxCategoryToInsuranceType("3.3%")).toBe("3.3");
   });
   it("daily → 'national'", () => {
-    expect(taxCategoryToInsuranceType("daily")).toBe("national");
+    expect(taxCategoryToInsuranceType("2대보험")).toBe("national");
   });
   it("regular → 'national'", () => {
-    expect(taxCategoryToInsuranceType("regular")).toBe("national");
+    expect(taxCategoryToInsuranceType("4대보험")).toBe("national");
   });
 });

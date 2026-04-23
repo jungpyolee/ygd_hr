@@ -31,7 +31,7 @@ interface FullProfile {
   health_cert_verified: boolean | null;
   color_hex: string;
   insurance_type: string | null;
-  tax_category: "business" | "daily" | "regular" | null;
+  tax_category: "3.3%" | "2대보험" | "4대보험" | null;
   avatar_config?: any;
 }
 
@@ -99,7 +99,7 @@ export default function EmployeeProfileModal({ profileId, onClose }: Props) {
         health_cert_date: form.health_cert_date || null,
         tax_category: form.tax_category || null,
         insurance_type: form.tax_category
-          ? (form.tax_category === "business" ? "3.3" : "national")
+          ? (form.tax_category === "3.3%" ? "3.3" : "national")
           : (form.insurance_type || null),
       })
       .eq("id", profile.id);
@@ -248,15 +248,7 @@ function ViewBody({
               ? `${profile.hourly_wage.toLocaleString()}원`
               : null
           }
-          sub={
-            profile.tax_category === "regular"
-              ? "근로소득 (4대보험)"
-              : profile.tax_category === "daily"
-                ? "일용소득 (고용보험)"
-                : profile.tax_category === "business"
-                  ? "사업소득 (3.3%)"
-                  : null
-          }
+          sub={profile.tax_category ?? null}
         />
         <div className="flex items-start gap-3 py-3">
           <div className="w-4 h-4 mt-0.5 flex items-center justify-center text-[#8B95A1]">
@@ -423,16 +415,16 @@ function EditForm({
             className={inputCls}
           />
         </Field>
-        <Field label="세금 유형">
+        <Field label="공제 유형">
           <select
             value={form.tax_category ?? ""}
             onChange={(e) => set("tax_category", e.target.value || null)}
             className={inputCls}
           >
             <option value="">선택 안 함</option>
-            <option value="business">사업소득 (3.3%)</option>
-            <option value="daily">일용소득 (고용보험)</option>
-            <option value="regular">근로소득 (4대보험)</option>
+            <option value="3.3%">3.3%</option>
+            <option value="2대보험">2대보험</option>
+            <option value="4대보험">4대보험</option>
           </select>
         </Field>
       </div>
