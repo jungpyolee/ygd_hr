@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase";
 import { useRouter, useParams } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import AnnouncementForm from "@/components/announcement/AnnouncementForm";
+import AnnouncementReadStatus from "@/components/announcement/AnnouncementReadStatus";
 import type { Announcement } from "@/types/announcement";
 
 export default function AdminAnnouncementEditPage() {
@@ -57,6 +58,7 @@ export default function AdminAnnouncementEditPage() {
         <h1 className="text-[22px] font-bold text-[#191F28]">공지 수정하기</h1>
       </div>
       <AnnouncementForm initialData={announcement} />
+      <AnnouncementReadStatus announcement={announcement} />
     </div>
   );
 }

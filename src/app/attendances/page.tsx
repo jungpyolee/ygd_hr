@@ -122,7 +122,7 @@ export default function AttendancesPage() {
         const wsIds = wsData.map((w: any) => w.id);
         const { data: slots } = await supabase
           .from("schedule_slots")
-          .select("slot_date, start_time, end_time")
+          .select("slot_date, start_time, end_time, lunch_deduction")
           .eq("profile_id", userId)
           .eq("status", "active")
           .in("weekly_schedule_id", wsIds)
@@ -132,7 +132,8 @@ export default function AttendancesPage() {
         (slots ?? []).forEach((slot: any) => {
           const [sh, sm] = slot.start_time.split(":").map(Number);
           const [eh, em] = slot.end_time.split(":").map(Number);
-          const mins = (eh * 60 + em) - (sh * 60 + sm);
+          const raw = (eh * 60 + em) - (sh * 60 + sm);
+          const mins = slot.lunch_deduction ? Math.max(0, raw - 60) : raw;
           const existing = slotsByDate.get(slot.slot_date);
           if (!existing) {
             slotsByDate.set(slot.slot_date, {

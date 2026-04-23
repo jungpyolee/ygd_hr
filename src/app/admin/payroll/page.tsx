@@ -224,7 +224,7 @@ export default function AdminPayrollPage() {
       // schedule_slots
       const { data: slots } = await supabase
         .from("schedule_slots")
-        .select("slot_date, start_time, end_time, store_id, stores!store_id(name), weekly_schedules!inner(status)")
+        .select("slot_date, start_time, end_time, store_id, lunch_deduction, stores!store_id(name), weekly_schedules!inner(status)")
         .eq("profile_id", profileId)
         .eq("status", "active")
         .eq("weekly_schedules.status", "confirmed")
@@ -242,13 +242,16 @@ export default function AdminPayrollPage() {
         .lte("date", monthEnd)
         .order("date");
 
-      const slotDetails: SlotDetail[] = (slots ?? []).map((s: any) => ({
-        slot_date: s.slot_date,
-        start_time: s.start_time,
-        end_time: s.end_time,
-        store_name: s.stores?.name ?? "",
-        minutes: calcSlotMinutes(s.start_time, s.end_time),
-      }));
+      const slotDetails: SlotDetail[] = (slots ?? []).map((s: any) => {
+        const raw = calcSlotMinutes(s.start_time, s.end_time);
+        return {
+          slot_date: s.slot_date,
+          start_time: s.start_time,
+          end_time: s.end_time,
+          store_name: s.stores?.name ?? "",
+          minutes: s.lunch_deduction ? Math.max(0, raw - 60) : raw,
+        };
+      });
 
       const otDetails: OTDetail[] = (ot ?? []).map((o: any) => ({
         date: o.date,
@@ -258,6 +261,53 @@ export default function AdminPayrollPage() {
       return { slots: slotDetails, overtime: otDetails };
     },
   );
+
+  // ── 재계산 필요 여부 진단 ─────────────────────────────────────────────
+  // 현재 스케줄·OT DB 값과 payroll_entries 값 비교. 다르면 stale.
+  const { data: liveMinutes } = useSWR(
+    period ? ["payroll-live", period.id, year, month] : null,
+    async () => {
+      const [{ data: slots }, { data: ot }] = await Promise.all([
+        supabase
+          .from("schedule_slots")
+          .select("profile_id, start_time, end_time, lunch_deduction, weekly_schedules!inner(status)")
+          .eq("status", "active")
+          .eq("weekly_schedules.status", "confirmed")
+          .gte("slot_date", monthStart)
+          .lte("slot_date", monthEnd),
+        supabase
+          .from("overtime_requests")
+          .select("profile_id, minutes")
+          .eq("status", "approved")
+          .gte("date", monthStart)
+          .lte("date", monthEnd),
+      ]);
+      const sched = new Map<string, number>();
+      (slots ?? []).forEach((s: any) => {
+        const raw = calcSlotMinutes(s.start_time, s.end_time);
+        const adj = s.lunch_deduction ? Math.max(0, raw - 60) : raw;
+        sched.set(s.profile_id, (sched.get(s.profile_id) ?? 0) + adj);
+      });
+      const otMap = new Map<string, number>();
+      (ot ?? []).forEach((o: any) => {
+        otMap.set(o.profile_id, (otMap.get(o.profile_id) ?? 0) + o.minutes);
+      });
+      return { sched, ot: otMap };
+    },
+  );
+
+  const staleEntryIds = useMemo(() => {
+    const set = new Set<string>();
+    if (!liveMinutes) return set;
+    entries.forEach((e) => {
+      const liveSched = liveMinutes.sched.get(e.profile_id) ?? 0;
+      const liveOt = liveMinutes.ot.get(e.profile_id) ?? 0;
+      if (liveSched !== e.scheduled_minutes || liveOt !== e.overtime_minutes) {
+        set.add(e.id);
+      }
+    });
+    return set;
+  }, [entries, liveMinutes]);
 
   // ── 합계 ────────────────────────────────────────────────────────────
 
@@ -303,7 +353,7 @@ export default function AdminPayrollPage() {
       // 2. schedule_slots (확정 스케줄, active 슬롯)
       const { data: slots } = await supabase
         .from("schedule_slots")
-        .select("profile_id, start_time, end_time, weekly_schedules!inner(status)")
+        .select("profile_id, start_time, end_time, lunch_deduction, weekly_schedules!inner(status)")
         .eq("status", "active")
         .eq("weekly_schedules.status", "confirmed")
         .gte("slot_date", monthStart)
@@ -317,11 +367,13 @@ export default function AdminPayrollPage() {
         .gte("date", monthStart)
         .lte("date", monthEnd);
 
-      // 4. 슬롯별 분 합산 맵
+      // 4. 슬롯별 분 합산 맵 (점심 차감 켜진 슬롯은 60분 뺌)
       const slotMinMap = new Map<string, number>();
       (slots ?? []).forEach((s: any) => {
         const prev = slotMinMap.get(s.profile_id) ?? 0;
-        slotMinMap.set(s.profile_id, prev + calcSlotMinutes(s.start_time, s.end_time));
+        const raw = calcSlotMinutes(s.start_time, s.end_time);
+        const adjusted = s.lunch_deduction ? Math.max(0, raw - 60) : raw;
+        slotMinMap.set(s.profile_id, prev + adjusted);
       });
 
       // 5. 추가근무 분 합산 맵
@@ -514,8 +566,8 @@ export default function AdminPayrollPage() {
         };
       });
 
-      // 데이터 행
-      entries.forEach((entry, idx) => {
+      // 데이터 행 (0원 직원 제외)
+      entries.filter(e => e.net_salary !== 0).forEach((entry, idx) => {
         const hours = entry.total_minutes / 60;
         const insuranceLabel = entry.insurance_type === "national" ? "2대보험" : "3.3%";
         const row = sheet.addRow([
@@ -636,11 +688,21 @@ export default function AdminPayrollPage() {
         </div>
       )}
 
+      {/* 재계산 필요 안내 */}
+      {period && staleEntryIds.size > 0 && (
+        <div className="mb-3 px-3 py-2.5 rounded-xl bg-[#FFF7E6] border border-[#F59E0B]/30 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 text-[#F59E0B] mt-0.5 shrink-0" />
+          <p className="text-[12px] text-[#7C2D12] flex-1 leading-relaxed">
+            스케줄이나 추가근무가 바뀐 <b>{staleEntryIds.size}명</b>이 있어요. "급여 재계산"을 눌러 최신 값으로 갱신해주세요.
+          </p>
+        </div>
+      )}
+
       {/* 직원 카드 리스트 */}
       {period && entries.length > 0 && (
         <div className="bg-white rounded-2xl border border-[#E5E8EB] overflow-hidden mb-4">
           <div className="divide-y divide-[#F2F4F6]">
-            {entries.map(entry => {
+            {entries.filter(e => e.net_salary !== 0 || staleEntryIds.has(e.id)).map(entry => {
               const isExpanded = expandedId === entry.id;
               const isEditing = editingEntryId === entry.id;
               const belowMinWage = entry.hourly_wage < MINIMUM_WAGE;
@@ -674,6 +736,11 @@ export default function AdminPayrollPage() {
                           </span>
                           {belowMinWage && (
                             <AlertTriangle className="w-3.5 h-3.5 text-[#F59E0B]" />
+                          )}
+                          {staleEntryIds.has(entry.id) && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#FFF7E6] text-[#F59E0B]">
+                              재계산 필요
+                            </span>
                           )}
                         </div>
                         <div className="flex items-center gap-2 mt-0.5">

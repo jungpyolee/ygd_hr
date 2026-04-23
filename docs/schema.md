@@ -516,6 +516,7 @@ DELETE FROM auth.users WHERE id = target_user_id
 | `position_keys` | text[] | YES | `'{}'` | DB 기반 position_key 목록 |
 | `status` | text | YES | `'active'` | `'active'` / `'cancelled'` / `'substituted'` |
 | `notes` | text | YES | - | 메모 |
+| `lunch_deduction` | bool | NO | `false` | 점심 제공 슬롯(공장 등) — true면 급여 계산 시 60분 차감 |
 | `created_at` | timestamptz | YES | `now()` | 생성일 |
 | `updated_at` | timestamptz | YES | `now()` | 수정일 |
 

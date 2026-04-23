@@ -67,6 +67,7 @@ interface ScheduleSlot {
   position_keys: string[];
   status: string;
   notes: string | null;
+  lunch_deduction: boolean;
 }
 
 interface WeeklySchedule {
@@ -159,10 +160,12 @@ function SlotBottomSheet({
     store_id: workplaces[0]?.id || "",
     position_keys: [],
     notes: "",
+    lunch_deduction: workplaces[0]?.work_location_key === "factory",
     ...slot,
     ...(slot?.start_time && { start_time: slot.start_time.slice(0, 5) }),
     ...(slot?.end_time && { end_time: slot.end_time.slice(0, 5) }),
   });
+  const isFactory = byId[form.store_id || ""]?.work_location_key === "factory";
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -252,7 +255,16 @@ function SlotBottomSheet({
             <label className="block text-[12px] font-medium text-[#8B95A1] mb-1">근무지</label>
             <select
               value={form.store_id || ""}
-              onChange={(e) => setForm((p) => ({ ...p, store_id: e.target.value, position_keys: [] }))}
+              onChange={(e) => {
+                const nextId = e.target.value;
+                const nextIsFactory = byId[nextId]?.work_location_key === "factory";
+                setForm((p) => ({
+                  ...p,
+                  store_id: nextId,
+                  position_keys: [],
+                  lunch_deduction: nextIsFactory,
+                }));
+              }}
               className="w-full px-3 py-2.5 bg-[#F9FAFB] border border-slate-200 rounded-xl text-[14px] text-[#191F28] focus:outline-none focus:border-[#3182F6]"
             >
               {workplaces.map((w) => (
@@ -292,6 +304,31 @@ function SlotBottomSheet({
                 })}
               </div>
             </div>
+          )}
+
+          {/* 점심 차감 (공장 전용) */}
+          {isFactory && (
+            <button
+              type="button"
+              onClick={() => setForm((p) => ({ ...p, lunch_deduction: !p.lunch_deduction }))}
+              className={`w-full flex items-center justify-between px-3 py-3 rounded-xl border transition-colors ${
+                form.lunch_deduction
+                  ? "bg-[#E8F3FF] border-[#3182F6]"
+                  : "bg-[#F9FAFB] border-slate-200"
+              }`}
+            >
+              <div className="text-left">
+                <p className="text-[13px] font-semibold text-[#191F28]">점심 1시간 차감</p>
+                <p className="text-[11px] text-[#8B95A1] mt-0.5">점심 제공되는 공장 근무일 때 켜요</p>
+              </div>
+              <div className={`w-10 h-6 rounded-full relative transition-colors ${
+                form.lunch_deduction ? "bg-[#3182F6]" : "bg-[#D1D6DB]"
+              }`}>
+                <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                  form.lunch_deduction ? "translate-x-[18px]" : "translate-x-0.5"
+                }`} />
+              </div>
+            </button>
           )}
 
           {/* 메모 */}
@@ -660,6 +697,7 @@ function CopyPreviewModal({ initialSlots, profiles, onClose, onSave }: CopyPrevi
               store_id: data.store_id || s.store_id,
               position_keys: data.position_keys ?? s.position_keys,
               notes: data.notes !== undefined ? (data.notes || null) : s.notes,
+              lunch_deduction: data.lunch_deduction ?? s.lunch_deduction,
             }
           : s
       )
@@ -1500,6 +1538,7 @@ export default function AdminCalendarPage() {
         position_keys: formData.position_keys || [],
         status: "active",
         notes: formData.notes || null,
+        lunch_deduction: formData.lunch_deduction ?? false,
       });
       if (error) { toast.error("근무 추가에 실패했어요", { description: error.message }); return; }
 
@@ -1524,6 +1563,7 @@ export default function AdminCalendarPage() {
         store_id: formData.store_id,
         position_keys: formData.position_keys || [],
         notes: formData.notes || null,
+        lunch_deduction: formData.lunch_deduction ?? false,
       }).eq("id", formData.id);
       if (error) { toast.error("근무 수정에 실패했어요", { description: error.message }); return; }
 
@@ -1604,6 +1644,7 @@ export default function AdminCalendarPage() {
         id: crypto.randomUUID(), weekly_schedule_id: wsId, profile_id: s.profile_id,
         slot_date: targetDate, start_time: s.start_time, end_time: s.end_time,
         store_id: s.store_id, position_keys: s.position_keys || [], status: "active", notes: s.notes || null,
+        lunch_deduction: s.lunch_deduction ?? false,
       });
       existingSet.add(`${s.profile_id}_${targetDate}`);
     });

@@ -10,6 +10,7 @@ import { ko } from "date-fns/locale";
 import { toast } from "sonner";
 import { useWorkplaces } from "@/lib/hooks/useWorkplaces";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
+import { getTargetProfileIds } from "@/lib/announcement-targets";
 import type { Announcement } from "@/types/announcement";
 
 const TARGET_LABEL: Record<string, string> = {
@@ -35,6 +36,41 @@ export default function AdminAnnouncementsPage() {
       return (data as Announcement[]) ?? [];
     },
     { dedupingInterval: 60_000, revalidateOnFocus: false }
+  );
+
+  // 공지별 (읽음 수 / 대상자 수)
+  const { data: readStats = {} } = useSWR(
+    announcements.length > 0 ? ["admin-announcements-reads", announcements.map((a) => a.id).join(",")] : null,
+    async () => {
+      const supabase = createClient();
+      // 공지별 대상자 목록 병렬 계산
+      const targetEntries = await Promise.all(
+        announcements.map(async (a) => {
+          const role = a.target_roles?.[0] ?? "all";
+          const ids = await getTargetProfileIds(supabase, role, a.target_store_ids ?? []);
+          return [a.id, ids] as const;
+        }),
+      );
+      const targetMap = new Map(targetEntries);
+
+      // 읽음 기록 한 번에 조회
+      const { data: reads } = await supabase
+        .from("announcement_reads")
+        .select("announcement_id, profile_id")
+        .in("announcement_id", announcements.map((a) => a.id));
+
+      const result: Record<string, { read: number; total: number }> = {};
+      announcements.forEach((a) => {
+        const targets = targetMap.get(a.id) ?? [];
+        const targetSet = new Set(targets);
+        const readCount = (reads ?? []).filter(
+          (r: any) => r.announcement_id === a.id && targetSet.has(r.profile_id),
+        ).length;
+        result[a.id] = { read: readCount, total: targets.length };
+      });
+      return result;
+    },
+    { revalidateOnFocus: false },
   );
 
   const togglePin = async (item: Announcement) => {
@@ -132,6 +168,18 @@ export default function AdminAnnouncementsPage() {
                 <p className="text-[12px] text-[#8B95A1] mt-0.5">
                   {format(new Date(item.created_at), "yyyy.MM.dd", { locale: ko })}
                   {item.profiles?.name && ` · ${item.profiles.name}`}
+                  {readStats[item.id] && (
+                    <>
+                      {" · "}
+                      <span className={
+                        readStats[item.id].total > 0 && readStats[item.id].read === readStats[item.id].total
+                          ? "text-[#3182F6] font-semibold"
+                          : "text-[#8B95A1]"
+                      }>
+                        읽음 {readStats[item.id].read}/{readStats[item.id].total}
+                      </span>
+                    </>
+                  )}
                 </p>
               </div>
               <div className="flex items-center gap-1 shrink-0">

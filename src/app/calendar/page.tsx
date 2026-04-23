@@ -46,6 +46,7 @@ interface MySlot {
   status: string;
   profile_id: string;
   weekly_schedule_id: string;
+  lunch_deduction: boolean;
 }
 
 interface TeamSlot {
@@ -747,20 +748,29 @@ export default function EmployeeCalendarPage() {
         const isThisMonth = monthKey === format(new Date(), "yyyy-MM");
         const monthSlots = mySlots.filter((s) => s.slot_date.slice(0, 7) === monthKey);
 
-        // 예정 근무시간
+        // 예정 근무시간 (점심 차감 슬롯은 -60분)
         const scheduledMins = monthSlots.reduce((sum, s) => {
           const [sh, sm] = s.start_time.split(":").map(Number);
           const [eh, em] = s.end_time.split(":").map(Number);
-          return sum + (eh * 60 + em) - (sh * 60 + sm);
+          const raw = (eh * 60 + em) - (sh * 60 + sm);
+          return sum + (s.lunch_deduction ? Math.max(0, raw - 60) : raw);
         }, 0);
         const schedH = Math.floor(scheduledMins / 60);
         const schedM = scheduledMins % 60;
 
-        // 실제 근무일 & 근무시간
+        // 해당 월 내 "점심 차감" 대상 날짜 집합
+        const lunchDates = new Set(
+          monthSlots.filter((s) => s.lunch_deduction).map((s) => s.slot_date),
+        );
+
+        // 실제 근무일 & 근무시간 (점심 제공되는 날은 -60분)
         const monthAtt = Object.entries(attendance).filter(([d, a]) => d.slice(0, 7) === monthKey && a?.clock_in);
         const actualDays = monthAtt.length;
-        const actualMins = monthAtt.reduce((sum, [, a]) => {
-          if (a?.clock_in && a?.clock_out) return sum + differenceInMinutes(a.clock_out, a.clock_in);
+        const actualMins = monthAtt.reduce((sum, [d, a]) => {
+          if (a?.clock_in && a?.clock_out) {
+            const mins = differenceInMinutes(a.clock_out, a.clock_in);
+            return sum + (lunchDates.has(d) ? Math.max(0, mins - 60) : mins);
+          }
           return sum;
         }, 0);
         const actH = Math.floor(actualMins / 60);
