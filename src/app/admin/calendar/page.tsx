@@ -1621,9 +1621,20 @@ export default function AdminCalendarPage() {
       .from("weekly_schedules").select("id").eq("week_start", prevWeekStart).maybeSingle();
     if (!prevWs) { toast.error("이전 주 스케줄이 없어요"); return; }
 
-    const { data: prevSlots } = await supabase
+    const { data: prevSlotsRaw } = await supabase
       .from("schedule_slots").select("*").eq("weekly_schedule_id", prevWs.id).neq("status", "cancelled");
-    if (!prevSlots || prevSlots.length === 0) { toast.error("이전 주 슬롯이 없어요"); return; }
+    if (!prevSlotsRaw || prevSlotsRaw.length === 0) { toast.error("이전 주 슬롯이 없어요"); return; }
+
+    // 퇴사자 슬롯 제외
+    const prevProfileIds = [...new Set(prevSlotsRaw.map((s: any) => s.profile_id))];
+    const { data: activeProfiles } = await supabase
+      .from("profiles")
+      .select("id")
+      .in("id", prevProfileIds)
+      .is("terminated_at", null);
+    const activeIds = new Set((activeProfiles ?? []).map((p: { id: string }) => p.id));
+    const prevSlots = prevSlotsRaw.filter((s: any) => activeIds.has(s.profile_id));
+    if (prevSlots.length === 0) { toast.error("복사할 슬롯이 없어요", { description: "이전 주 슬롯이 모두 퇴사자 것이에요" }); return; }
 
     const wsId = await getOrCreateWeeklySchedule(weekDates[1] || weekDates[0]);
     if (!wsId) return;
