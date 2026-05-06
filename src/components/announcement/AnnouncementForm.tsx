@@ -113,8 +113,12 @@ export default function AnnouncementForm({ initialData }: AnnouncementFormProps)
     role: AnnouncementTargetRole,
     storeIds: string[]
   ) => {
-    // 대상 직원 조회
-    let query = supabase.from("profiles").select("id").eq("role", "employee");
+    // 대상 직원 조회 (퇴사자 제외)
+    let query = supabase
+      .from("profiles")
+      .select("id")
+      .eq("role", "employee")
+      .is("terminated_at", null);
     if (role === "full_time") query = query.eq("employment_type", "full_time");
     if (role === "part_time") query = query.like("employment_type", "part_time%");
 

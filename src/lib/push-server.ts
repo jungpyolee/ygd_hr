@@ -47,6 +47,18 @@ export async function sendPushToProfile(
   payload: PushPayload
 ): Promise<void> {
   ensureVapid();
+
+  // 퇴사자 차단
+  const { data: profile } = await getAdminSupabase()
+    .from("profiles")
+    .select("terminated_at")
+    .eq("id", profileId)
+    .single();
+  if (profile?.terminated_at) {
+    console.log("[Push] 스킵 — 퇴사자:", profileId);
+    return;
+  }
+
   // ✅ 두 쿼리 병렬 실행
   const [prefs, subs] = await Promise.all([
     getPreferences(profileId),
@@ -80,8 +92,11 @@ export async function sendPushToRole(
   payload: PushPayload
 ): Promise<void> {
   ensureVapid();
-  // 1. 해당 role의 유저 목록
-  let profileQuery = getAdminSupabase().from("profiles").select("id, role");
+  // 1. 해당 role의 활성 유저 목록 (퇴사자 제외)
+  let profileQuery = getAdminSupabase()
+    .from("profiles")
+    .select("id, role")
+    .is("terminated_at", null);
   if (role !== "all") profileQuery = profileQuery.eq("role", role);
   const { data: profiles } = await profileQuery;
   if (!profiles?.length) return;

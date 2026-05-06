@@ -60,6 +60,9 @@
 | `hourly_wage` | integer | YES | - | 시급 (원, 알바만) |
 | `insurance_type` | text | YES | - | deprecated. `'national'`/`'3.3'`. `tax_category`로 대체 중 |
 | `tax_category` | text | YES | - | 공제 유형: `'3.3%'` / `'2대보험'` / `'4대보험'` |
+| `terminated_at` | timestamptz | YES | - | 퇴사 일시 (NULL = 재직중) |
+| `termination_reason` | text | YES | - | 퇴사 사유 (자율 입력) |
+| `terminated_by` | uuid | YES | - | 퇴사 처리한 관리자 (FK → profiles.id, ON DELETE SET NULL) |
 | `created_at` | timestamptz | YES | `now()` | 생성일 |
 | `updated_at` | timestamptz | YES | `now()` | 수정일 |
 

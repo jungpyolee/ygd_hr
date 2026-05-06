@@ -103,6 +103,7 @@ export default function AdminSubstitutesPage() {
       const { data } = await supabase
         .from("profiles")
         .select("id, name, color_hex, avatar_config, employee_store_assignments(store_id)")
+        .is("terminated_at", null)
         .order("name");
       return ((data ?? []) as any[]).map((p) => ({
         id: p.id,

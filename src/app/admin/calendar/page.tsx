@@ -1261,8 +1261,8 @@ export default function AdminCalendarPage() {
       const supabase = createClient();
       const [start, end] = range.split("_");
 
-      // 직원 목록 (adminFlag === "all" 이면 어드민 포함)
-      const profileQuery = supabase.from("profiles").select("id, name, color_hex, avatar_config, role").order("name");
+      // 직원 목록 (adminFlag === "all" 이면 어드민 포함, 퇴사자 제외)
+      const profileQuery = supabase.from("profiles").select("id, name, color_hex, avatar_config, role").is("terminated_at", null).order("name");
       const { data: profilesData } = adminFlag === "all"
         ? await profileQuery
         : await profileQuery.eq("role", "employee");

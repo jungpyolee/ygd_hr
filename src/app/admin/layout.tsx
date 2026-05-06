@@ -151,6 +151,7 @@ export default function AdminLayout({
       .from("profiles")
       .select("id, name, health_cert_date")
       .not("health_cert_date", "is", null)
+      .is("terminated_at", null)
       .gte("health_cert_date", todayStr)
       .lte("health_cert_date", thirtyDaysLaterStr);
 

@@ -154,10 +154,11 @@ export default function AdminDashboardPage() {
           .from("substitute_requests")
           .select("*", { count: "exact", head: true })
           .eq("status", "pending"),
-        // 보건증 만료/임박 (7일 이내)
+        // 보건증 만료/임박 (7일 이내, 재직중만)
         supabase
           .from("profiles")
           .select("id", { count: "exact", head: true })
+          .is("terminated_at", null)
           .not("health_cert_date", "is", null)
           .lte(
             "health_cert_date",

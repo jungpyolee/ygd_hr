@@ -121,6 +121,7 @@ async function fetchProfiles(): Promise<ProfileRow[]> {
     .from("profiles")
     .select("id, name, color_hex, avatar_config")
     .neq("role", "admin")
+    .is("terminated_at", null)
     .order("name");
   return (data ?? []) as ProfileRow[];
 }

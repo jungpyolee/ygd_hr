@@ -79,6 +79,16 @@ export const createNotification = async ({
   } = await caller.auth.getUser();
   if (!user) return { error: new Error("Unauthorized") };
 
+  // 단건 알림: 수신자가 퇴사자면 발송 스킵
+  if (profile_id) {
+    const { data: target } = await adminSupabase
+      .from("profiles")
+      .select("terminated_at")
+      .eq("id", profile_id)
+      .single();
+    if (target?.terminated_at) return { error: null };
+  }
+
   // DB INSERT
   const { data: inserted, error } = await adminSupabase
     .from("notifications")

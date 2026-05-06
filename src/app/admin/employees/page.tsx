@@ -56,6 +56,8 @@ interface Profile {
   tax_category: "3.3%" | "2대보험" | "4대보험" | null;
   resident_registration_number: string | null;
   avatar_config?: any;
+  terminated_at: string | null;
+  termination_reason: string | null;
 }
 
 const EMPLOYMENT_TYPE_OPTIONS = [
@@ -139,6 +141,13 @@ export default function AdminEmployeesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<string>("");
   const [filterHealth, setFilterHealth] = useState<string>(() => searchParams.get("health") || "");
+  const [statusTab, setStatusTab] = useState<"active" | "terminated">("active");
+
+  // 퇴사 처리 / 복귀 모달
+  const [terminateTarget, setTerminateTarget] = useState<Profile | null>(null);
+  const [terminationReason, setTerminationReason] = useState("");
+  const [restoreTarget, setRestoreTarget] = useState<Profile | null>(null);
+  const [statusSubmitting, setStatusSubmitting] = useState(false);
 
   useEffect(() => {
     const healthParam = searchParams.get("health");
@@ -205,8 +214,13 @@ export default function AdminEmployeesPage() {
     { dedupingInterval: 60_000, revalidateOnFocus: false },
   );
 
+  // 재직/퇴사 분리
+  const activeEmployees = employees.filter((e) => !e.terminated_at);
+  const terminatedEmployees = employees.filter((e) => e.terminated_at);
+  const baseEmployees = statusTab === "active" ? activeEmployees : terminatedEmployees;
+
   // 필터링된 직원 목록
-  const filteredEmployees = employees.filter((emp) => {
+  const filteredEmployees = baseEmployees.filter((emp) => {
     if (searchQuery && !emp.name?.includes(searchQuery)) return false;
     if (filterType && emp.employment_type !== filterType) return false;
     if (filterHealth) {
@@ -220,15 +234,16 @@ export default function AdminEmployeesPage() {
     return true;
   });
 
-  // 통계
+  // 통계 (재직중 기준)
   const stats = {
-    total: employees.length,
-    full_time: employees.filter((e) => e.employment_type === "full_time").length,
-    part_time_fixed: employees.filter((e) => e.employment_type === "part_time_fixed").length,
-    part_time_daily: employees.filter((e) => e.employment_type === "part_time_daily").length,
-    expired: employees.filter((e) => getHealthStatus(e.health_cert_date, warningDays) === "expired").length,
-    soon: employees.filter((e) => getHealthStatus(e.health_cert_date, warningDays) === "soon").length,
-    none: employees.filter((e) => getHealthStatus(e.health_cert_date, warningDays) === "none").length,
+    total: activeEmployees.length,
+    full_time: activeEmployees.filter((e) => e.employment_type === "full_time").length,
+    part_time_fixed: activeEmployees.filter((e) => e.employment_type === "part_time_fixed").length,
+    part_time_daily: activeEmployees.filter((e) => e.employment_type === "part_time_daily").length,
+    expired: activeEmployees.filter((e) => getHealthStatus(e.health_cert_date, warningDays) === "expired").length,
+    soon: activeEmployees.filter((e) => getHealthStatus(e.health_cert_date, warningDays) === "soon").length,
+    none: activeEmployees.filter((e) => getHealthStatus(e.health_cert_date, warningDays) === "none").length,
+    terminated: terminatedEmployees.length,
   };
 
   const handleColorChange = async (id: string, newColor: string) => {
@@ -254,6 +269,57 @@ export default function AdminEmployeesPage() {
 
   const handleDeleteEmployee = async (id: string, name: string) => {
     setDeleteConfirm({ id, name });
+  };
+
+  const handleConfirmTerminate = async () => {
+    if (!terminateTarget) return;
+    setStatusSubmitting(true);
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    const reason = terminationReason.trim() || null;
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        terminated_at: new Date().toISOString(),
+        termination_reason: reason,
+        terminated_by: user?.id ?? null,
+      })
+      .eq("id", terminateTarget.id);
+    setStatusSubmitting(false);
+    if (error) {
+      logError({ message: "퇴사 처리 실패", error, source: "employees/handleConfirmTerminate", context: { profileId: terminateTarget.id } });
+      toast.error("퇴사 처리에 실패했어요", { description: "다시 시도해주세요" });
+      return;
+    }
+    toast.success(`${terminateTarget.name}님을 퇴사 처리했어요`);
+    setTerminateTarget(null);
+    setTerminationReason("");
+    setEditingEmployee(null);
+    mutateEmployees();
+  };
+
+  const handleConfirmRestore = async () => {
+    if (!restoreTarget) return;
+    setStatusSubmitting(true);
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        terminated_at: null,
+        termination_reason: null,
+        terminated_by: null,
+      })
+      .eq("id", restoreTarget.id);
+    setStatusSubmitting(false);
+    if (error) {
+      logError({ message: "퇴사자 복귀 실패", error, source: "employees/handleConfirmRestore", context: { profileId: restoreTarget.id } });
+      toast.error("복귀 처리에 실패했어요", { description: "다시 시도해주세요" });
+      return;
+    }
+    toast.success(`${restoreTarget.name}님을 재직 상태로 되돌렸어요`);
+    setRestoreTarget(null);
+    setEditingEmployee(null);
+    mutateEmployees();
   };
 
   const confirmDelete = async () => {
@@ -557,7 +623,28 @@ export default function AdminEmployeesPage() {
         </p>
       </div>
 
-      {/* 통계 바 */}
+      {/* 재직 / 퇴사 탭 */}
+      <div className="flex gap-1 mb-3 bg-[#F2F4F6] p-1 rounded-xl w-fit">
+        <button
+          onClick={() => { setStatusTab("active"); setFilterType(""); setFilterHealth(""); }}
+          className={`px-4 py-1.5 rounded-lg text-[13px] font-bold transition-all ${
+            statusTab === "active" ? "bg-white text-[#191F28] shadow-sm" : "text-[#8B95A1]"
+          }`}
+        >
+          재직 {stats.total}
+        </button>
+        <button
+          onClick={() => { setStatusTab("terminated"); setFilterType(""); setFilterHealth(""); }}
+          className={`px-4 py-1.5 rounded-lg text-[13px] font-bold transition-all ${
+            statusTab === "terminated" ? "bg-white text-[#191F28] shadow-sm" : "text-[#8B95A1]"
+          }`}
+        >
+          퇴사 {stats.terminated}
+        </button>
+      </div>
+
+      {/* 통계 바 (재직 탭에서만) */}
+      {statusTab === "active" && (
       <div className="flex flex-wrap gap-2 mb-4">
         <button
           onClick={() => { setFilterType(""); setFilterHealth(""); }}
@@ -601,6 +688,7 @@ export default function AdminEmployeesPage() {
           </button>
         )}
       </div>
+      )}
 
       {/* 검색 */}
       <div className="relative mb-3">
@@ -651,10 +739,12 @@ export default function AdminEmployeesPage() {
 
             const subLine = [storeLabels, positionLabels].filter(Boolean).join(" · ");
 
+            const isTerminated = !!employee.terminated_at;
+
             return (
               <div
                 key={employee.id}
-                className={`flex items-center gap-3 px-4 py-3.5 cursor-pointer hover:bg-[#F9FAFB] active:bg-[#F2F4F6] transition-colors ${idx !== 0 ? "border-t border-[#F2F4F6]" : ""}`}
+                className={`flex items-center gap-3 px-4 py-3.5 cursor-pointer hover:bg-[#F9FAFB] active:bg-[#F2F4F6] transition-colors ${idx !== 0 ? "border-t border-[#F2F4F6]" : ""} ${isTerminated ? "bg-[#F9FAFB] opacity-75" : ""}`}
                 onClick={() => openEditModal(employee)}
               >
                 {/* 아바타 */}
@@ -667,7 +757,10 @@ export default function AdminEmployeesPage() {
                 {/* 이름 + 소속 */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-[14px] font-bold text-[#191F28]">{employee.name}</span>
+                    <span className={`text-[14px] font-bold ${isTerminated ? "text-[#8B95A1]" : "text-[#191F28]"}`}>{employee.name}</span>
+                    {isTerminated && (
+                      <span className="bg-[#F2F4F6] text-[#8B95A1] text-[10px] font-bold px-1.5 py-0.5 rounded-md">퇴사</span>
+                    )}
                     {isAdmin && (
                       <span className="bg-[#E8F3FF] text-[#3182F6] text-[10px] font-bold px-1.5 py-0.5 rounded-md">관리자</span>
                     )}
@@ -757,6 +850,21 @@ export default function AdminEmployeesPage() {
             </div>
 
             <div className="space-y-8">
+              {/* 퇴사 상태 배너 */}
+              {editingEmployee?.terminated_at && (
+                <div className="flex items-start gap-3 p-3.5 bg-[#F9FAFB] border border-[#E5E8EB] rounded-xl">
+                  <div className="flex-1">
+                    <p className="text-[13px] font-bold text-[#4E5968]">
+                      퇴사 처리된 직원이에요
+                    </p>
+                    <p className="text-[12px] text-[#8B95A1] mt-0.5">
+                      {new Date(editingEmployee.terminated_at).toLocaleDateString("ko-KR")} 처리
+                      {editingEmployee.termination_reason && ` · ${editingEmployee.termination_reason}`}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* 1. 기본 정보 */}
               <section className="space-y-4">
                 <h3 className="text-[15px] font-bold text-[#191F28] flex items-center gap-2">
@@ -1240,6 +1348,27 @@ export default function AdminEmployeesPage() {
               정보 저장하기
             </button>
 
+            {editingEmployee && !editingEmployee.terminated_at && (
+              <button
+                onClick={() => {
+                  setTerminationReason("");
+                  setTerminateTarget(editingEmployee);
+                }}
+                className="w-full mt-3 py-3 text-[#4E5968] bg-[#F2F4F6] rounded-xl text-[14px] font-bold hover:bg-[#E5E8EB] active:scale-[0.98] transition-all"
+              >
+                퇴사 처리하기
+              </button>
+            )}
+
+            {editingEmployee && editingEmployee.terminated_at && (
+              <button
+                onClick={() => setRestoreTarget(editingEmployee)}
+                className="w-full mt-3 py-3 text-[#3182F6] bg-[#E8F3FF] rounded-xl text-[14px] font-bold hover:bg-[#D4E8FE] active:scale-[0.98] transition-all"
+              >
+                재직 상태로 되돌리기
+              </button>
+            )}
+
             <button
               onClick={() => {
                 if (editingEmployee) {
@@ -1254,6 +1383,63 @@ export default function AdminEmployeesPage() {
           </div>
         </div>
       )}
+
+      {/* 퇴사 처리 모달 */}
+      {terminateTarget && (
+        <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => !statusSubmitting && setTerminateTarget(null)}
+          />
+          <div className="relative w-full max-w-md bg-white rounded-t-[28px] sm:rounded-[28px] px-5 pt-8 pb-8 shadow-2xl animate-in slide-in-from-bottom-4 duration-250">
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 w-9 h-1 bg-[#D1D6DB] rounded-full sm:hidden" />
+            <h3 className="text-[18px] font-bold text-[#191F28] mb-2">
+              {terminateTarget.name}님을 퇴사 처리할까요?
+            </h3>
+            <p className="text-[13px] text-[#8B95A1] mb-5 leading-relaxed">
+              퇴사 처리하면 스케줄, 공지 대상, 알림 발송 등 어드민 메뉴에서 자동으로 제외돼요. 과거 근태와 급여 기록은 그대로 보존돼요.
+            </p>
+            <label className="block text-[12px] font-medium text-[#8B95A1] mb-1.5">
+              퇴사 사유 (선택)
+            </label>
+            <input
+              type="text"
+              value={terminationReason}
+              onChange={(e) => setTerminationReason(e.target.value)}
+              placeholder="예: 이직, 계약 만료"
+              className="w-full px-4 py-2.5 bg-[#F9FAFB] border border-slate-200 rounded-xl text-[14px] text-[#191F28] focus:outline-none focus:border-[#3182F6] transition-all"
+            />
+            <div className="flex flex-col gap-2.5 mt-6">
+              <button
+                onClick={handleConfirmTerminate}
+                disabled={statusSubmitting}
+                className="w-full h-14 bg-[#191F28] text-white rounded-2xl font-bold text-[16px] disabled:opacity-50"
+              >
+                {statusSubmitting ? "처리 중..." : "퇴사 처리하기"}
+              </button>
+              <button
+                onClick={() => setTerminateTarget(null)}
+                disabled={statusSubmitting}
+                className="w-full h-14 bg-[#F2F4F6] text-[#4E5968] rounded-2xl font-bold text-[16px] disabled:opacity-50"
+              >
+                취소
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 복귀 확인 다이얼로그 */}
+      <ConfirmDialog
+        isOpen={!!restoreTarget}
+        title={`${restoreTarget?.name}님을 재직 상태로 되돌릴까요?`}
+        description="다시 모든 어드민 메뉴와 알림 대상에 포함돼요."
+        confirmLabel="되돌리기"
+        cancelLabel="취소"
+        onConfirm={handleConfirmRestore}
+        onCancel={() => setRestoreTarget(null)}
+      />
+
 
       {/* 기본 근무 패턴 편집 바텀시트 */}
       {editingDefault && (
