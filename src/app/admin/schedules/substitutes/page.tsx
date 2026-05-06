@@ -19,6 +19,8 @@ import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import Link from "next/link";
 import { useWorkplaces } from "@/lib/hooks/useWorkplaces";
+import { filterActiveProfileIds } from "@/lib/profiles-query";
+import { createNotification } from "@/lib/notifications";
 
 interface SubstituteRequest {
   id: string;
@@ -183,8 +185,8 @@ export default function AdminSubstitutesPage() {
       logError({ message: "대타 반려 실패", error, source: "substitutes/handleReject", context: { requestId: rejectTarget?.id } });
       toast.error("반려에 실패했어요", { description: error.message });
     } else {
-      // Notify requester
-      await supabase.from("notifications").insert({
+      // Notify requester (퇴사자 자동 차단 + 푸시 발송)
+      await createNotification({
         profile_id: rejectTarget.requester_id,
         target_role: "employee",
         type: "substitute_rejected",
@@ -236,18 +238,25 @@ export default function AdminSubstitutesPage() {
       logError({ message: "대타 승인 실패", error, source: "substitutes/handleApprove", context: { requestId: approveTarget?.id } });
       toast.error("승인에 실패했어요", { description: error.message });
     } else {
-      // Notify eligible employees (중복 ID 제거)
+      // Notify eligible employees (중복 + 퇴사자 제외, 다건이라 직접 INSERT + 푸시는 createNotification N회)
       const uniqueEligibleIds = Array.from(new Set(eligibleIds));
-      const notifications = uniqueEligibleIds.map((pid) => ({
-        profile_id: pid,
-        target_role: "employee" as const,
-        type: "substitute_approved",
-        title: "대타 요청이 왔어요",
-        content: `${format(new Date(approveTarget.slot_date + "T00:00:00"), "M월 d일", { locale: ko })} ${byId[approveTarget.store_id]?.label || approveTarget.store_id} ${approveTarget.start_time.slice(0, 5)}~${approveTarget.end_time.slice(0, 5)} 대타를 설 수 있어요. 확인해보세요.`,
-        source_id: approveTarget.id,
-      }));
-      await supabase.from("notifications").insert(notifications);
-      toast.success(`승인 완료! ${eligibleIds.length}명에게 알림을 보냈어요`);
+      const activeIds = await filterActiveProfileIds(supabase, uniqueEligibleIds);
+      if (activeIds.length > 0) {
+        const content = `${format(new Date(approveTarget.slot_date + "T00:00:00"), "M월 d일", { locale: ko })} ${byId[approveTarget.store_id]?.label || approveTarget.store_id} ${approveTarget.start_time.slice(0, 5)}~${approveTarget.end_time.slice(0, 5)} 대타를 설 수 있어요. 확인해보세요.`;
+        await Promise.all(
+          activeIds.map((pid) =>
+            createNotification({
+              profile_id: pid,
+              target_role: "employee",
+              type: "substitute_approved",
+              title: "대타 요청이 왔어요",
+              content,
+              source_id: approveTarget.id,
+            })
+          )
+        );
+      }
+      toast.success(`승인 완료! ${activeIds.length}명에게 알림을 보냈어요`);
       setApproveTarget(null);
       setEligibleIds([]);
       mutate();

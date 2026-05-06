@@ -8,6 +8,7 @@ import { format, subDays } from "date-fns";
 import { ko } from "date-fns/locale";
 import { toast } from "sonner";
 import { ChevronLeft, ChevronRight, CheckCircle2, X, ChevronDown, ChevronUp } from "lucide-react";
+import { createNotification } from "@/lib/notifications";
 
 // ── 상수 ──────────────────────────────────────────────────────────────
 
@@ -669,7 +670,7 @@ export default function AdminOvertimePage() {
         if (error) throw error;
       }
 
-      await supabase.from("notifications").insert({
+      await createNotification({
         profile_id: emp.profile_id,
         target_role: "employee",
         type: "overtime_approved",
@@ -724,7 +725,7 @@ export default function AdminOvertimePage() {
         .eq("id", emp.ot_record_id);
       if (error) throw error;
 
-      await supabase.from("notifications").insert({
+      await createNotification({
         profile_id: emp.profile_id,
         target_role: "employee",
         type: "overtime_cancelled",

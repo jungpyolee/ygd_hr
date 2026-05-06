@@ -68,8 +68,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ message: "No confirmed slots", sent: 0 });
   }
 
-  // 오늘 출퇴근 기록 조회
-  const profileIds = [...new Set(confirmedSlots.map((s) => s.profile_id))];
+  // 오늘 출퇴근 기록 조회 (퇴사자 슬롯 제외)
+  const allProfileIds = [...new Set(confirmedSlots.map((s) => s.profile_id))];
+  const { data: activeProfilesData } = await supabase
+    .from("profiles")
+    .select("id")
+    .in("id", allProfileIds)
+    .is("terminated_at", null);
+  const activeProfileSet = new Set((activeProfilesData ?? []).map((p) => p.id));
+  const profileIds = allProfileIds.filter((id) => activeProfileSet.has(id));
+  if (profileIds.length === 0) {
+    return NextResponse.json({ message: "No active profiles", sent: 0 });
+  }
   const { data: logs } = await supabase
     .from("attendance_logs")
     .select("profile_id, type, created_at")
@@ -110,7 +120,10 @@ export async function GET(req: NextRequest) {
 
   let sentCount = 0;
 
-  for (const slot of confirmedSlots) {
+  // 퇴사자 슬롯은 리마인더 발송 안 함
+  const activeSlots = confirmedSlots.filter((s) => activeProfileSet.has(s.profile_id));
+
+  for (const slot of activeSlots) {
     const [sh, sm] = slot.start_time.split(":").map(Number);
     const [eh, em] = slot.end_time.split(":").map(Number);
     const startMinutes = sh * 60 + sm;
