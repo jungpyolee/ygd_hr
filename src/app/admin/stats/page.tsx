@@ -157,18 +157,21 @@ async function fetchAttendanceStats(
 
 async function fetchMissedCheckouts(): Promise<MissedCheckout[]> {
   const todayStr = format(new Date(), "yyyy-MM-dd");
+  const sinceStr = "2026-05-01T00:00:00+09:00";
 
   const [{ data: inLogs }, { data: outLogs }] = await Promise.all([
     supabase
       .from("attendance_logs")
       .select("profile_id, created_at, profiles!profile_id(name, color_hex, avatar_config)")
       .eq("type", "IN")
+      .gte("created_at", sinceStr)
       .lt("created_at", `${todayStr}T00:00:00+09:00`)
       .order("created_at", { ascending: false }),
     supabase
       .from("attendance_logs")
       .select("profile_id, created_at")
       .eq("type", "OUT")
+      .gte("created_at", sinceStr)
       .lt("created_at", `${todayStr}T00:00:00+09:00`),
   ]);
 

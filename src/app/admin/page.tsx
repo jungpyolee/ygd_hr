@@ -275,18 +275,21 @@ export default function AdminDashboardPage() {
 
           return count;
         })(),
-        // 미퇴근 집계 (과거 전체 날짜 중 IN만 있고 OUT 없는 건)
+        // 미퇴근 집계 (2026-05-01 이후 ~ 어제 중 IN만 있고 OUT 없는 건)
         (async () => {
+          const sinceStr = "2026-05-01T00:00:00+09:00";
           const [{ data: inLogs }, { data: outLogs }] = await Promise.all([
             supabase
               .from("attendance_logs")
               .select("profile_id, created_at")
               .eq("type", "IN")
+              .gte("created_at", sinceStr)
               .lt("created_at", `${todayStr}T00:00:00+09:00`),
             supabase
               .from("attendance_logs")
               .select("profile_id, created_at")
               .eq("type", "OUT")
+              .gte("created_at", sinceStr)
               .lt("created_at", `${todayStr}T00:00:00+09:00`),
           ]);
 
